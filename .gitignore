@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+dist/
+build/
+out/
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+.env.*
+*.local
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.user
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
