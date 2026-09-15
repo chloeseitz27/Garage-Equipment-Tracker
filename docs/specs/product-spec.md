@@ -18,6 +18,12 @@ on a shelf.
 **This tool is a findability tool first.** Every other capability is secondary
 to answering one question quickly: *"Do we have X, and where exactly is it?"*
 
+A second, related problem sits just upstream of that one: people often can't
+name what they need. They don't know the Garage owns a particular tool, so they
+never search for it. The Project Assistant (§6.6) addresses that by turning a
+project description into a list of real Garage items — but it is in service of
+the same goal. Both paths end at *"here is the thing, and here is where it is."*
+
 ### Explicit non-goals
 
 The following are deliberately out of scope. Attempting them produces data
@@ -106,6 +112,7 @@ Shared fields:
 | Description | No | What it is, what it's for |
 | Photo | No | Strongly recommended — a picture disambiguates faster than words |
 | Tags / aliases | No | Alternate names people search for ("hot glue" → "glue gun") |
+| Good for | No | Project types this item suits; improves Project Assistant matching |
 | Notes | No | Quirks, "the left one is broken", safety warnings |
 
 Equipment-only fields:
@@ -114,6 +121,8 @@ Equipment-only fields:
 |---|---|---|
 | Status | Yes | `available`, `in use`, `out for repair`, `retired` |
 | Quantity | Yes | Usually 1; small integer for identical units |
+| Training required | Yes | `none`, `orientation`, `supervised`, `certified` |
+| Safety notes | No | Verbatim text; shown wherever the item appears |
 
 Consumable-only fields:
 
@@ -123,6 +132,8 @@ Consumable-only fields:
 
 Stock level is set by hand by staff or flagged by any user (§6.4). It is an
 honest, low-effort signal. It is explicitly not derived from usage.
+
+Consumables may also carry safety notes (solvents, resins, adhesives).
 
 ### 5.2 Location
 
@@ -197,6 +208,21 @@ and it is the only write path available to anonymous users.
 - Bulk entry matters — cataloging a whole shelf one modal at a time is the
   fastest way to abandon this project.
 
+### 6.6 Project Assistant
+
+A free-text surface where a user describes a project and receives a grounded
+list of Garage items to use, each with its location — plus a clearly separated
+note of useful things the Garage does not have.
+
+Specified in full in [`chatbot-spec.md`](chatbot-spec.md). Key constraints that
+bind the rest of this spec:
+
+- Recommendations must resolve to real catalog records; nothing may be presented
+  as in the Garage unless it is
+- Training and safety text comes verbatim from catalog fields (§5.1)
+- The assistant deliberately does not assert availability, because our
+  availability data isn't trustworthy enough to act on
+
 ---
 
 ## 7. Quality requirements
@@ -225,6 +251,8 @@ Must have:
 - Item detail with breadcrumb
 - Staff sign-in gating visible edit controls
 - Create and edit an item
+- Project Assistant answering seeded-data project prompts, with locations and
+  safety surfaced (see `chatbot-spec.md` §10)
 
 Nice to have, if time allows:
 
@@ -232,6 +260,7 @@ Nice to have, if time allows:
 - Flag / report flow
 - Bulk entry
 - Kiosk idle reset
+- Assistant refine-by-re-asking
 
 Post-hackathon:
 
@@ -248,5 +277,8 @@ Post-hackathon:
 - Is there an existing spreadsheet or list of Garage inventory we can seed from?
 - Does the Garage have an existing location/zone naming convention we should
   adopt rather than invent?
+- What are the real training tiers, and who owns safety text? (See
+  `chatbot-spec.md` §11 — safety is the one field where a wrong value has
+  physical consequences.)
 - Where will the kiosk physically live, and what hardware is it?
 - Where does this get hosted, and who owns it after the hackathon?
