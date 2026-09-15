@@ -1,0 +1,408 @@
+/*
+ * Kiosk-first styling: large type, high contrast, targets sized for someone
+ * reading from a step or two back (product-spec.md §3).
+ */
+
+:root {
+  --bg: #11131a;
+  --panel: #1b1f2a;
+  --panel-2: #232836;
+  --text: #f2f4f8;
+  --muted: #a3acc2;
+  --accent: #4da3ff;
+  --safety: #ffb020;
+  --line: #333a4d;
+  font-size: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.9rem;
+}
+
+.brand p {
+  margin: 0.15rem 0 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.tabs button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.6rem 1.25rem;
+}
+
+.tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #07121f;
+  font-weight: 600;
+}
+
+.staff-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.staff-bar button,
+.staff-bar input {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  color: var(--text);
+  font: inherit;
+}
+
+.staff-badge {
+  background: var(--accent);
+  color: #07121f;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  gap: 2rem;
+  margin-top: 1.5rem;
+  align-items: start;
+}
+
+.search {
+  width: 100%;
+  font-size: 1.6rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #07121f;
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.result {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+
+.result:hover,
+.result.selected {
+  border-color: var(--accent);
+}
+
+.thumb {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.result-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* The location path is the payload of a result row, so it stays legible. */
+.path {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.kind {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.kind-safety {
+  border-color: var(--safety);
+  color: var(--safety);
+}
+
+.detail {
+  position: sticky;
+  top: 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.25rem;
+  min-height: 200px;
+}
+
+.item-detail h2 {
+  margin: 0.25rem 0 0.25rem;
+}
+
+.close {
+  float: right;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.breadcrumb {
+  font-size: 1.3rem;
+  font-weight: 600;
+  background: var(--panel-2);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.training {
+  font-weight: 600;
+}
+
+.safety,
+.safety-inline {
+  border-left: 4px solid var(--safety);
+  background: rgba(255, 176, 32, 0.08);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  display: block;
+}
+
+.safety h3 {
+  margin: 0 0 0.3rem;
+  color: var(--safety);
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.flags {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.flags button {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+}
+
+.assistant textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 1.15rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  resize: vertical;
+}
+
+.assistant-actions {
+  margin: 0.75rem 0;
+}
+
+.assistant-actions button {
+  background: var(--accent);
+  color: #07121f;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1.4rem;
+}
+
+.examples {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.understood {
+  font-size: 1.15rem;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.tier {
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.tier ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tier h3 {
+  margin-top: 0;
+}
+
+.in-garage {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.in-garage button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+}
+
+/* The two tiers must never blur (chatbot-spec.md §3.2). */
+.not-in-garage {
+  background: transparent;
+  border: 1px dashed var(--muted);
+}
+
+.not-in-garage li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+}
+
+.reason {
+  color: var(--muted);
+}
+
+.empty {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #ff8080;
+}
+
+.state {
+  padding: 4rem 2rem;
+  text-align: center;
+}

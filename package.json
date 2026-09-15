@@ -1,0 +1,29 @@
+{
+  "name": "garage-inventory",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @garage/shared",
+    "build": "npm run build:shared && npm run build -w @garage/api && npm run build -w @garage/web",
+    "seed": "node scripts/seed.mjs",
+    "reset": "node scripts/seed.mjs --force",
+    "validate:seed": "npm run build:shared && node scripts/validate-seed.mjs",
+    "test": "npm run build:shared && node --import tsx --test \"**/*.test.ts\" && npm run validate:seed",
+    "dev": "npm run build:shared && concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @garage/api",
+    "dev:web": "npm run dev -w @garage/web",
+    "typecheck": "tsc -b && npm run typecheck -w @garage/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

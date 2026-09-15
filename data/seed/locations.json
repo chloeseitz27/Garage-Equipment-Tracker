@@ -1,0 +1,35 @@
+[
+  { "id": "loc-main-shop", "name": "Main Shop", "parentId": null, "kind": "room" },
+
+  { "id": "loc-digital-fab", "name": "Digital Fabrication Bay", "parentId": "loc-main-shop", "kind": "zone" },
+  { "id": "loc-printer-rack", "name": "Printer Rack A", "parentId": "loc-digital-fab", "kind": "shelf" },
+  { "id": "loc-bin-a1", "name": "Bin A1", "parentId": "loc-printer-rack", "kind": "bin" },
+  { "id": "loc-bin-a2", "name": "Bin A2", "parentId": "loc-printer-rack", "kind": "bin" },
+  { "id": "loc-resin-station", "name": "Resin Station", "parentId": "loc-digital-fab", "kind": "shelf" },
+
+  { "id": "loc-electronics-bench", "name": "Electronics Bench", "parentId": "loc-main-shop", "kind": "zone" },
+  { "id": "loc-cabinet-b", "name": "Cabinet B", "parentId": "loc-electronics-bench", "kind": "shelf" },
+  { "id": "loc-bin-b1", "name": "Bin B1", "parentId": "loc-cabinet-b", "kind": "bin" },
+  { "id": "loc-bin-b2", "name": "Bin B2", "parentId": "loc-cabinet-b", "kind": "bin" },
+  { "id": "loc-bin-b3", "name": "Bin B3", "parentId": "loc-cabinet-b", "kind": "bin" },
+  { "id": "loc-bin-b4", "name": "Bin B4", "parentId": "loc-cabinet-b", "kind": "bin" },
+
+  { "id": "loc-wood-shop", "name": "Wood Shop", "parentId": "loc-main-shop", "kind": "zone" },
+  { "id": "loc-tool-wall", "name": "Tool Wall", "parentId": "loc-wood-shop", "kind": "shelf" },
+  { "id": "loc-lumber-rack", "name": "Lumber Rack", "parentId": "loc-wood-shop", "kind": "shelf" },
+  { "id": "loc-finishing-cabinet", "name": "Finishing Cabinet", "parentId": "loc-wood-shop", "kind": "shelf" },
+
+  { "id": "loc-assembly-area", "name": "Assembly Area", "parentId": "loc-main-shop", "kind": "zone" },
+  { "id": "loc-cart-c", "name": "Rolling Cart C", "parentId": "loc-assembly-area", "kind": "shelf" },
+  { "id": "loc-craft-drawers", "name": "Craft Drawers", "parentId": "loc-assembly-area", "kind": "shelf" },
+
+  { "id": "loc-media-room", "name": "Media Room", "parentId": null, "kind": "room" },
+  { "id": "loc-av-shelf", "name": "AV Shelf", "parentId": "loc-media-room", "kind": "shelf" },
+
+  { "id": "loc-storage-room", "name": "Storage Room", "parentId": null, "kind": "room" },
+  { "id": "loc-shelf-d", "name": "Shelving Unit D", "parentId": "loc-storage-room", "kind": "shelf" },
+  { "id": "loc-bin-d1", "name": "Bin D1", "parentId": "loc-shelf-d", "kind": "bin" },
+  { "id": "loc-bin-d2", "name": "Bin D2", "parentId": "loc-shelf-d", "kind": "bin" },
+  { "id": "loc-bin-d3", "name": "Bin D3", "parentId": "loc-shelf-d", "kind": "bin" },
+  { "id": "loc-sheet-goods", "name": "Sheet Goods Rack", "parentId": "loc-storage-room", "kind": "shelf" }
+]

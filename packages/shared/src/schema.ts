@@ -1,0 +1,111 @@
+import { z } from 'zod';
+
+/**
+ * Schemas are the source of truth for the data model; the TypeScript types in
+ * `types.ts` are inferred from them. Defining the model once means the client,
+ * the server, and the seed validator cannot drift apart — which matters because
+ * the assistant's grounding layer depends on item IDs and location IDs being
+ * exactly right (technical-spec.md §2, §3).
+ */
+
+export const ITEM_KINDS = ['equipment', 'consumable'] as const;
+export const EQUIPMENT_STATUSES = ['available', 'in-use', 'out-for-repair', 'retired'] as const;
+export const STOCK_LEVELS = ['in-stock', 'low', 'out'] as const;
+export const TRAINING_LEVELS = ['none', 'orientation', 'supervised', 'certified'] as const;
+export const LOCATION_KINDS = ['room', 'zone', 'shelf', 'bin'] as const;
+export const FLAG_TYPES = ['not-here', 'low', 'out'] as const;
+
+export const itemKindSchema = z.enum(ITEM_KINDS);
+export const equipmentStatusSchema = z.enum(EQUIPMENT_STATUSES);
+export const stockLevelSchema = z.enum(STOCK_LEVELS);
+export const trainingLevelSchema = z.enum(TRAINING_LEVELS);
+export const locationKindSchema = z.enum(LOCATION_KINDS);
+export const flagTypeSchema = z.enum(FLAG_TYPES);
+
+const idSchema = z.string().min(1);
+
+const itemBaseShape = {
+  id: idSchema,
+  name: z.string().min(1),
+  categoryId: idSchema,
+  locationId: idSchema,
+  description: z.string().optional(),
+  photoUrl: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  goodFor: z.array(z.string()).default([]),
+  notes: z.string().optional(),
+  /** Verbatim only. Never model-generated (chatbot-spec.md §5). */
+  safetyNotes: z.string().optional(),
+};
+
+export const equipmentSchema = z.object({
+  ...itemBaseShape,
+  kind: z.literal('equipment'),
+  status: equipmentStatusSchema,
+  quantity: z.number().int().positive(),
+  trainingRequired: trainingLevelSchema,
+});
+
+export const consumableSchema = z.object({
+  ...itemBaseShape,
+  kind: z.literal('consumable'),
+  /** Coarse manual flag, never a count (product-spec.md §5.1). */
+  stockLevel: stockLevelSchema,
+});
+
+export const itemSchema = z.discriminatedUnion('kind', [equipmentSchema, consumableSchema]);
+
+export const locationSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1),
+  parentId: idSchema.nullable(),
+  kind: locationKindSchema,
+});
+
+export const categorySchema = z.object({
+  id: idSchema,
+  name: z.string().min(1),
+});
+
+export const flagSchema = z.object({
+  id: idSchema,
+  itemId: idSchema,
+  type: flagTypeSchema,
+  createdAt: z.string(),
+  resolved: z.boolean(),
+});
+
+/** Payload accepted from an anonymous client on POST /api/flags. */
+export const createFlagSchema = z.object({
+  itemId: idSchema,
+  type: flagTypeSchema,
+});
+
+/** Staff item writes. The server owns `id` on create (technical-spec.md §3.2). */
+export const createItemSchema = z.discriminatedUnion('kind', [
+  equipmentSchema.omit({ id: true }),
+  consumableSchema.omit({ id: true }),
+]);
+
+export const updateItemSchema = itemSchema;
+
+export const createLocationSchema = locationSchema.omit({ id: true });
+export const createCategorySchema = categorySchema.omit({ id: true });
+
+export const resolveFlagSchema = z.object({
+  resolved: z.boolean(),
+});
+
+export const loginSchema = z.object({
+  passphrase: z.string().min(1),
+});
+
+export const recommendRequestSchema = z.object({
+  projectDescription: z.string().min(1).max(1000),
+});
+
+/** Shape of each JSON file under data/ — one array per file, easy to diff by hand. */
+export const itemsFileSchema = z.array(itemSchema);
+export const locationsFileSchema = z.array(locationSchema);
+export const categoriesFileSchema = z.array(categorySchema);
+export const flagsFileSchema = z.array(flagSchema);
