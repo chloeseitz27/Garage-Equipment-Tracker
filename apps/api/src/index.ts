@@ -39,6 +39,16 @@ app.use((_req, res) => {
 });
 
 app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+  // body-parser marks a malformed or oversized body as a 4xx; that's the
+  // client's mistake, not an internal failure, so don't report it as a 500.
+  const status = (error as { status?: number; statusCode?: number }).status ??
+    (error as { statusCode?: number }).statusCode;
+
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    res.status(status).json({ error: 'Malformed request' });
+    return;
+  }
+
   console.error('[api]', error);
   res.status(500).json({ error: 'Internal server error' });
 });

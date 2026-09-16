@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { formatLocationPath, getLocationPath, type Location } from './index.js';
+import { formatLocationPath, getLocationPath, wouldCreateCycle, type Location } from './index.js';
 
 const locations: Location[] = [
   { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
@@ -36,4 +36,21 @@ test('a cycle terminates instead of hanging', () => {
     { id: 'b', name: 'B', parentId: 'a', kind: 'zone' },
   ];
   assert.equal(getLocationPath(cyclic, 'a').length, 2);
+});
+
+test('moving a location under itself is a cycle', () => {
+  assert.equal(wouldCreateCycle(locations, 'zone', 'zone'), true);
+});
+
+test('moving a location under its own descendant is a cycle', () => {
+  assert.equal(wouldCreateCycle(locations, 'zone', 'bin'), true);
+});
+
+test('moving a location to a root or an unrelated branch is allowed', () => {
+  assert.equal(wouldCreateCycle(locations, 'shelf', null), false);
+  assert.equal(wouldCreateCycle(locations, 'shelf', 'lonely-room'), false);
+});
+
+test('moving a parent under a sibling subtree is allowed', () => {
+  assert.equal(wouldCreateCycle(locations, 'bin', 'room'), false);
 });

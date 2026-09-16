@@ -11,13 +11,19 @@ export interface CatalogRepository {
   getItems(): Promise<Item[]>;
   getItem(id: string): Promise<Item | null>;
   createItem(item: CreateItemInput): Promise<Item>;
+  /** Creates a batch in one write, so a partial shelf can't be left half-committed. */
+  createItems(items: CreateItemInput[]): Promise<Item[]>;
   saveItem(item: Item): Promise<void>;
 
   getLocations(): Promise<Location[]>;
   createLocation(location: Omit<Location, 'id'>): Promise<Location>;
+  saveLocation(location: Location): Promise<void>;
+  deleteLocation(id: string): Promise<void>;
 
   getCategories(): Promise<Category[]>;
   createCategory(category: Omit<Category, 'id'>): Promise<Category>;
+  saveCategory(category: Category): Promise<void>;
+  deleteCategory(id: string): Promise<void>;
 
   getFlags(): Promise<Flag[]>;
   addFlag(flag: Omit<Flag, 'id' | 'createdAt' | 'resolved'>): Promise<Flag>;

@@ -406,3 +406,235 @@ header h1 {
   padding: 4rem 2rem;
   text-align: center;
 }
+
+/* --- Staff editing surface --- */
+
+.staff-panel {
+  margin-top: 1.5rem;
+}
+
+.sub-tabs {
+  margin: 0 0 1.25rem;
+}
+
+.manager,
+.editor {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+}
+
+.manager h3,
+.editor h3 {
+  margin-top: 0;
+}
+
+.editor {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 900px;
+}
+
+.editor label,
+.manager label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.editor input,
+.editor select,
+.editor textarea,
+.manager input,
+.manager select,
+.manager textarea {
+  font: inherit;
+  font-weight: 400;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  color: var(--text);
+}
+
+.editor input:focus,
+.editor select:focus,
+.editor textarea:focus,
+.manager input:focus,
+.manager select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.field-row > label {
+  flex: 1 1 180px;
+}
+
+.hint {
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* Safety text is shown verbatim wherever the item appears, so the field that
+   edits it is marked as clearly as the display is. */
+.safety-field textarea {
+  border-left: 4px solid var(--safety);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}
+
+.editor-actions button,
+.add-row button,
+.tree-actions button,
+.tree-edit button {
+  background: var(--accent);
+  color: #07121f;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+
+.editor-actions button.secondary,
+.tree-actions button,
+.tree-edit button.secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+
+.tree-actions button.danger {
+  border-color: #7a3340;
+  color: #ff9aa6;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.flat-list,
+.tree,
+.tree ul {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+
+.flat-list li {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 0.4rem;
+  background: var(--panel-2);
+}
+
+.flat-list li.resolved {
+  opacity: 0.55;
+}
+
+.flat-list li.row-error {
+  border-color: #7a3340;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.tree-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+
+.tree-actions,
+.tree-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.add-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.add-row input {
+  flex: 1 1 240px;
+}
+
+.inline-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.badge {
+  background: var(--safety);
+  color: #241700;
+  border-radius: 999px;
+  padding: 0.1rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.bulk-input {
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 0.92rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.preview {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.preview h4 {
+  margin: 0;
+}
+
+code {
+  background: var(--panel-2);
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.9em;
+}

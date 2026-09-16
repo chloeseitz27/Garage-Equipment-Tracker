@@ -9,9 +9,9 @@ one question quickly: *"Do we have X, and where exactly is it?"*
 
 ## Status
 
-Specifications are drafted and the workspace is scaffolded with seeded demo
-data. Search, browse, item detail, anonymous flagging, staff sign-in, and the
-Project Assistant pipeline all run end to end against `data/seed`.
+Specifications are drafted and the app runs end to end against seeded demo
+data: search, browse, item detail, anonymous flagging, the Project Assistant,
+and a full staff editing surface for every data source.
 
 See [`docs/specs/`](docs/specs/):
 
@@ -74,12 +74,38 @@ and a 27-node location tree, including a retired item and one piece of equipment
 out for repair so those paths get exercised. It is plausible fiction, not the
 real Garage inventory — see the open questions in the product spec.
 
+## Staff editing
+
+Sign in with the staff passphrase and a **Manage catalog** tab appears, with one
+surface per data source:
+
+| Tab | Does |
+|---|---|
+| Items | Filter, create, and edit any item — every field, including safety notes |
+| Bulk entry | Paste or type one row per item to catalog a whole shelf at once |
+| Locations | Walk the tree; rename, re-parent, add, and delete nodes |
+| Categories | Rename, add, and delete the flat category list |
+| Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
+
+Bulk entry takes one item per line — `name, kind, status/stock, training, tags`
+— where only the name is required and everything else falls back to defaults
+picked in the form. A live preview shows exactly what will be created, and the
+batch is committed in a single write or not at all.
+
+Writes are guarded so the catalog can't be left in a state that won't load:
+
+- An item can't reference a category or location that doesn't exist
+- A location can't be moved inside its own subtree
+- A location holding items or sub-locations can't be deleted
+- A category still in use can't be deleted
+- Retiring is a status, never a delete — the record and its ID survive
+
+Every guard is enforced server-side; the UI only mirrors it.
+
 ## Not built yet
 
-- Staff UI for creating and editing items — the API routes exist, but there is
-  no form
-- Bulk entry (product spec §6.5)
-- Photos, kiosk idle reset, browse-by-location walking UI
+- Photos are URLs only — no upload
+- Kiosk idle reset, browse-by-location walking UI for visitors
 - The hosted assistant provider is implemented but has not been run against real
   credentials
 

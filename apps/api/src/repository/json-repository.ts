@@ -67,6 +67,19 @@ export class JsonCatalogRepository implements CatalogRepository {
     return item;
   }
 
+  async createItems(inputs: CreateItemInput[]): Promise<Item[]> {
+    // IDs are allocated against a growing list so two identically named rows in
+    // the same batch can't collide, then the batch lands in a single write.
+    const created = inputs.map((input) => {
+      const item = { ...input, id: this.nextId('itm', input.name, this.items) } as Item;
+      this.items.push(item);
+      return item;
+    });
+
+    await this.persist('items.json', this.items);
+    return created;
+  }
+
   async saveItem(item: Item): Promise<void> {
     const index = this.items.findIndex((existing) => existing.id === item.id);
     if (index === -1) throw new Error(`Unknown item: ${item.id}`);
@@ -85,6 +98,18 @@ export class JsonCatalogRepository implements CatalogRepository {
     return location;
   }
 
+  async saveLocation(location: Location): Promise<void> {
+    const index = this.locations.findIndex((existing) => existing.id === location.id);
+    if (index === -1) throw new Error(`Unknown location: ${location.id}`);
+    this.locations[index] = location;
+    await this.persist('locations.json', this.locations);
+  }
+
+  async deleteLocation(id: string): Promise<void> {
+    this.locations = this.locations.filter((location) => location.id !== id);
+    await this.persist('locations.json', this.locations);
+  }
+
   async getCategories(): Promise<Category[]> {
     return [...this.categories];
   }
@@ -94,6 +119,18 @@ export class JsonCatalogRepository implements CatalogRepository {
     this.categories.push(category);
     await this.persist('categories.json', this.categories);
     return category;
+  }
+
+  async saveCategory(category: Category): Promise<void> {
+    const index = this.categories.findIndex((existing) => existing.id === category.id);
+    if (index === -1) throw new Error(`Unknown category: ${category.id}`);
+    this.categories[index] = category;
+    await this.persist('categories.json', this.categories);
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    this.categories = this.categories.filter((category) => category.id !== id);
+    await this.persist('categories.json', this.categories);
   }
 
   async getFlags(): Promise<Flag[]> {

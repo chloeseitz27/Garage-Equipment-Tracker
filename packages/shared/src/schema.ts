@@ -92,6 +92,18 @@ export const updateItemSchema = itemSchema;
 export const createLocationSchema = locationSchema.omit({ id: true });
 export const createCategorySchema = categorySchema.omit({ id: true });
 
+export const updateLocationSchema = locationSchema;
+export const updateCategorySchema = categorySchema;
+
+/**
+ * Bulk item creation (product-spec.md §6.5). Cataloging a shelf one modal at a
+ * time is the fastest way to abandon this project, so staff can commit a whole
+ * batch in one write. Capped to keep a single JSON rewrite reasonable.
+ */
+export const bulkCreateItemsSchema = z.object({
+  items: z.array(createItemSchema).min(1).max(200),
+});
+
 export const resolveFlagSchema = z.object({
   resolved: z.boolean(),
 });

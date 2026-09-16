@@ -7,9 +7,11 @@ import type { SearchRecord } from '../search.js';
 interface Props {
   record: SearchRecord;
   onClose: () => void;
+  /** Only supplied when a staff session is active. */
+  onEdit?: () => void;
 }
 
-export function ItemDetail({ record, onClose }: Props): JSX.Element {
+export function ItemDetail({ record, onClose, onEdit }: Props): JSX.Element {
   const { item, categoryName, locationPath } = record;
   const [flagged, setFlagged] = useState<string | null>(null);
 
@@ -27,6 +29,11 @@ export function ItemDetail({ record, onClose }: Props): JSX.Element {
       <button type="button" className="close" onClick={onClose}>
         Close
       </button>
+      {onEdit ? (
+        <button type="button" className="close" onClick={onEdit}>
+          Edit
+        </button>
+      ) : null}
 
       <h2>{item.name}</h2>
       <p className="muted">

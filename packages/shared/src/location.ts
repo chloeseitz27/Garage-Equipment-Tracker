@@ -63,3 +63,20 @@ export function getDescendantLocationIds(locations: Location[], locationId: stri
 
   return ids;
 }
+
+/**
+ * Guards re-parenting a location under itself or one of its own descendants.
+ *
+ * A cycle makes the breadcrumb un-derivable for every item beneath it, and the
+ * damage is silent until someone opens one of those items. Staff can reorganize
+ * the tree freely, so this has to be checked on every move.
+ */
+export function wouldCreateCycle(
+  locations: Location[],
+  locationId: string,
+  nextParentId: string | null,
+): boolean {
+  if (nextParentId === null) return false;
+  if (nextParentId === locationId) return true;
+  return getDescendantLocationIds(locations, locationId).includes(nextParentId);
+}

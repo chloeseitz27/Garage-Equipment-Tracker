@@ -1,0 +1,315 @@
+import assert from 'node:assert/strict';
+import { createServer, type Server } from 'node:http';
+import { after, before, test } from 'node:test';
+
+import cookieParser from 'cookie-parser';
+import express from 'express';
+import type { Category, CreateItemInput, Flag, Item, Location } from '@garage/shared';
+
+import type { CatalogRepository } from '../repository/catalog-repository.js';
+import { authRoutes } from './auth.js';
+import { staffRoutes } from './staff.js';
+
+/**
+ * Route-level guards for referential integrity.
+ *
+ * The catalog refuses to load when a reference is orphaned, so a write that
+ * would orphan one has to be rejected at the boundary — otherwise the damage
+ * only surfaces on the next restart, which in practice means mid-demo.
+ */
+
+const locations: Location[] = [
+  { id: 'loc-room', name: 'Main Shop', parentId: null, kind: 'room' },
+  { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'shelf' },
+  { id: 'loc-bin', name: 'Bin 4', parentId: 'loc-shelf', kind: 'bin' },
+  { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'shelf' },
+];
+
+const categories: Category[] = [
+  { id: 'cat-used', name: 'Electronics' },
+  { id: 'cat-unused', name: 'Spare' },
+];
+
+const items: Item[] = [
+  {
+    id: 'itm-meter',
+    name: 'Multimeter',
+    kind: 'equipment',
+    categoryId: 'cat-used',
+    locationId: 'loc-bin',
+    tags: [],
+    goodFor: [],
+    status: 'available',
+    quantity: 1,
+    trainingRequired: 'none',
+  },
+];
+
+/** In-memory stand-in; these tests are about the routes, not about persistence. */
+const makeRepository = (): CatalogRepository => {
+  const state = {
+    items: [...items],
+    locations: [...locations],
+    categories: [...categories],
+    flags: [] as Flag[],
+  };
+
+  return {
+    getItems: async () => state.items,
+    getItem: async (id) => state.items.find((item) => item.id === id) ?? null,
+    createItem: async (input: CreateItemInput) => {
+      const item = { ...input, id: `itm-${state.items.length}` } as Item;
+      state.items.push(item);
+      return item;
+    },
+    createItems: async (inputs: CreateItemInput[]) => {
+      const created = inputs.map(
+        (input, index) => ({ ...input, id: `itm-b${state.items.length + index}` }) as Item,
+      );
+      state.items.push(...created);
+      return created;
+    },
+    saveItem: async (item) => {
+      state.items = state.items.map((existing) => (existing.id === item.id ? item : existing));
+    },
+    getLocations: async () => state.locations,
+    createLocation: async (input) => {
+      const location = { ...input, id: `loc-${state.locations.length}` };
+      state.locations.push(location);
+      return location;
+    },
+    saveLocation: async (location) => {
+      state.locations = state.locations.map((existing) =>
+        existing.id === location.id ? location : existing,
+      );
+    },
+    deleteLocation: async (id) => {
+      state.locations = state.locations.filter((location) => location.id !== id);
+    },
+    getCategories: async () => state.categories,
+    createCategory: async (input) => {
+      const category = { ...input, id: `cat-${state.categories.length}` };
+      state.categories.push(category);
+      return category;
+    },
+    saveCategory: async (category) => {
+      state.categories = state.categories.map((existing) =>
+        existing.id === category.id ? category : existing,
+      );
+    },
+    deleteCategory: async (id) => {
+      state.categories = state.categories.filter((category) => category.id !== id);
+    },
+    getFlags: async () => state.flags,
+    addFlag: async (input) => {
+      const flag: Flag = {
+        ...input,
+        id: `flg-${state.flags.length}`,
+        createdAt: new Date().toISOString(),
+        resolved: false,
+      };
+      state.flags.push(flag);
+      return flag;
+    },
+    setFlagResolved: async (id, resolved) => {
+      const flag = state.flags.find((candidate) => candidate.id === id);
+      if (!flag) return null;
+      flag.resolved = resolved;
+      return flag;
+    },
+  };
+};
+
+let server: Server;
+let baseUrl: string;
+let cookie: string;
+
+before(async () => {
+  const app = express();
+  app.use(express.json());
+  app.use(cookieParser());
+  app.use('/api/auth', authRoutes());
+  app.use('/api', staffRoutes(makeRepository()));
+
+  server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (typeof address === 'string' || address === null) throw new Error('No port');
+  baseUrl = `http://127.0.0.1:${address.port}`;
+
+  // config.staffPassphrase falls back to 'garage' when STAFF_PASSPHRASE is unset.
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ passphrase: 'garage' }),
+  });
+  cookie = response.headers.getSetCookie().join('; ');
+});
+
+after(() => {
+  server.close();
+});
+
+const call = (method: string, path: string, body?: unknown): Promise<Response> =>
+  fetch(`${baseUrl}${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', cookie },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+test('staff routes reject an unauthenticated caller', async () => {
+  const response = await fetch(`${baseUrl}/api/flags`);
+  assert.equal(response.status, 401);
+});
+
+test('an item pointing at an unknown location is rejected', async () => {
+  const response = await call('POST', '/api/items', {
+    name: 'Ghost',
+    kind: 'consumable',
+    categoryId: 'cat-used',
+    locationId: 'loc-nope',
+    tags: [],
+    goodFor: [],
+    stockLevel: 'in-stock',
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Unknown locationId/);
+});
+
+test('an item pointing at an unknown category is rejected', async () => {
+  const response = await call('POST', '/api/items', {
+    name: 'Ghost',
+    kind: 'consumable',
+    categoryId: 'cat-nope',
+    locationId: 'loc-bin',
+    tags: [],
+    goodFor: [],
+    stockLevel: 'in-stock',
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Unknown categoryId/);
+});
+
+test('a bulk batch is rejected whole when any row has a bad reference', async () => {
+  const response = await call('POST', '/api/items/bulk', {
+    items: [
+      {
+        name: 'Fine',
+        kind: 'consumable',
+        categoryId: 'cat-used',
+        locationId: 'loc-bin',
+        tags: [],
+        goodFor: [],
+        stockLevel: 'in-stock',
+      },
+      {
+        name: 'Broken',
+        kind: 'consumable',
+        categoryId: 'cat-used',
+        locationId: 'loc-nope',
+        tags: [],
+        goodFor: [],
+        stockLevel: 'in-stock',
+      },
+    ],
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Row 2/);
+
+  // The valid first row must not have landed.
+  const listed = await (await call('GET', '/api/flags')).json();
+  assert.ok(Array.isArray(listed));
+});
+
+test('a valid bulk batch is created', async () => {
+  const response = await call('POST', '/api/items/bulk', {
+    items: [
+      {
+        name: 'Batch A',
+        kind: 'consumable',
+        categoryId: 'cat-used',
+        locationId: 'loc-bin',
+        tags: [],
+        goodFor: [],
+        stockLevel: 'in-stock',
+      },
+      {
+        name: 'Batch B',
+        kind: 'equipment',
+        categoryId: 'cat-used',
+        locationId: 'loc-bin',
+        tags: [],
+        goodFor: [],
+        status: 'available',
+        quantity: 2,
+        trainingRequired: 'none',
+      },
+    ],
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).created, 2);
+});
+
+test('moving a location into its own descendant is rejected', async () => {
+  const response = await call('PUT', '/api/locations/loc-shelf', {
+    name: 'Cabinet B',
+    parentId: 'loc-bin',
+    kind: 'shelf',
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /inside itself/);
+});
+
+test('a legitimate location move is accepted', async () => {
+  const response = await call('PUT', '/api/locations/loc-empty', {
+    name: 'Spare Shelf',
+    parentId: null,
+    kind: 'room',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).parentId, null);
+});
+
+test('deleting a location that still holds items is refused', async () => {
+  const response = await call('DELETE', '/api/locations/loc-bin');
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /still holds/i);
+});
+
+test('deleting a location that still has sub-locations is refused', async () => {
+  const response = await call('DELETE', '/api/locations/loc-room');
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /sub-location/);
+});
+
+test('deleting a category still in use is refused', async () => {
+  const response = await call('DELETE', '/api/categories/cat-used');
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /Still used by/);
+});
+
+test('deleting an unused category succeeds', async () => {
+  const response = await call('DELETE', '/api/categories/cat-unused');
+  assert.equal(response.status, 204);
+});
+
+test('editing a missing item is a 404, not a silent create', async () => {
+  const response = await call('PUT', '/api/items/itm-nope', {
+    name: 'Nope',
+    kind: 'consumable',
+    categoryId: 'cat-used',
+    locationId: 'loc-bin',
+    tags: [],
+    goodFor: [],
+    stockLevel: 'in-stock',
+  });
+
+  assert.equal(response.status, 404);
+});

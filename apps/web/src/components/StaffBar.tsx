@@ -1,28 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { getSession, login, logout } from '../api.js';
+import { login, logout } from '../api.js';
+
+interface Props {
+  staff: boolean;
+  onChange: (staff: boolean) => void;
+}
 
 /**
  * Staff sign-in. Edit affordances are hidden when unauthenticated rather than
- * shown-and-disabled (product-spec.md §4) — so this bar reveals staff UI only
- * once `staff` is true.
+ * shown-and-disabled (product-spec.md §4), so this bar is the only staff UI a
+ * visitor ever sees.
  */
-export function StaffBar(): JSX.Element {
-  const [staff, setStaff] = useState(false);
+export function StaffBar({ staff, onChange }: Props): JSX.Element {
   const [passphrase, setPassphrase] = useState('');
   const [prompting, setPrompting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getSession()
-      .then((session) => setStaff(session.staff))
-      .catch(() => setStaff(false));
-  }, []);
-
   const signIn = async (): Promise<void> => {
     try {
       const session = await login(passphrase);
-      setStaff(session.staff);
+      onChange(session.staff);
       setPassphrase('');
       setPrompting(false);
       setError(null);
@@ -38,7 +36,7 @@ export function StaffBar(): JSX.Element {
         <button
           type="button"
           onClick={() => {
-            void logout().then(() => setStaff(false));
+            void logout().then(() => onChange(false));
           }}
         >
           Sign out
