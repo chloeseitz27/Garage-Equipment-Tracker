@@ -119,14 +119,35 @@ Records are stored as-is. `Item` is a discriminated union whose arms carry diffe
 To provision and load it:
 
 ```powershell
-.\scripts\provision-cosmos.ps1 -SubscriptionId <your-sub-id>
+# validate without changing anything
+.\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id> -WhatIf
+
+# deploy (idempotent — safe to re-run)
+.\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id> -CosmosLocation eastus2
+
 # add the printed COSMOS_* values to .env, then
 npm run seed:cosmos
 ```
 
-The script refuses to run against the Microsoft corporate tenant, opts into the free tier (which **cannot** be applied after creation), caps total account throughput, and assigns you the Cosmos data-plane role. That last step is not optional: Cosmos data-plane RBAC is separate from Azure RBAC, so subscription Owner grants no data access.
+Infrastructure lives in [`infra/`](infra/) as Bicep, deployed at subscription scope so it owns the resource group too:
 
-Auth uses `DefaultAzureCredential` when `COSMOS_KEY` is empty — managed identity in Azure, your `az login` locally. Leave it empty; a key is a secret to leak and rotate.
+```
+infra/
+  main.bicep            Resource group + module wiring
+  modules/cosmos.bicep  Account, database, container, data-plane role
+```
+
+The deploy script refuses to run against the Microsoft corporate tenant, registers the resource providers a new subscription lacks, and passes your object id in for the Cosmos data-plane role assignment. That role is not optional: **Cosmos data-plane RBAC is separate from Azure RBAC**, so subscription Owner grants no data access at all.
+
+Notes on the template:
+
+- **Free tier can only be set at creation.** An existing account can't be converted, and there's one per subscription. Pass `enableFreeTier=false` if the slot is already used.
+- **Account name is derived from the subscription and group**, not random, so re-running reconciles instead of orphaning the account and burning the free slot.
+- **`disableLocalAuth: true`** — keys are off, so Entra ID is the only way in and there's no secret to leak or rotate.
+- **`totalThroughputLimit: 1000`** caps the account as a hard stop against surprise charges.
+- **`cosmosLocation` is separate from `location`.** Cosmos capacity varies by region — East US returned `ServiceUnavailable` for a new account while East US 2 worked — and a resource group's location can't be changed after creation.
+
+Auth uses `DefaultAzureCredential` when `COSMOS_KEY` is empty — managed identity in Azure, your `az login` locally. Leave it empty.
 
 ## Not built yet
 
