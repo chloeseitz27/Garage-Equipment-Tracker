@@ -28,24 +28,36 @@ export function staffRoutes(repository: CatalogRepository): Router {
   const router = Router();
   router.use(requireStaff);
 
-  /** Confirms an item's category and location both resolve. Returns a message, or null. */
-  const checkReferences = async (item: {
-    categoryId: string;
-    locationId: string;
-  }): Promise<string | null> => {
+  /**
+   * Category and location ids, read once. The bulk route validates up to 100
+   * rows, and re-reading the reference sets per row would be a round trip each
+   * against a network-backed store.
+   */
+  const loadReferenceSets = async (): Promise<{ categories: Set<string>; locations: Set<string> }> => {
     const [categories, locations] = await Promise.all([
       repository.getCategories(),
       repository.getLocations(),
     ]);
+    return {
+      categories: new Set(categories.map((category) => category.id)),
+      locations: new Set(locations.map((location) => location.id)),
+    };
+  };
 
-    if (!categories.some((category) => category.id === item.categoryId)) {
-      return `Unknown categoryId: ${item.categoryId}`;
-    }
-    if (!locations.some((location) => location.id === item.locationId)) {
-      return `Unknown locationId: ${item.locationId}`;
-    }
+  /** Returns a message naming the unresolved reference, or null. */
+  const checkAgainst = (
+    sets: { categories: Set<string>; locations: Set<string> },
+    item: { categoryId: string; locationId: string },
+  ): string | null => {
+    if (!sets.categories.has(item.categoryId)) return `Unknown categoryId: ${item.categoryId}`;
+    if (!sets.locations.has(item.locationId)) return `Unknown locationId: ${item.locationId}`;
     return null;
   };
+
+  const checkReferences = async (item: {
+    categoryId: string;
+    locationId: string;
+  }): Promise<string | null> => checkAgainst(await loadReferenceSets(), item);
 
   router.post(
     '/items',
@@ -77,8 +89,9 @@ export function staffRoutes(repository: CatalogRepository): Router {
 
       // All or nothing: a batch that would orphan a reference is rejected whole,
       // so staff never have to work out which half of a shelf landed.
+      const sets = await loadReferenceSets();
       for (const [index, item] of parsed.data.items.entries()) {
-        const problem = await checkReferences(item);
+        const problem = checkAgainst(sets, item);
         if (problem) {
           res.status(400).json({ error: `Row ${index + 1}: ${problem}` });
           return;

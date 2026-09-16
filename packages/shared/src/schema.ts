@@ -98,10 +98,14 @@ export const updateCategorySchema = categorySchema;
 /**
  * Bulk item creation (product-spec.md §6.5). Cataloging a shelf one modal at a
  * time is the fastest way to abandon this project, so staff can commit a whole
- * batch in one write. Capped to keep a single JSON rewrite reasonable.
+ * batch in one write.
+ *
+ * Capped at 100 because that's the Cosmos transactional-batch limit — keeping
+ * the batch inside one transaction is what makes the route's all-or-nothing
+ * promise true at the storage layer rather than only during validation.
  */
 export const bulkCreateItemsSchema = z.object({
-  items: z.array(createItemSchema).min(1).max(200),
+  items: z.array(createItemSchema).min(1).max(100),
 });
 
 export const resolveFlagSchema = z.object({

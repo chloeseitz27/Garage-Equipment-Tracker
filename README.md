@@ -41,6 +41,7 @@ hosted model.
 |---|---|
 | `npm run dev` | API and web dev servers together |
 | `npm run seed` | Copy `data/seed` to `data/runtime` if runtime is empty |
+| `npm run seed:cosmos` | Import `data/seed` into Cosmos (validates first, upserts by id) |
 | `npm run reset` | Overwrite `data/runtime` from seed — the "put the demo back" button |
 | `npm test` | Grounding, safety, and location-path tests, plus seed validation |
 | `npm run validate:seed` | Schema + referential integrity check on `data/seed` |
@@ -101,6 +102,31 @@ Writes are guarded so the catalog can't be left in a state that won't load:
 - Retiring is a status, never a delete — the record and its ID survive
 
 Every guard is enforced server-side; the UI only mirrors it.
+
+## Storage
+
+Two backends behind one `CatalogRepository` interface, selected by `STORAGE`:
+
+| `STORAGE` | Backend | Use |
+|---|---|---|
+| `json` (default) | Files under `data/runtime` | Local dev, no Azure needed |
+| `cosmos` | Azure Cosmos DB | Deployed |
+
+Cosmos uses a **single container partitioned on `/type`** (`item`/`location`/`category`/`flag`). One container at 400 RU/s fits the free tier's 1000 RU/s; four containers would need a 400 RU/s minimum each and blow past it.
+
+Records are stored as-is. `Item` is a discriminated union whose arms carry different required fields, so documents avoid the nullable-column-plus-CHECK dance a relational store would need. Referential integrity stays where it already was — `findCatalogProblems` plus the route guards — since Cosmos has no foreign keys.
+
+To provision and load it:
+
+```powershell
+.\scripts\provision-cosmos.ps1 -SubscriptionId <your-sub-id>
+# add the printed COSMOS_* values to .env, then
+npm run seed:cosmos
+```
+
+The script refuses to run against the Microsoft corporate tenant, opts into the free tier (which **cannot** be applied after creation), caps total account throughput, and assigns you the Cosmos data-plane role. That last step is not optional: Cosmos data-plane RBAC is separate from Azure RBAC, so subscription Owner grants no data access.
+
+Auth uses `DefaultAzureCredential` when `COSMOS_KEY` is empty — managed identity in Azure, your `az login` locally. Leave it empty; a key is a secret to leak and rotate.
 
 ## Not built yet
 

@@ -13,6 +13,7 @@
     "build:shared": "npm run build -w @garage/shared",
     "build": "npm run build:shared && npm run build -w @garage/api && npm run build -w @garage/web",
     "seed": "node scripts/seed.mjs",
+    "seed:cosmos": "npm run build:shared && node scripts/seed-cosmos.mjs",
     "reset": "node scripts/seed.mjs --force",
     "validate:seed": "npm run build:shared && node scripts/validate-seed.mjs",
     "test": "npm run build:shared && node --import tsx --test \"**/*.test.ts\" && npm run validate:seed",

@@ -1,23 +1,14 @@
-import { existsSync } from 'node:fs';
-
-import cookieParser from 'cookie-parser';
-import express, { type NextFunction, type Request, type Response } from 'express';
+import cookieParser from 'cookie-parser';import express, { type NextFunction, type Request, type Response } from 'express';
 
 import { createAssistantProvider } from './assistant/index.js';
 import { config, isUsingDefaultSecrets } from './config.js';
-import { JsonCatalogRepository } from './repository/json-repository.js';
+import { createRepository } from './repository/index.js';
 import { assistantRoutes } from './routes/assistant.js';
 import { authRoutes } from './routes/auth.js';
 import { publicRoutes } from './routes/public.js';
 import { staffRoutes } from './routes/staff.js';
 
-if (!existsSync(config.dataDir)) {
-  console.error(`No data directory at ${config.dataDir}. Run \`npm run seed\` first.`);
-  process.exit(1);
-}
-
-const repository = new JsonCatalogRepository(config.dataDir);
-await repository.load();
+const repository = await createRepository();
 
 const provider = createAssistantProvider();
 
@@ -55,7 +46,6 @@ app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(config.port, () => {
   console.log(`[api] listening on http://localhost:${config.port}`);
-  console.log(`[api] data: ${config.dataDir}`);
   console.log(`[api] assistant provider: ${provider.name}`);
   if (isUsingDefaultSecrets) {
     console.warn('[api] Using default STAFF_PASSPHRASE / SESSION_SECRET. Copy .env.example to .env before demoing.');
