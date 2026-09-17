@@ -801,6 +801,109 @@ code {
   font-size: 0.8rem;
 }
 
+.multi-filter-trigger {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  text-align: left;
+}
+
+.multi-filter-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-filter-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.multi-filter-panel {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.9rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.multi-filter-panel > input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.multi-filter-panel p {
+  margin: 0;
+}
+
+.multi-filter-options {
+  min-height: 0;
+  overflow: auto;
+}
+
+.multi-filter-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  cursor: pointer;
+}
+
+.multi-filter-options input {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.multi-filter-options span {
+  overflow-wrap: anywhere;
+}
+
+.multi-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.multi-filter-actions > span {
+  margin-right: auto;
+  color: var(--muted);
+}
+
+.multi-filter-actions button {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.multi-filter-trigger:focus-visible,
+.multi-filter-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .item-name {
   display: block;
   font-weight: 600;

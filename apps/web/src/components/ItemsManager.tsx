@@ -13,6 +13,7 @@ import {
 
 import { bulkRetireItems, bulkUpdateItems, type BulkChanges } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { MultiSelectFilter } from './MultiSelectFilter.js';
 
 interface Props {
   catalog: CatalogResponse;
@@ -27,7 +28,14 @@ interface SortOrder {
   key: SortKey;
   direction: 'ascending' | 'descending';
 }
-const EMPTY_FILTERS = { name: '', kind: '', categoryId: '', location: '', state: '' };
+interface Filters {
+  name: string;
+  kinds: string[];
+  categoryIds: string[];
+  locationIds: string[];
+  states: string[];
+}
+const EMPTY_FILTERS: Filters = { name: '', kinds: [], categoryIds: [], locationIds: [], states: [] };
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -51,29 +59,40 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
   const sortKey = sort?.key ?? (mode === 'bin' ? 'deletedAt' : 'name');
   const sortDirection = sort?.direction ?? (mode === 'bin' ? 'descending' : 'ascending');
 
+  const locationOptions = useMemo(() => {
+    const index = indexLocations(catalog.locations);
+    return catalog.locations.map((location) => ({
+      value: location.id,
+      label: formatLocationPath(getLocationPath(index, location.id)),
+    })).sort((a, b) => collator.compare(a.label, b.label));
+  }, [catalog.locations]);
+
   const rows = useMemo(() => {
     const pool = mode === 'bin' ? retiredItems(catalog.items) : liveItems(catalog.items);
     const nameQuery = filters.name.trim().toLowerCase();
-    const locationQuery = filters.location.trim().toLowerCase();
     const locationIndex = indexLocations(catalog.locations);
     const categoryNames = new Map(catalog.categories.map((category) => [category.id, category.name]));
 
     return pool
-      .map((item) => ({
-        item,
-        name: item.name,
-        kind: item.kind,
-        category: categoryNames.get(item.categoryId) ?? item.categoryId,
-        path: formatLocationPath(getLocationPath(locationIndex, item.locationId)),
-        state: item.kind === 'equipment' ? item.status : item.stockLevel,
-        deletedAt: item.retiredAt ?? '',
-      }))
+      .map((item) => {
+        const locationPath = getLocationPath(locationIndex, item.locationId);
+        return {
+          item,
+          name: item.name,
+          kind: item.kind,
+          category: categoryNames.get(item.categoryId) ?? item.categoryId,
+          path: formatLocationPath(locationPath),
+          locationIds: locationPath.map((location) => location.id),
+          state: item.kind === 'equipment' ? item.status : item.stockLevel,
+          deletedAt: item.retiredAt ?? '',
+        };
+      })
       .filter((row) =>
         row.name.toLowerCase().includes(nameQuery) &&
-        row.path.toLowerCase().includes(locationQuery) &&
-        (!filters.kind || row.kind === filters.kind) &&
-        (!filters.categoryId || row.item.categoryId === filters.categoryId) &&
-        (!filters.state || row.state === filters.state),
+        (!filters.locationIds.length || row.locationIds.some((id) => filters.locationIds.includes(id))) &&
+        (!filters.kinds.length || filters.kinds.includes(row.kind)) &&
+        (!filters.categoryIds.length || filters.categoryIds.includes(row.item.categoryId)) &&
+        (!filters.states.length || filters.states.includes(row.state)),
       )
       .sort((a, b) => {
         const result = collator.compare(a[sortKey], b[sortKey]);
@@ -99,7 +118,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
   const ids = [...selected];
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selected.has(row.item.id));
   const hasChanges = changes.locationId !== undefined || changes.categoryId !== undefined;
-  const hasFilters = Object.values(filters).some(Boolean);
+  const hasFilters = Object.values(filters).some((value) => value.length > 0);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -107,7 +126,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
     }
   }, [selected.size, allVisibleSelected]);
 
-  const setFilter = (key: keyof typeof EMPTY_FILTERS, value: string): void => {
+  const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]): void => {
     setFilters((current) => ({ ...current, [key]: value }));
   };
 
@@ -305,52 +324,50 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                 />
               </td>
               <td>
-                <select
-                  aria-label="Filter by kind"
-                  value={filters.kind}
+                <MultiSelectFilter
+                  label="kind"
+                  emptyLabel="All kinds"
+                  options={[
+                    { value: 'equipment', label: 'Equipment' },
+                    { value: 'consumable', label: 'Consumable' },
+                  ]}
+                  selected={filters.kinds}
                   disabled={busy}
-                  onChange={(event) => setFilter('kind', event.target.value)}
-                >
-                  <option value="">All kinds</option>
-                  <option value="equipment">Equipment</option>
-                  <option value="consumable">Consumable</option>
-                </select>
-              </td>
-              <td>
-                <select
-                  aria-label="Filter by category"
-                  value={filters.categoryId}
-                  disabled={busy}
-                  onChange={(event) => setFilter('categoryId', event.target.value)}
-                >
-                  <option value="">All categories</option>
-                  {catalog.categories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.name}</option>
-                  ))}
-                </select>
-              </td>
-              <td>
-                <input
-                  type="search"
-                  aria-label="Filter by location"
-                  placeholder="Filter location…"
-                  value={filters.location}
-                  disabled={busy}
-                  onChange={(event) => setFilter('location', event.target.value)}
+                  onChange={(values) => setFilter('kinds', values)}
                 />
               </td>
               <td>
-                <select
-                  aria-label="Filter by status or stock"
-                  value={filters.state}
+                <MultiSelectFilter
+                  label="category"
+                  emptyLabel="All categories"
+                  options={catalog.categories.map((category) => ({ value: category.id, label: category.name }))}
+                  selected={filters.categoryIds}
                   disabled={busy}
-                  onChange={(event) => setFilter('state', event.target.value)}
-                >
-                  <option value="">All states</option>
-                  {[...EQUIPMENT_STATUSES, ...STOCK_LEVELS].map((state) => (
-                    <option key={state} value={state}>{state.replaceAll('-', ' ')}</option>
-                  ))}
-                </select>
+                  onChange={(values) => setFilter('categoryIds', values)}
+                />
+              </td>
+              <td>
+                <MultiSelectFilter
+                  label="location"
+                  emptyLabel="All locations"
+                  options={locationOptions}
+                  selected={filters.locationIds}
+                  disabled={busy}
+                  hint="Includes items in selected locations and their sub-locations."
+                  onChange={(values) => setFilter('locationIds', values)}
+                />
+              </td>
+              <td>
+                <MultiSelectFilter
+                  label="status or stock"
+                  emptyLabel="All states"
+                  options={[...EQUIPMENT_STATUSES, ...STOCK_LEVELS].map((state) => ({
+                    value: state, label: state.replaceAll('-', ' '),
+                  }))}
+                  selected={filters.states}
+                  disabled={busy}
+                  onChange={(values) => setFilter('states', values)}
+                />
               </td>
               {mode === 'bin' ? <td /> : null}
               <td>

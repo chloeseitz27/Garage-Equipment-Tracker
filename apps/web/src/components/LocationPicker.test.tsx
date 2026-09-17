@@ -7,7 +7,6 @@ import { formatLocationPath, getLocationPath, type Item, type Location } from '@
 import { LocationPicker } from './LocationPicker.js';
 import { ItemEditor } from './ItemEditor.js';
 import { BulkEntry } from './BulkEntry.js';
-import { ItemsManager } from './ItemsManager.js';
 import { LocationManager } from './LocationManager.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
@@ -22,6 +21,9 @@ Object.defineProperties(globalThis, {
 // jsdom has no layout; browser verification covers scrolling and popup positioning.
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createRoot } = await import('react-dom/client');
+// Portal components import react-dom too; initialize it only after the DOM exists.
+const { ItemsManager } = await import('./ItemsManager.js');
+const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
 
 const locations: Location[] = [
   { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
@@ -519,14 +521,38 @@ const sortBy = async (label: string): Promise<void> => {
   assert.ok(header, `Missing sortable header ${label}`);
   await click(header);
 };
-const filterBy = async (label: string, value: string): Promise<void> => {
-  const control = host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`);
+const openFilter = async (label: string): Promise<HTMLDivElement> => {
+  const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  assert.ok(trigger, `Missing filter ${label}`);
+  await click(trigger);
+  const panel = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+  assert.ok(panel instanceof dom.window.HTMLDivElement);
+  return panel;
+};
+const panelButton = (panel: HTMLElement, text: string): HTMLButtonElement => {
+  const result = [...panel.querySelectorAll('button')].find((node) => node.textContent === text);
+  assert.ok(result, `Missing panel button ${text}`);
+  return result;
+};
+const optionCheckbox = (panel: HTMLElement, value: string): HTMLInputElement => {
+  const checkbox = [...panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    .find((node) => node.value === value);
+  assert.ok(checkbox, `Missing option ${value}`);
+  return checkbox;
+};
+const filterBy = async (label: string, value: string | string[]): Promise<void> => {
+  const control = host.querySelector<HTMLInputElement | HTMLButtonElement>(`[aria-label="${label}"]`);
   assert.ok(control, `Missing filter ${label}`);
-  if (control instanceof dom.window.HTMLInputElement) await type(control, value);
-  else await act(() => {
-    control.value = value;
-    control.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  if (control instanceof dom.window.HTMLInputElement) {
+    assert.equal(typeof value, 'string');
+    await type(control, String(value));
+  } else {
+    const panel = await openFilter(label);
+    await click(panelButton(panel, 'Clear filter'));
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    for (const choice of values) await click(optionCheckbox(panel, choice));
+    await click(panelButton(panel, 'Done'));
+  }
 };
 
 test('item information is separated into headed columns with visible category, state and location', async () => {
@@ -573,7 +599,7 @@ test('column filters combine and select-all targets only the matching rows', asy
   await filterBy('Filter by name', 'TOOL');
   await filterBy('Filter by kind', 'equipment');
   await filterBy('Filter by category', 'tools');
-  await filterBy('Filter by location', 'bin b2');
+  await filterBy('Filter by location', 'bin-2');
   await filterBy('Filter by status or stock', 'available');
   assert.deepEqual(gridNames(), ['Tool 2']);
   const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
@@ -640,4 +666,150 @@ test('the recycle-bin grid defaults to newest first and supports filtering and d
   assert.equal(date?.getAttribute('datetime'), '2026-09-17T00:00:00.000Z');
   await click(button('Restore'));
   assert.deepEqual(writes[0]?.body, { ids: ['new'], retired: false });
+});
+
+test('every categorical filter accepts multiple values with OR within columns and AND between them', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by kind', ['equipment', 'consumable']);
+  await filterBy('Filter by category', ['tools', 'materials']);
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  await filterBy('Filter by location', ['bin-2', 'destination']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  await filterBy('Filter by category', 'tools');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by category', []);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  assert.equal(writes.length, 0);
+});
+
+test('location filters include sub-locations and match IDs rather than similarly named nodes', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by location', ['cabinet']);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await filterBy('Filter by location', ['bin-2']);
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by location', ['room', 'storage']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+});
+
+test('searching options preserves checked values outside the search and the popup stays open', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by category');
+  assert.equal(host.querySelector('.item-table-scroll')?.contains(panel), false);
+  await click(optionCheckbox(panel, 'tools'));
+  assert.equal(document.body.contains(panel), true);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
+  assert.ok(search);
+  await type(search, 'mat');
+  assert.equal(panel.querySelectorAll('input[type="checkbox"]').length, 1);
+  await click(optionCheckbox(panel, 'materials'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  await click(panelButton(panel, 'Done'));
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by category"]');
+  assert.ok(trigger);
+  assert.match(trigger.textContent ?? '', /2 selected/);
+  assert.equal(document.activeElement, trigger);
+  const reopened = await openFilter('Filter by category');
+  assert.equal(optionCheckbox(reopened, 'tools').checked, true);
+  assert.equal(optionCheckbox(reopened, 'materials').checked, true);
+  assert.equal(writes.length, 0);
+});
+
+test('clearing one column preserves other filters and reset clears all selections', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by kind', 'equipment');
+  await filterBy('Filter by status or stock', 'available');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by status or stock', []);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await click(button('Reset filters'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(button('Reset filters').disabled, true);
+  for (const label of ['kind', 'category', 'location', 'status or stock']) {
+    const panel = await openFilter(`Filter by ${label}`);
+    assert.equal(panel.querySelectorAll('input:checked').length, 0);
+    await click(panelButton(panel, 'Done'));
+  }
+});
+
+test('select-all and bulk Save target the union of the selected filter values only', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  await click(selectAll);
+  await choose(combobox('Move to'));
+  assert.equal(writes.length, 0);
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['solder', 'tool2'], changes: { locationId: 'destination' } });
+});
+
+test('option search, keyboard dismissal, and outside focus do not reset active filters', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by kind');
+  await click(optionCheckbox(panel, 'equipment'));
+  const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
+  assert.ok(search);
+  await type(search, 'zzz');
+  assert.match(panel.querySelector('[role="status"]')?.textContent ?? '', /No matching options/);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await key(search, 'Escape');
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by kind"]');
+  assert.ok(trigger);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.activeElement, trigger);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await openFilter('Filter by kind');
+  const nameFilter = host.querySelector<HTMLInputElement>('input[aria-label="Filter by name"]');
+  assert.ok(nameFilter);
+  await focus(nameFilter);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+});
+
+test('filter popup handles an empty list and closes when disabled without changing values', async () => {
+  let calls = 0;
+  const props = { label: 'test', emptyLabel: 'All', options: [], selected: [], onChange: () => { calls++; } };
+  await render(createElement(MultiSelectFilter, props));
+  const panel = await openFilter('Filter by test');
+  assert.match(panel.textContent ?? '', /No matching options/);
+  await render(createElement(MultiSelectFilter, { ...props, disabled: true }));
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by test"]');
+  assert.ok(trigger);
+  assert.equal(trigger.disabled, true);
+  assert.equal(document.body.contains(panel), false);
+  await click(trigger);
+  assert.equal(calls, 0);
+});
+
+test('the filter popup stays open through table scrolling and window resizing', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by category');
+  await click(optionCheckbox(panel, 'tools'));
+  const scroller = host.querySelector('.item-table-scroll');
+  assert.ok(scroller);
+  await act(() => {
+    scroller.dispatchEvent(new dom.window.Event('scroll'));
+    window.dispatchEvent(new dom.window.Event('resize'));
+  });
+  assert.equal(document.body.contains(panel), true);
+  assert.equal(optionCheckbox(panel, 'tools').checked, true);
+  assert.equal(writes.length, 0);
+});
+
+test('multiselect filters behave the same way in the recycle bin without revealing live items', async () => {
+  const binCatalog = {
+    ...gridCatalog,
+    items: [
+      ...gridCatalog.items.map((row) => ({ ...row, retiredAt: '2026-09-17T00:00:00.000Z' })),
+      item,
+    ],
+  };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  await filterBy('Filter by kind', ['equipment', 'consumable']);
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  assert.equal(gridNames().includes('Vise'), false);
 });

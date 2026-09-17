@@ -101,12 +101,17 @@ it does not apply any unsaved location or category changes.
 The table keeps names, kinds, categories, location paths, and status/stock levels
 in left-aligned columns. Click a column header to toggle ascending/descending
 sorting, and combine the filters beneath the headers to narrow the list.
+Kind, category, location, and status/stock filters accept multiple choices using
+searchable checkbox lists. Choices within a column match **any** selected value;
+different columns combine with **AND**. Selecting a location includes its
+sub-locations. No choices means no restriction for that column. Name stays a text
+search; **Clear filter** clears one column without resetting the others.
 **Reset filters** shows all rows again. Select-all applies only to the filtered
 rows; filtered-out items are unchecked, while sorting preserves the selection.
 The recycle bin also has a sortable deletion-date column (newest first by default).
 Headers stay visible while scrolling through the grid.
 
-All location selectors use the same searchable picker: **Move to**, the item
+Location editing fields use the same single-choice searchable picker: **Move to**, the item
 editor, bulk-entry defaults, and the parent fields for new or existing locations.
 It matches on the full breadcrumb, so
 `electronics` reaches every bin under that bench, and every token must match the
