@@ -1509,14 +1509,14 @@ const mappedCatalog = {
 
 test('room maps use the correct images, include active descendant items, and navigate by URL', async () => {
   await render(createElement(RoomMapsPage, { catalog: mappedCatalog }), '/maps?room=common&location=bin-a');
-  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.png');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
   assert.match(host.textContent ?? '', /nearest mapped location: Table A/);
   assert.equal(link('Vise').getAttribute('href'), '/?item=vise');
   assert.equal([...host.querySelectorAll('a')].some((a) => a.textContent === 'Retired vise'), false);
   await click(link('Advanced Makerspace'));
   assert.equal(currentUrl(), '/maps?room=advanced');
-  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/advanced-makerspace.png');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
   const marker = host.querySelector<HTMLButtonElement>('.map-marker');
   assert.ok(marker);
   await click(marker);
@@ -1595,7 +1595,7 @@ test('item detail highlights the assigned room and falls back to a mapped parent
   const respond = globalThis.fetch;
   globalThis.fetch = (url, init) => url === '/api/catalog' ? Promise.resolve(jsonResponse(mappedCatalog)) : respond(url, init);
   await render(createElement(App), '/?item=vise');
-  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('src'), '/maps/common-makerspace.png');
+  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.item-detail .map-marker.selected')?.getAttribute('title'), 'Table A');
   assert.match(host.querySelector('.item-detail')?.textContent ?? '', /exact location is not marked/);
   const pin = host.querySelector<HTMLAnchorElement>('.item-detail .map-marker.selected');
@@ -1631,4 +1631,43 @@ test('failed and invalid map saves keep the placement draft', async () => {
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save marker/);
   assert.equal(x.value, '25');
   assert.equal(button('Save marker').disabled, false);
+});
+
+test('map zoom scales the plan and marker together without changing stored coordinates', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations, selectedLocationId: 'table-a' }));
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  const marker = host.querySelector<HTMLElement>('.map-marker.selected');
+  assert.ok(stage && marker);
+  assert.equal(button('Zoom out').disabled, true);
+  assert.equal(marker.style.left, '50%');
+  await click(button('Zoom in'));
+  assert.equal(stage.style.width, '125%');
+  assert.equal(stage.style.minWidth, '812.5px');
+  assert.equal(marker.style.left, '50%');
+  for (let count = 0; count < 7; count++) await click(button('Zoom in'));
+  assert.equal(button('Zoom in').disabled, true);
+  assert.equal(stage.style.width, '300%');
+  await click(button('Reset zoom'));
+  assert.equal(stage.style.width, '100%');
+  assert.equal(button('Zoom out').disabled, true);
+  assert.equal(writes.length, 0);
+});
+
+test('marker placement stays normalized on a zoomed map', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=bin-a');
+  await click(button('Zoom in'));
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = () => ({
+    x: 10, y: 20, left: 10, top: 20, width: 1250, height: 625, right: 1260, bottom: 645,
+    toJSON: () => ({}),
+  });
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 322.5, clientY: 332.5 })); });
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(writes.length, 0);
 });

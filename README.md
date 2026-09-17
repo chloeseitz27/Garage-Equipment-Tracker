@@ -71,21 +71,40 @@ validator can't drift apart.
 
 ## Demo data
 
-`data/seed` holds two rooms and 32 labeled storage/work surfaces from the supplied
-floor plans (34 location nodes total), plus 10 starter categories. The previous
+`data/seed` holds two rooms and 26 storage/station locations from the supplied
+floor plans (28 location nodes total), plus 10 starter categories. The previous
 fictional inventory and room structure have been replaced; `items.json` and
 `flags.json` are empty. Tables and named stations are locations, not assertions
 that any particular tool or material is available.
 
 ## Room maps
 
-- **Common Makerspace:** the larger plan, with central tables A-F and perimeter
-  tables/workbenches.
-- **Advanced Makerspace:** the smaller plan, with tables 3, 11, 18-21, workbench
-  16, the fire cabinet, laser station, and laptop cart.
+- **Common Makerspace:** 13 lettered tables/desks/workbenches, **A–M**, starting
+  at the upper-left desk and going down the left wall, across the bottom, up the
+  right wall, then along the top. The six center work tables stay visible but
+  have no individual labels or storage locations: keep them clear.
+- **Advanced Makerspace:** seven lettered tables/workbenches, **Z–T**, starting
+  at the lower-left table and going up the left wall, across the top, down the
+  right wall, then along the bottom. The Toolbox remains in the former coat-rack
+  area.
 
-The original PNGs are served from `apps/web/public/maps`. Initial markers were
-placed approximately on the labeled surfaces, not inferred item placements.
+Letters are unique across rooms. **N–S** are unused, leaving room to expand.
+Cabinets, the Toolbox, and named stations retain descriptive names outside the
+table/bench sequence. Storage-location IDs are not renamed, so existing links
+and item assignments follow the new display names. The center work tables are
+not in location pickers or map markers and cannot receive item assignments.
+Drawer labels use the table letter followed by the drawer number (for example,
+**C2** means Table C, Drawer 2); drawers are not pre-populated without their
+actual counts and positions.
+
+The app uses clean SVG schematics in `apps/web/public/maps`, with horizontal,
+high-contrast labels and no dimension clutter. The original PNGs remain there
+as source references. Both redraws retain the original coordinate system so
+existing markers still align; these are schematics, not scale drawings.
+Use **Zoom in**, **Zoom out**, and **Reset zoom** for closer inspection.
+Initial markers were placed approximately on labeled surfaces, not inferred item placements.
+The Toolbox retains its original location ID after moving to Advanced Makerspace,
+so linked items and sub-locations follow it.
 Open **Room maps** to switch rooms and click a marker or search a location to
 see its active items (including sub-locations). Item details highlight their
 location on the same map, falling back to the nearest mapped ancestor, explicitly
@@ -182,11 +201,11 @@ Navigation uses real URLs and browser history:
 | `/?q=solder&item=itm-solder` | A search with an item detail open |
 | `/assistant` | Project Assistant |
 | `/maps?room=loc-common-makerspace` | Common Makerspace floor plan |
-| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table 3 selected |
+| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table V selected (stable location ID) |
 | `/manage/items` | Items grid |
 | `/manage/items/new` | New item form |
 | `/manage/items/<id>/edit` | Edit an item |
-| `/manage/locations?room=loc-common-makerspace&pin=loc-common-table-a` | Location tree and marker editor |
+| `/manage/locations?room=loc-common-makerspace&pin=loc-common-table-8` | Location tree and marker editor for Table C |
 | `/manage/categories` | Categories |
 | `/manage/flags` | Flag queue |
 | `/manage/recycle-bin` | Recycle bin |

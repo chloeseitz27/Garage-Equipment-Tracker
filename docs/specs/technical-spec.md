@@ -138,7 +138,9 @@ results but keep their record.
 ### 3.3 Room maps
 
 The Common Makerspace (larger plan) and Advanced Makerspace (smaller plan) use
-the supplied images, versioned in `apps/web/public/maps`. A marker belongs to a
+clean SVG redraws of the supplied images, versioned in `apps/web/public/maps`.
+The redraws preserve the source coordinate systems; original PNGs remain as
+references. Zoom changes only display size, not stored marker positions. A marker belongs to a
 location, not an item. `resolveLocationMap` derives the room from the hierarchy
 and picks the nearest mapped ancestor. `roomId` and `mapId` in the coordinates
 must both match the current room; stale positions from cross-room moves or plan
@@ -148,6 +150,15 @@ Staff stage marker positions using clicks or numeric percentages and save via
 the existing authenticated location-update API. Visitor map URLs preserve the
 selected room and location. Seed data now contains only the two mapped rooms,
 their labeled locations, starter categories, and empty item/report arrays.
+
+Storage surfaces are lettered uniquely across rooms: Common A-M from the
+upper-left desk down the left perimeter; Advanced Z-T from the lower-left table
+up the left perimeter. Existing IDs are retained when display labels change.
+The six central Common work tables are drawing-only features, not catalog
+locations, so they have no markers and are absent from storage pickers. The
+current seed contains 28 locations: two rooms, 20 lettered surfaces, and six
+named stations/cabinets. Drawer numbering (for example C2) is separate from
+table lettering; no drawer records are invented from the plans.
 
 ---
 

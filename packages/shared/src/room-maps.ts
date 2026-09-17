@@ -4,13 +4,13 @@ export type RoomMapId = (typeof ROOM_MAP_IDS)[number];
 export const ROOM_MAPS = {
   common: {
     name: 'Common Makerspace',
-    imageUrl: '/maps/common-makerspace.png',
+    imageUrl: '/maps/common-makerspace.svg',
     width: 1555,
     height: 982,
   },
   advanced: {
     name: 'Advanced Makerspace',
-    imageUrl: '/maps/advanced-makerspace.png',
+    imageUrl: '/maps/advanced-makerspace.svg',
     width: 1333,
     height: 507,
   },
