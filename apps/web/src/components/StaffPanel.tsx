@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { retiredItems, type CatalogResponse, type Item } from '@garage/shared';
-
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { isRetired, retiredItems, type CatalogResponse } from '@garage/shared';
 import { BulkEntry } from './BulkEntry.js';
 import { CategoryManager } from './CategoryManager.js';
 import { FlagQueue } from './FlagQueue.js';
@@ -8,128 +7,91 @@ import { ItemEditor } from './ItemEditor.js';
 import { ItemsManager } from './ItemsManager.js';
 import { LocationManager } from './LocationManager.js';
 
-type StaffTab = 'items' | 'locations' | 'categories' | 'flags' | 'bin';
-
 interface Props {
   catalog: CatalogResponse;
-  editingItem: Item | null;
-  onEditItem: (item: Item | null) => void;
   onChanged: () => void;
 }
 
-const TABS: Array<[StaffTab, string]> = [
+const SECTIONS = [
   ['items', 'Items'],
   ['locations', 'Locations'],
   ['categories', 'Categories'],
   ['flags', 'Flag queue'],
-  ['bin', 'Recycle bin'],
-];
+  ['recycle-bin', 'Recycle bin'],
+] as const;
 
-/**
- * The staff editing surface. It only ever renders behind an authenticated
- * session — edit affordances are hidden rather than shown-and-disabled
- * (product-spec.md §4) — and every write it makes is re-checked server-side.
- */
-export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Props): JSX.Element {
-  const [tab, setTab] = useState<StaffTab>('items');
-  const [creating, setCreating] = useState(false);
+function EditItemPage({ catalog, onChanged, creating = false }: Props & { creating?: boolean }): JSX.Element {
+  const { itemId } = useParams();
+  const { search } = useLocation();
+  const navigate = useNavigate();
+  const item = creating ? null : catalog.items.find((candidate) => candidate.id === itemId);
+  const close = (): void => { void navigate(`/manage/items${search}`); };
+  if (!creating && (!item || isRetired(item))) {
+    return (
+      <div className="manager">
+        <h3>Item not found in the active catalog</h3>
+        <Link to="/manage/items">Return to Items</Link>{' · '}
+        <Link to="/manage/recycle-bin">Check the recycle bin</Link>
+      </div>
+    );
+  }
+  return (
+    <ItemEditor
+      key={creating ? 'new' : itemId}
+      item={item ?? null}
+      categories={catalog.categories}
+      locations={catalog.locations}
+      onSaved={() => { onChanged(); close(); }}
+      onCancel={close}
+    />
+  );
+}
 
+export function StaffPanel({ catalog, onChanged }: Props): JSX.Element {
+  const navigate = useNavigate();
+  const { search } = useLocation();
   const binCount = retiredItems(catalog.items).length;
-
-  const showEditor = creating || editingItem !== null;
-
-  const closeEditor = (): void => {
-    setCreating(false);
-    onEditItem(null);
-  };
+  const itemsUrl = `/manage/items${search}`;
 
   return (
     <section className="staff-panel">
       <nav className="tabs sub-tabs" aria-label="Catalog sections">
-        {TABS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={tab === value ? 'active' : ''}
-            aria-current={tab === value ? 'page' : undefined}
-            onClick={() => {
-              setTab(value);
-              closeEditor();
-            }}
-          >
+        {SECTIONS.map(([path, label]) => (
+          <NavLink key={path} to={`/manage/${path}`}>
             {label}
-            {value === 'bin' && binCount > 0 ? <span className="badge">{binCount}</span> : null}
-          </button>
+            {path === 'recycle-bin' && binCount > 0 ? <span className="badge">{binCount}</span> : null}
+          </NavLink>
         ))}
       </nav>
-
-      {tab === 'items' ? (
-        showEditor ? (
-          <ItemEditor
-            item={editingItem}
-            categories={catalog.categories}
-            locations={catalog.locations}
-            onSaved={() => {
-              closeEditor();
-              onChanged();
-            }}
-            onCancel={closeEditor}
+      <Routes>
+        <Route index element={<Navigate to={itemsUrl} replace />} />
+        <Route path="items" element={
+          <ItemsManager
+            catalog={catalog}
+            mode="live"
+            onEditItem={(item) => { void navigate(`/manage/items/${encodeURIComponent(item.id)}/edit${search}`); }}
+            onCreateItem={() => { void navigate(`/manage/items/new${search}`); }}
+            bulkEntry={<BulkEntry categories={catalog.categories} locations={catalog.locations} onCreated={onChanged} />}
+            onChanged={onChanged}
           />
-        ) : (
-          <>
-            <div className="add-row new-item-row">
-              <button type="button" onClick={() => setCreating(true)}>
-                New item
-              </button>
-            </div>
-            <details className="bulk-entry-section">
-              <summary>Bulk entry</summary>
-              <BulkEntry
-                categories={catalog.categories}
-                locations={catalog.locations}
-                onCreated={onChanged}
-              />
-            </details>
-            <ItemsManager
-              catalog={catalog}
-              mode="live"
-              onEditItem={onEditItem}
-              onChanged={onChanged}
-            />
-          </>
-        )
-      ) : null}
-
-      {tab === 'bin' ? (
-        <ItemsManager catalog={catalog} mode="bin" onChanged={onChanged} />
-      ) : null}
-
-      {tab === 'locations' ? (
-        <LocationManager
-          locations={catalog.locations}
-          items={catalog.items}
-          onChanged={onChanged}
-        />
-      ) : null}
-
-      {tab === 'categories' ? (
-        <CategoryManager
-          categories={catalog.categories}
-          items={catalog.items}
-          onChanged={onChanged}
-        />
-      ) : null}
-
-      {tab === 'flags' ? (
-        <FlagQueue
-          items={catalog.items}
-          locations={catalog.locations}
-          onEditItem={(item) => {
-            setTab('items');
-            onEditItem(item);
-          }}
-        />
-      ) : null}
+        } />
+        <Route path="items/new" element={<EditItemPage catalog={catalog} onChanged={onChanged} creating />} />
+        <Route path="items/:itemId/edit" element={<EditItemPage catalog={catalog} onChanged={onChanged} />} />
+        <Route path="locations" element={<LocationManager locations={catalog.locations} items={catalog.items} onChanged={onChanged} />} />
+        <Route path="categories" element={<CategoryManager categories={catalog.categories} items={catalog.items} onChanged={onChanged} />} />
+        <Route path="flags" element={
+          <FlagQueue items={catalog.items} locations={catalog.locations} onEditItem={(item) => {
+            void navigate(`/manage/items/${encodeURIComponent(item.id)}/edit`);
+          }} />
+        } />
+        <Route path="recycle-bin" element={<ItemsManager catalog={catalog} mode="bin" onChanged={onChanged} />} />
+        <Route path="*" element={
+          <div className="manager">
+            <h3>Catalog page not found</h3>
+            <Link to="/manage/items">Return to Items</Link>
+          </div>
+        } />
+      </Routes>
     </section>
   );
 }

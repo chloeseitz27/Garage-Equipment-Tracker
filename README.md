@@ -132,12 +132,45 @@ Retirement is a shared field rather than an equipment status, so consumables
 retire the same way. `isRetired` in `packages/shared` is the one predicate used
 by search, assistant candidates, and the bin.
 
-**Bulk entry** expands inline above the Items grid, rather than opening a separate
-page. Collapsing it keeps any unsubmitted rows while you stay on Items.
+**New item** and **Bulk entry** sit in the Items view header beside the title and
+item count. **Bulk entry** expands inline below the header and above the grid,
+rather than opening a separate page. Collapsing it keeps any unsubmitted rows
+while you stay on Items.
 It takes one item per line — `name, kind, status/stock, training, tags`
 — where only the name is required and everything else falls back to defaults
 picked in the form. A live preview shows exactly what will be created, and the
 batch is committed in a single write or not at all.
+
+### Navigation and bookmarks
+
+Navigation uses real URLs and browser history:
+
+| URL | View |
+|---|---|
+| `/` | Search and browse |
+| `/?q=solder&item=itm-solder` | A search with an item detail open |
+| `/assistant` | Project Assistant |
+| `/manage/items` | Items grid |
+| `/manage/items/new` | New item form |
+| `/manage/items/<id>/edit` | Edit an item |
+| `/manage/locations` | Location tree |
+| `/manage/categories` | Categories |
+| `/manage/flags` | Flag queue |
+| `/manage/recycle-bin` | Recycle bin |
+
+Grid filters are query parameters (`q`, repeated `kind`, `category`, `location`,
+and `state`); sorting uses `sort` and `order=asc|desc`. `bulk=1` expands inline
+Bulk entry, and `resolved=1` includes resolved flags. Back, Forward, and reload
+restore these views. Typing in search replaces the current history entry rather
+than adding one per character.
+
+Staff bookmarks retain their destination while waiting for sign-in. A URL never
+grants staff access. Passwords, assistant prompts/responses, checkbox selections,
+and unsaved form drafts are not stored in URLs.
+
+Vite's dev and preview servers support direct links. A production frontend host
+must serve `index.html` for client-side routes (without rewriting `/api` calls or
+asset requests); the API remains under `/api`.
 
 Writes are guarded so the catalog can't be left in a state that won't load:
 

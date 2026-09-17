@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatLocationPath, getLocationPath, type Flag, type Item, type Location } from '@garage/shared';
 
 import { fetchFlags, resolveFlag } from '../api.js';
@@ -23,7 +24,8 @@ const LABELS: Record<Flag['type'], string> = {
  */
 export function FlagQueue({ items, locations, onEditItem }: Props): JSX.Element {
   const [flags, setFlags] = useState<Flag[]>([]);
-  const [showResolved, setShowResolved] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const showResolved = params.get('resolved') === '1';
   const [error, setError] = useState<string | null>(null);
 
   const load = (): void => {
@@ -63,7 +65,15 @@ export function FlagQueue({ items, locations, onEditItem }: Props): JSX.Element 
         <input
           type="checkbox"
           checked={showResolved}
-          onChange={(event) => setShowResolved(event.target.checked)}
+          onChange={(event) => {
+            const checked = event.target.checked;
+            setParams((current) => {
+              const next = new URLSearchParams(current);
+              if (checked) next.set('resolved', '1');
+              else next.delete('resolved');
+              return next;
+            });
+          }}
         />
         Show resolved
       </label>

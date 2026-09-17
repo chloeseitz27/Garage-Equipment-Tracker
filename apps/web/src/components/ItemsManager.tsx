@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
@@ -20,6 +21,8 @@ interface Props {
   /** `live` is the working catalog; `bin` shows retired items only. */
   mode: 'live' | 'bin';
   onEditItem?: (item: Item) => void;
+  onCreateItem?: () => void;
+  bulkEntry?: ReactNode;
   onChanged: () => void;
 }
 
@@ -35,7 +38,10 @@ interface Filters {
   locationIds: string[];
   states: string[];
 }
-const EMPTY_FILTERS: Filters = { name: '', kinds: [], categoryIds: [], locationIds: [], states: [] };
+const FILTER_PARAMS: Record<keyof Filters, string> = {
+  name: 'q', kinds: 'kind', categoryIds: 'category', locationIds: 'location', states: 'state',
+};
+const SORT_KEYS: SortKey[] = ['name', 'kind', 'category', 'path', 'state', 'deletedAt'];
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -47,17 +53,26 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
  * selection, bulk actions, and the location/category pickers can't drift apart
  * between them.
  */
-export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): JSX.Element {
+export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntry, onChanged }: Props): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [sort, setSort] = useState<SortOrder | null>(null);
+  const [params, setParams] = useSearchParams();
+  const filters = useMemo((): Filters => ({
+    name: params.get('q') ?? '',
+    kinds: params.getAll('kind'),
+    categoryIds: params.getAll('category'),
+    locationIds: params.getAll('location'),
+    states: params.getAll('state'),
+  }), [params]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [changes, setChanges] = useState<Pick<BulkChanges, 'locationId' | 'categoryId'>>({});
+  const bulkEntryOpen = params.get('bulk') === '1';
+  const bulkEntryId = useId();
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const sortKey = sort?.key ?? (mode === 'bin' ? 'deletedAt' : 'name');
-  const sortDirection = sort?.direction ?? (mode === 'bin' ? 'descending' : 'ascending');
+  const sortKey = SORT_KEYS.find((key) => key === params.get('sort')) ?? (mode === 'bin' ? 'deletedAt' : 'name');
+  const sortDirection = params.get('order') === 'asc' ? 'ascending' :
+    params.get('order') === 'desc' ? 'descending' : mode === 'bin' ? 'descending' : 'ascending';
 
   const locationOptions = useMemo(() => {
     const index = indexLocations(catalog.locations);
@@ -127,7 +142,32 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
   }, [selected.size, allVisibleSelected]);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]): void => {
-    setFilters((current) => ({ ...current, [key]: value }));
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete(FILTER_PARAMS[key]);
+      const entries: string[] = typeof value === 'string' ? [value] : value;
+      for (const entry of entries) {
+        if (entry) next.append(FILTER_PARAMS[key], entry);
+      }
+      return next;
+    }, { replace: key === 'name' });
+  };
+
+  const setSort = (sort: SortOrder): void => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('sort', sort.key);
+      next.set('order', sort.direction === 'ascending' ? 'asc' : 'desc');
+      return next;
+    });
+  };
+
+  const resetFilters = (): void => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const key of Object.values(FILTER_PARAMS)) next.delete(key);
+      return next;
+    });
   };
 
   const sortHeader = (key: SortKey, label: string): JSX.Element => (
@@ -195,10 +235,36 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
 
   return (
     <div className="manager" aria-busy={busy}>
-      <h3>
-        {mode === 'bin' ? 'Recycle bin' : 'Items'}{' '}
-        <span className="muted small">{rows.length} shown</span>
-      </h3>
+      <div className="items-view-header">
+        <h3>
+          {mode === 'bin' ? 'Recycle bin' : 'Items'}{' '}
+          <span className="muted small">{rows.length} shown</span>
+        </h3>
+        {mode === 'live' && (onCreateItem || bulkEntry) ? (
+          <div className="items-view-actions">
+            {onCreateItem ? (
+              <button type="button" disabled={busy} onClick={onCreateItem}>New item</button>
+            ) : null}
+            {bulkEntry ? (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                aria-expanded={bulkEntryOpen}
+                aria-controls={bulkEntryId}
+                onClick={() => setParams((current) => {
+                  const next = new URLSearchParams(current);
+                  if (bulkEntryOpen) next.delete('bulk');
+                  else next.set('bulk', '1');
+                  return next;
+                })}
+              >
+                Bulk entry
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <p className="muted small">
         {mode === 'bin' ? (
@@ -215,6 +281,12 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
           </>
         )}
       </p>
+
+      {mode === 'live' && bulkEntry ? (
+        <section id={bulkEntryId} className="bulk-entry-section" aria-label="Bulk entry" hidden={!bulkEntryOpen}>
+          {bulkEntry}
+        </section>
+      ) : null}
 
       {selected.size > 0 ? (
         <div className="bulk-bar">
@@ -375,7 +447,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                   type="button"
                   className="item-reset"
                   disabled={busy || !hasFilters}
-                  onClick={() => setFilters(EMPTY_FILTERS)}
+                  onClick={resetFilters}
                 >
                   Reset filters
                 </button>
