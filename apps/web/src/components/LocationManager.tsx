@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
 import {
   LOCATION_KINDS,
-  formatLocationPath,
   getChildLocations,
-  getLocationPath,
-  wouldCreateCycle,
+  getDescendantLocationIds,
   type Item,
   type Location,
   type LocationKind,
 } from '@garage/shared';
 
 import { createLocation, deleteLocation, updateLocation } from '../api.js';
+import { LocationPicker } from './LocationPicker.js';
 
 interface Props {
   locations: Location[];
@@ -41,15 +40,9 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     return counts;
   }, [items]);
 
-  const options = useMemo(
-    () =>
-      locations
-        .map((location) => ({
-          id: location.id,
-          label: formatLocationPath(getLocationPath(locations, location.id)),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [locations],
+  const excludedParentIds = useMemo(
+    () => editingId ? getDescendantLocationIds(locations, editingId) : [],
+    [locations, editingId],
   );
 
   const run = async (action: () => Promise<unknown>): Promise<void> => {
@@ -91,25 +84,14 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
                   </option>
                 ))}
               </select>
-              <select
-                value={draftParentId ?? ''}
-                onChange={(event) => setDraftParentId(event.target.value || null)}
-              >
-                <option value="">(top level — a room)</option>
-                {options
-                  // Its own subtree is not offered as a parent, so the cycle the
-                  // server rejects isn't even reachable from the UI.
-                  .filter(
-                    (option) =>
-                      option.id !== location.id &&
-                      !wouldCreateCycle(locations, location.id, option.id),
-                  )
-                  .map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-              </select>
+              <LocationPicker
+                label="Parent location"
+                locations={locations}
+                value={draftParentId}
+                allowRoot
+                excludedIds={excludedParentIds}
+                onSelect={setDraftParentId}
+              />
               <button
                 type="button"
                 onClick={() =>
@@ -193,17 +175,13 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
             </option>
           ))}
         </select>
-        <select
-          value={newParentId ?? ''}
-          onChange={(event) => setNewParentId(event.target.value || null)}
-        >
-          <option value="">(top level — a room)</option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <LocationPicker
+          label="New location parent"
+          locations={locations}
+          value={newParentId}
+          allowRoot
+          onSelect={setNewParentId}
+        />
         <button
           type="button"
           disabled={!newName.trim()}

@@ -1,122 +1,184 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { searchLocations, type Location } from '@garage/shared';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { formatLocationPath, getLocationPath, searchLocations, type Location } from '@garage/shared';
 
-interface Props {
+interface CommonProps {
   locations: Location[];
-  onSelect: (locationId: string) => void;
+  excludedIds?: readonly string[];
   disabled?: boolean;
   placeholder?: string;
-  /** Shown above the input; also labels the field for screen readers. */
   label?: string;
 }
 
-/**
- * Type-to-find location picker.
- *
- * Matching runs over the full breadcrumb rather than the node name, so staff can
- * type any part of the path — "electronics", "cabinet b", or "bin b3" all reach
- * the same bin without knowing which room it's in.
- *
- * Fully keyboard operable, per the accessibility requirement in
- * product-spec.md §7: arrows move the highlight, Enter picks, Escape closes.
- */
-export function LocationPicker({
-  locations,
-  onSelect,
-  disabled = false,
-  placeholder = 'Search locations…',
-  label,
-}: Props): JSX.Element {
-  const [query, setQuery] = useState('');
+type Props = CommonProps & (
+  | { allowRoot: true; value: string | null; onSelect: (locationId: string | null) => void }
+  | { allowRoot?: false; value?: string; onSelect: (locationId: string) => void }
+);
+
+interface PickerOption {
+  id: string | null;
+  label: string;
+  kind?: Location['kind'];
+}
+
+const ROOT_LABEL = 'Top level (no parent)';
+
+export function LocationPicker(props: Props): JSX.Element {
+  const {
+    locations,
+    excludedIds,
+    value,
+    disabled = false,
+    placeholder = 'Search locations…',
+    label = 'Location',
+  } = props;
+  // Search text is a draft. Only choosing an option changes the caller's value.
+  const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputId = useId();
+  const listId = `${inputId}-options`;
 
-  const matches = useMemo(() => searchLocations(locations, query), [locations, query]);
+  const selectedLabel = useMemo(() => {
+    if (value === null && props.allowRoot) return ROOT_LABEL;
+    return value ? formatLocationPath(getLocationPath(locations, value)) : '';
+  }, [locations, value, props.allowRoot]);
 
-  useEffect(() => setHighlight(0), [query]);
+  const matches = useMemo((): PickerOption[] => {
+    // Build breadcrumbs before filtering, and keep every match reachable by scrolling.
+    const results: PickerOption[] = searchLocations(locations, query ?? '', locations.length)
+      .filter((option) => !excludedIds?.includes(option.id));
+    const tokens = (query ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    const rootWords = ['top', 'level', 'no', 'parent'];
+    if (props.allowRoot && tokens.every((token) => rootWords.some((word) => word.startsWith(token)))) {
+      results.unshift({ id: null, label: ROOT_LABEL });
+    }
+    return results;
+  }, [locations, query, excludedIds, props.allowRoot]);
 
-  // Close when focus or a click leaves the widget entirely.
-  useEffect(() => {
-    const onPointerDown = (event: MouseEvent): void => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, []);
+  const expanded = open && !disabled;
+  const activeIndex = Math.min(Math.max(highlight, 0), matches.length - 1);
+  const activeId = expanded && matches[activeIndex] ? `${listId}-${activeIndex}` : undefined;
 
-  const choose = (locationId: string): void => {
-    onSelect(locationId);
-    setQuery('');
+  const close = (): void => {
     setOpen(false);
+    setQuery(null);
   };
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+      setQuery(null);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+  }, [activeId]);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
+        setOpen(false);
+        setQuery(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+
+  const choose = (locationId: string | null): void => {
+    if (disabled) return;
+    if (props.allowRoot) props.onSelect(locationId);
+    else if (locationId !== null) props.onSelect(locationId);
+    close();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (disabled || event.nativeEvent.isComposing) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       setOpen(true);
-      setHighlight((current) => Math.min(current + 1, matches.length - 1));
+      setHighlight(expanded ? Math.min(activeIndex + 1, matches.length - 1) : 0);
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setHighlight((current) => Math.max(current - 1, 0));
+      setOpen(true);
+      setHighlight(expanded ? Math.max(activeIndex - 1, 0) : matches.length - 1);
       return;
     }
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && expanded) {
       event.preventDefault();
-      const picked = matches[highlight];
+      const picked = matches[activeIndex];
       if (picked) choose(picked.id);
       return;
     }
     if (event.key === 'Escape') {
-      setOpen(false);
+      event.preventDefault();
+      close();
     }
   };
 
   return (
-    <div className="location-picker" ref={containerRef}>
-      {label ? <span className="picker-label">{label}</span> : null}
+    <div
+      className="location-picker"
+      ref={containerRef}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) close();
+      }}
+    >
+      <label className="picker-label" htmlFor={inputId}>{label}</label>
 
       <input
+        id={inputId}
         type="text"
         role="combobox"
-        aria-expanded={open}
-        aria-label={label ?? 'Search locations'}
+        aria-expanded={expanded}
+        aria-controls={expanded ? listId : undefined}
+        aria-activedescendant={activeId}
+        aria-autocomplete="list"
         autoComplete="off"
         disabled={disabled}
-        value={query}
+        value={query ?? selectedLabel}
         placeholder={placeholder}
-        onFocus={() => setOpen(true)}
+        onFocus={(event) => {
+          setOpen(true);
+          setHighlight(Math.max(0, matches.findIndex((option) => option.id === value)));
+          event.currentTarget.select();
+        }}
+        onClick={() => setOpen(true)}
         onChange={(event) => {
           setQuery(event.target.value);
+          setHighlight(0);
           setOpen(true);
         }}
         onKeyDown={onKeyDown}
       />
 
-      {open && !disabled ? (
-        <ul className="picker-results" role="listbox">
+      {expanded ? (
+        <ul className="picker-results" id={listId} role="listbox" aria-label={label}>
           {matches.length === 0 ? (
-            <li className="picker-empty">No location matches “{query}”.</li>
+            <li className="picker-empty" role="presentation">
+              <span role="status">No location matches “{query}”.</span>
+            </li>
           ) : (
             matches.map((option, index) => (
-              <li key={option.id}>
+              <li key={option.id ?? 'root'} role="presentation">
                 <button
+                  id={`${listId}-${index}`}
                   type="button"
                   role="option"
-                  aria-selected={index === highlight}
-                  className={index === highlight ? 'highlighted' : ''}
-                  // mousedown fires before the input's blur, so the click isn't
-                  // swallowed by the list closing first.
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    choose(option.id);
-                  }}
+                  tabIndex={-1}
+                  aria-selected={option.id === value}
+                  className={index === activeIndex ? 'highlighted' : ''}
+                  // Keep keyboard focus on the combobox while clicking an option.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => choose(option.id)}
                   onMouseEnter={() => setHighlight(index)}
                 >
                   <span className="picker-path">{option.label}</span>
-                  <span className="kind">{option.kind}</span>
+                  {option.kind ? <span className="kind">{option.kind}</span> : null}
                 </button>
               </li>
             ))

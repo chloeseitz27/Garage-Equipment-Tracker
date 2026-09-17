@@ -3,8 +3,6 @@ import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
   TRAINING_LEVELS,
-  formatLocationPath,
-  getLocationPath,
   parseBulkItems,
   type Category,
   type ItemKind,
@@ -12,6 +10,7 @@ import {
 } from '@garage/shared';
 
 import { createItemsBulk } from '../api.js';
+import { LocationPicker } from './LocationPicker.js';
 
 interface Props {
   categories: Category[];
@@ -46,17 +45,6 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-
-  const locationOptions = useMemo(
-    () =>
-      locations
-        .map((location) => ({
-          id: location.id,
-          label: formatLocationPath(getLocationPath(locations, location.id)),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [locations],
-  );
 
   const parsed = useMemo(
     () =>
@@ -119,16 +107,13 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
           </select>
         </label>
 
-        <label>
-          Default location
-          <select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-            {locationOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LocationPicker
+          label="Default location"
+          locations={locations}
+          value={locationId}
+          disabled={busy}
+          onSelect={setLocationId}
+        />
       </div>
 
       <div className="field-row">

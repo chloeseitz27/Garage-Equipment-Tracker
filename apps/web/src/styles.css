@@ -475,7 +475,8 @@ header h1 {
   flex-wrap: wrap;
 }
 
-.field-row > label {
+.field-row > label,
+.field-row > .location-picker {
   flex: 1 1 180px;
 }
 
@@ -707,10 +708,20 @@ code {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  min-width: 260px;
+  min-width: min(260px, 100%);
+  max-width: 100%;
 }
 
-.picker-label {
+.tree-edit > .location-picker,
+.add-row > .location-picker {
+  flex: 1 1 300px;
+}
+
+.add-row .location-picker input {
+  flex: none;
+}
+
+.location-picker .picker-label {
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -730,7 +741,7 @@ code {
   border-color: var(--accent);
 }
 
-.picker-results {
+.location-picker .picker-results {
   position: absolute;
   top: 100%;
   left: 0;
@@ -747,6 +758,14 @@ code {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
+.location-picker .picker-results > li {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .picker-results button {
   display: flex;
   align-items: center;
@@ -755,6 +774,8 @@ code {
   width: 100%;
   text-align: left;
   background: transparent;
+  color: var(--text);
+  font-weight: 400;
   border: none;
   border-radius: 6px;
   padding: 0.5rem 0.6rem;

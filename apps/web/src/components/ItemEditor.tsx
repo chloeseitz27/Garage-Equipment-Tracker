@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
   TRAINING_LEVELS,
-  formatLocationPath,
-  getLocationPath,
   type Category,
   type CreateItemInput,
   type Item,
@@ -13,6 +11,7 @@ import {
 } from '@garage/shared';
 
 import { createItem, updateItem } from '../api.js';
+import { LocationPicker } from './LocationPicker.js';
 
 interface Props {
   item: Item | null;
@@ -78,18 +77,6 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
     setForm(toForm(item, categories, locations));
     setError(null);
   }, [item, categories, locations]);
-
-  // Full paths, so staff pick "Cabinet B" knowing which room it's in.
-  const locationOptions = useMemo(
-    () =>
-      locations
-        .map((location) => ({
-          id: location.id,
-          label: formatLocationPath(getLocationPath(locations, location.id)),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [locations],
-  );
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -201,16 +188,13 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
         </label>
       </div>
 
-      <label>
-        Location
-        <select value={form.locationId} onChange={(event) => set('locationId', event.target.value)}>
-          {locationOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <LocationPicker
+        label="Location"
+        locations={locations}
+        value={form.locationId}
+        disabled={busy}
+        onSelect={(locationId) => set('locationId', locationId)}
+      />
 
       {form.kind === 'equipment' ? (
         <div className="field-row">

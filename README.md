@@ -94,11 +94,16 @@ and the action bar offers **Move to** a location, **Category**, and **Retire**
 (or **Restore** in the bin). Each action is a single transactional write, so a
 shelf move lands completely or not at all.
 
-**Move to** is a type-to-find field rather than a dropdown, since the location
-tree outgrows a `<select>` quickly. It matches on the full breadcrumb, so
+All location selectors use the same searchable picker: **Move to**, the item
+editor, bulk-entry defaults, and the parent fields for new or existing locations.
+It matches on the full breadcrumb, so
 `electronics` reaches every bin under that bench, and every token must match the
 start of a word — `bin b3` and `b3 bin` find the same node, while `bin` doesn't
 drag in every Cabinet. Arrows move the highlight, Enter picks, Escape closes.
+Forms retain the chosen location until another result is selected; typing alone
+does not change it, and Escape or leaving the field restores its displayed path.
+Parent pickers include **Top level (no parent)** and exclude the location being
+edited and its descendants. All matching locations are reachable by scrolling.
 
 **Nothing in this app deletes an item.** Retiring sets a `retiredAt` timestamp;
 the record and its id survive, because the assistant grounds recommendations on

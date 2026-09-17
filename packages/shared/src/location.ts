@@ -117,12 +117,12 @@ export function searchLocations(
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const tokens = query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   if (tokens.length === 0) return options.slice(0, limit);
 
   return options
     .filter((option) => {
-      const words = option.label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const words = option.label.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
       return tokens.every((token) => words.some((word) => word.startsWith(token)));
     })
     .slice(0, limit);
