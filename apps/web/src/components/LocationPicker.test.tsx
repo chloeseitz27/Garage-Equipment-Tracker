@@ -336,8 +336,8 @@ const multiCatalog = {
 };
 
 const checkboxFor = (name: string): HTMLInputElement => {
-  const row = [...host.querySelectorAll('.flat-list li')]
-    .find((node) => node.querySelector('.tree-name')?.textContent?.startsWith(name));
+  const row = [...host.querySelectorAll('.item-table tbody tr')]
+    .find((node) => node.querySelector('.item-name')?.textContent === name);
   const checkbox = row?.querySelector<HTMLInputElement>('.row-check input');
   assert.ok(checkbox, `Missing checkbox for ${name}`);
   return checkbox;
@@ -411,7 +411,7 @@ test('changing the selection or filtering away selected rows clears the old draf
   assert.equal(button('Save').disabled, true);
   assert.equal(combobox('Move to').value, '');
   await setCategory('materials');
-  const filter = host.querySelector<HTMLInputElement>('input[placeholder="Filter by name or location…"]');
+  const filter = host.querySelector<HTMLInputElement>('input[aria-label="Filter by name"]');
   assert.ok(filter);
   await type(filter, 'Solder');
   assert.equal(host.querySelector('.bulk-bar strong')?.textContent, '1 selected');
@@ -499,4 +499,145 @@ test('the recycle bin offers only Restore and supports unchecking via select-all
   await click(button('Restore'));
   assert.equal(writes[0]?.url, '/api/items/bulk-retire');
   assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
+});
+
+const gridCatalog = {
+  ...multiCatalog,
+  items: [
+    { ...item, id: 'tool10', name: 'Tool 10', locationId: 'bin-10', status: 'out-for-repair' } satisfies Item,
+    { ...item, id: 'tool2', name: 'Tool 2', locationId: 'bin-2' },
+    {
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'materials', locationId: 'destination',
+      tags: [], goodFor: [], stockLevel: 'low',
+    } satisfies Item,
+  ],
+};
+const gridNames = (): string[] => [...host.querySelectorAll('.item-table tbody .item-name')]
+  .map((node) => node.textContent ?? '');
+const sortBy = async (label: string): Promise<void> => {
+  const header = host.querySelector<HTMLButtonElement>(`button[aria-label="Sort by ${label}"]`);
+  assert.ok(header, `Missing sortable header ${label}`);
+  await click(header);
+};
+const filterBy = async (label: string, value: string): Promise<void> => {
+  const control = host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`);
+  assert.ok(control, `Missing filter ${label}`);
+  if (control instanceof dom.window.HTMLInputElement) await type(control, value);
+  else await act(() => {
+    control.value = value;
+    control.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+};
+
+test('item information is separated into headed columns with visible category, state and location', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  assert.equal(host.querySelectorAll('.item-table thead th[scope="col"]').length, 7);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  const row = host.querySelector('.item-table tbody tr');
+  assert.ok(row);
+  const cells = row.querySelectorAll('td');
+  assert.equal(cells.length, 7);
+  assert.equal(cells[1]?.textContent, 'Solder');
+  assert.equal(cells[2]?.textContent, 'consumable');
+  assert.equal(cells[3]?.textContent, 'Materials');
+  assert.equal(cells[4]?.textContent, path('destination'));
+  assert.equal(cells[5]?.textContent, 'low');
+  assert.equal(writes.length, 0);
+});
+
+test('headers toggle sorting in either direction across every item column', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await sortBy('Name');
+  assert.deepEqual(gridNames(), ['Tool 10', 'Tool 2', 'Solder']);
+  assert.equal(host.querySelector('th[aria-sort="descending"] button')?.getAttribute('aria-label'), 'Sort by Name');
+  await sortBy('Name');
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  const cases = [
+    { label: 'Kind', asc: ['Solder', 'Tool 2', 'Tool 10'], desc: ['Tool 2', 'Tool 10', 'Solder'] },
+    { label: 'Category', asc: ['Solder', 'Tool 2', 'Tool 10'], desc: ['Tool 2', 'Tool 10', 'Solder'] },
+    { label: 'Location', asc: ['Tool 2', 'Tool 10', 'Solder'], desc: ['Solder', 'Tool 10', 'Tool 2'] },
+    { label: 'Status / stock', asc: ['Tool 2', 'Solder', 'Tool 10'], desc: ['Tool 10', 'Solder', 'Tool 2'] },
+  ];
+  for (const { label, asc, desc } of cases) {
+    await sortBy(label);
+    assert.deepEqual(gridNames(), asc, `${label} ascending`);
+    await sortBy(label);
+    assert.deepEqual(gridNames(), desc, `${label} descending`);
+    assert.equal(host.querySelectorAll('th[aria-sort="descending"]').length, 1);
+  }
+  assert.equal(writes.length, 0);
+});
+
+test('column filters combine and select-all targets only the matching rows', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by name', 'TOOL');
+  await filterBy('Filter by kind', 'equipment');
+  await filterBy('Filter by category', 'tools');
+  await filterBy('Filter by location', 'bin b2');
+  await filterBy('Filter by status or stock', 'available');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  assert.equal(selectAll.getAttribute('aria-label'), 'Select all 1 shown');
+  await click(selectAll);
+  await choose(combobox('Move to'));
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['tool2'], changes: { locationId: 'destination' } });
+  await click(button('Reset filters'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(button('Reset filters').disabled, true);
+});
+
+test('sorting preserves checked items and pending edits; filtering them out clears both', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Tool 2'));
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  assert.equal(selectAll.indeterminate, true);
+  await choose(combobox('Move to'));
+  await sortBy('Location');
+  await sortBy('Location');
+  assert.equal(checkboxFor('Tool 2').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(button('Save').disabled, false);
+  await filterBy('Filter by status or stock', 'low');
+  assert.deepEqual(gridNames(), ['Solder']);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  assert.equal(selectAll.indeterminate, false);
+  assert.equal(writes.length, 0);
+});
+
+test('an empty filtered table retains its headers and can be reset', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by category', 'materials');
+  await filterBy('Filter by kind', 'equipment');
+  assert.deepEqual(gridNames(), []);
+  assert.match(host.querySelector('tbody')?.textContent ?? '', /No items match these filters/);
+  assert.equal(host.querySelectorAll('thead th[scope="col"]').length, 7);
+  assert.equal(host.querySelector<HTMLInputElement>('.select-all input')?.disabled, true);
+  await click(button('Reset filters'));
+  assert.equal(gridNames().length, 3);
+  assert.equal(writes.length, 0);
+});
+
+test('the recycle-bin grid defaults to newest first and supports filtering and date sorting', async () => {
+  const binCatalog = {
+    ...catalog,
+    items: [
+      { ...item, id: 'old', name: 'Old vise', retiredAt: '2026-01-01T00:00:00.000Z' },
+      { ...item, id: 'new', name: 'New vise', retiredAt: '2026-09-17T00:00:00.000Z' },
+      item,
+    ],
+  };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  assert.equal(host.querySelectorAll('thead th[scope="col"]').length, 8);
+  assert.deepEqual(gridNames(), ['New vise', 'Old vise']);
+  await sortBy('Deleted');
+  assert.deepEqual(gridNames(), ['Old vise', 'New vise']);
+  await filterBy('Filter by name', 'New');
+  assert.deepEqual(gridNames(), ['New vise']);
+  const date = host.querySelector('tbody time');
+  assert.equal(date?.getAttribute('datetime'), '2026-09-17T00:00:00.000Z');
+  await click(button('Restore'));
+  assert.deepEqual(writes[0]?.body, { ids: ['new'], retired: false });
 });

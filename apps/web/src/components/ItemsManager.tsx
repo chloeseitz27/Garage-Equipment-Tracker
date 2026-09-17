@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  EQUIPMENT_STATUSES,
+  STOCK_LEVELS,
   formatLocationPath,
   getLocationPath,
-  isRetired,
+  indexLocations,
   liveItems,
   retiredItems,
   type CatalogResponse,
@@ -20,6 +22,14 @@ interface Props {
   onChanged: () => void;
 }
 
+type SortKey = 'name' | 'kind' | 'category' | 'path' | 'state' | 'deletedAt';
+interface SortOrder {
+  key: SortKey;
+  direction: 'ascending' | 'descending';
+}
+const EMPTY_FILTERS = { name: '', kind: '', categoryId: '', location: '', state: '' };
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
 /**
  * Multi-select item table shared by the catalog and the recycle bin
  * (product-spec.md §6.5 — editing a shelf one modal at a time is how this
@@ -31,33 +41,48 @@ interface Props {
  */
 export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState('');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [sort, setSort] = useState<SortOrder | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [changes, setChanges] = useState<Pick<BulkChanges, 'locationId' | 'categoryId'>>({});
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const sortKey = sort?.key ?? (mode === 'bin' ? 'deletedAt' : 'name');
+  const sortDirection = sort?.direction ?? (mode === 'bin' ? 'descending' : 'ascending');
 
   const rows = useMemo(() => {
     const pool = mode === 'bin' ? retiredItems(catalog.items) : liveItems(catalog.items);
-    const needle = filter.trim().toLowerCase();
+    const nameQuery = filters.name.trim().toLowerCase();
+    const locationQuery = filters.location.trim().toLowerCase();
+    const locationIndex = indexLocations(catalog.locations);
+    const categoryNames = new Map(catalog.categories.map((category) => [category.id, category.name]));
 
     return pool
       .map((item) => ({
         item,
-        path: formatLocationPath(getLocationPath(catalog.locations, item.locationId)),
+        name: item.name,
+        kind: item.kind,
+        category: categoryNames.get(item.categoryId) ?? item.categoryId,
+        path: formatLocationPath(getLocationPath(locationIndex, item.locationId)),
+        state: item.kind === 'equipment' ? item.status : item.stockLevel,
+        deletedAt: item.retiredAt ?? '',
       }))
-      .filter(({ item, path }) =>
-        needle
-          ? item.name.toLowerCase().includes(needle) || path.toLowerCase().includes(needle)
-          : true,
+      .filter((row) =>
+        row.name.toLowerCase().includes(nameQuery) &&
+        row.path.toLowerCase().includes(locationQuery) &&
+        (!filters.kind || row.kind === filters.kind) &&
+        (!filters.categoryId || row.item.categoryId === filters.categoryId) &&
+        (!filters.state || row.state === filters.state),
       )
-      .sort((a, b) =>
-        mode === 'bin' ? 0 : a.item.name.localeCompare(b.item.name),
-      );
-  }, [catalog, filter, mode]);
+      .sort((a, b) => {
+        const result = collator.compare(a[sortKey], b[sortKey]);
+        return (sortDirection === 'ascending' ? result : -result) ||
+          collator.compare(a.name, b.name) || collator.compare(a.item.id, b.item.id);
+      });
+  }, [catalog, filters, mode, sortKey, sortDirection]);
 
-  // Drop selections that scrolled out of view via the filter, so an action can
-  // never hit something the user can no longer see.
+  // Filtered-out rows must not remain targets of a bulk action. Sorting keeps the selection.
   useEffect(() => {
     const visible = new Set(rows.map((row) => row.item.id));
     setSelected((current) => {
@@ -74,6 +99,37 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
   const ids = [...selected];
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selected.has(row.item.id));
   const hasChanges = changes.locationId !== undefined || changes.categoryId !== undefined;
+  const hasFilters = Object.values(filters).some(Boolean);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selected.size > 0 && !allVisibleSelected;
+    }
+  }, [selected.size, allVisibleSelected]);
+
+  const setFilter = (key: keyof typeof EMPTY_FILTERS, value: string): void => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const sortHeader = (key: SortKey, label: string): JSX.Element => (
+    <th scope="col" aria-sort={sortKey === key ? sortDirection : 'none'}>
+      <button
+        type="button"
+        className="item-sort"
+        aria-label={`Sort by ${label}`}
+        disabled={busy}
+        onClick={() => setSort({
+          key,
+          direction: sortKey === key && sortDirection === 'ascending' ? 'descending' : 'ascending',
+        })}
+      >
+        {label}
+        <span aria-hidden="true">
+          {sortKey === key ? (sortDirection === 'ascending' ? ' \u25b2' : ' \u25bc') : ' \u2195'}
+        </span>
+      </button>
+    </th>
+  );
 
   const toggle = (id: string): void =>
     setSelected((current) => {
@@ -141,15 +197,6 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
         )}
       </p>
 
-      <div className="add-row">
-        <input
-          placeholder="Filter by name or location…"
-          value={filter}
-          disabled={busy}
-          onChange={(event) => setFilter(event.target.value)}
-        />
-      </div>
-
       {selected.size > 0 ? (
         <div className="bulk-bar">
           <strong>{selected.size} selected</strong>
@@ -203,42 +250,158 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
       {error ? <p className="error" role="alert">{error}</p> : null}
       {note ? <p className="muted" role="status">{note}</p> : null}
 
-      {rows.length === 0 ? (
-        <p className="muted">
-          {mode === 'bin' ? 'The recycle bin is empty.' : 'No items match that filter.'}
-        </p>
-      ) : (
-        <>
-          <label className="inline-check select-all">
-            <input type="checkbox" checked={allVisibleSelected} disabled={busy} onChange={toggleAll} />
-            Select all {rows.length} shown
-          </label>
-
-          <ul className="flat-list">
-            {rows.map(({ item, path }) => (
-              <li key={item.id} className={selected.has(item.id) ? 'row-selected' : ''}>
-                <label className="row-check">
+      <div
+        className="item-table-scroll"
+        role="region"
+        aria-label={mode === 'bin' ? 'Recycle bin table' : 'Items table'}
+        tabIndex={0}
+      >
+        <table className={mode === 'bin' ? 'item-table item-table-bin' : 'item-table'}>
+          <caption className="visually-hidden">
+            {mode === 'bin' ? 'Deleted items' : 'Catalog items'}. Sort using column headers and filter below them.
+          </caption>
+          <colgroup>
+            <col className="item-column-check" />
+            <col className="item-column-name" />
+            <col className="item-column-kind" />
+            <col className="item-column-category" />
+            <col />
+            <col className="item-column-state" />
+            {mode === 'bin' ? <col className="item-column-deleted" /> : null}
+            <col className="item-column-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">
+                <label className="row-check select-all">
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
-                    checked={selected.has(item.id)}
-                    disabled={busy}
-                    onChange={() => toggle(item.id)}
+                    aria-label={`Select all ${rows.length} shown`}
+                    checked={allVisibleSelected}
+                    disabled={busy || rows.length === 0}
+                    onChange={toggleAll}
                   />
                 </label>
-
-                <span className="tree-name">
-                  {item.name}
-                  <span className="kind">{item.kind}</span>
+              </th>
+              {sortHeader('name', 'Name')}
+              {sortHeader('kind', 'Kind')}
+              {sortHeader('category', 'Category')}
+              {sortHeader('path', 'Location')}
+              {sortHeader('state', 'Status / stock')}
+              {mode === 'bin' ? sortHeader('deletedAt', 'Deleted') : null}
+              <th scope="col">Actions</th>
+            </tr>
+            <tr className="item-filters">
+              <td />
+              <td>
+                <input
+                  type="search"
+                  aria-label="Filter by name"
+                  placeholder="Filter name…"
+                  value={filters.name}
+                  disabled={busy}
+                  onChange={(event) => setFilter('name', event.target.value)}
+                />
+              </td>
+              <td>
+                <select
+                  aria-label="Filter by kind"
+                  value={filters.kind}
+                  disabled={busy}
+                  onChange={(event) => setFilter('kind', event.target.value)}
+                >
+                  <option value="">All kinds</option>
+                  <option value="equipment">Equipment</option>
+                  <option value="consumable">Consumable</option>
+                </select>
+              </td>
+              <td>
+                <select
+                  aria-label="Filter by category"
+                  value={filters.categoryId}
+                  disabled={busy}
+                  onChange={(event) => setFilter('categoryId', event.target.value)}
+                >
+                  <option value="">All categories</option>
+                  {catalog.categories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <input
+                  type="search"
+                  aria-label="Filter by location"
+                  placeholder="Filter location…"
+                  value={filters.location}
+                  disabled={busy}
+                  onChange={(event) => setFilter('location', event.target.value)}
+                />
+              </td>
+              <td>
+                <select
+                  aria-label="Filter by status or stock"
+                  value={filters.state}
+                  disabled={busy}
+                  onChange={(event) => setFilter('state', event.target.value)}
+                >
+                  <option value="">All states</option>
+                  {[...EQUIPMENT_STATUSES, ...STOCK_LEVELS].map((state) => (
+                    <option key={state} value={state}>{state.replaceAll('-', ' ')}</option>
+                  ))}
+                </select>
+              </td>
+              {mode === 'bin' ? <td /> : null}
+              <td>
+                <button
+                  type="button"
+                  className="item-reset"
+                  disabled={busy || !hasFilters}
+                  onClick={() => setFilters(EMPTY_FILTERS)}
+                >
+                  Reset filters
+                </button>
+              </td>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={mode === 'bin' ? 8 : 7} className="muted">
+                  {hasFilters ? 'No items match these filters.' :
+                    mode === 'bin' ? 'The recycle bin is empty.' : 'No items in the catalog.'}
+                </td>
+              </tr>
+            ) : rows.map(({ item, category, path, state }) => (
+              <tr key={item.id} className={selected.has(item.id) ? 'row-selected' : ''}>
+                <td>
+                  <label className="row-check">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.name}`}
+                      checked={selected.has(item.id)}
+                      disabled={busy}
+                      onChange={() => toggle(item.id)}
+                    />
+                  </label>
+                </td>
+                <td>
+                  <span className="item-name">{item.name}</span>
                   {item.safetyNotes ? <span className="kind kind-safety">safety</span> : null}
-                  <span className="muted small">
-                    {path}
-                    {isRetired(item) && item.retiredAt
-                      ? ` · retired ${new Date(item.retiredAt).toLocaleDateString()}`
-                      : ''}
-                  </span>
-                </span>
-
-                <span className="tree-actions">
+                </td>
+                <td>{item.kind}</td>
+                <td>{category}</td>
+                <td className="item-location">{path}</td>
+                <td>{state.replaceAll('-', ' ')}</td>
+                {mode === 'bin' ? (
+                  <td>
+                    {item.retiredAt ? (
+                      <time dateTime={item.retiredAt}>{new Date(item.retiredAt).toLocaleString()}</time>
+                    ) : null}
+                  </td>
+                ) : null}
+                <td className="item-row-actions">
                   {mode === 'live' && onEditItem ? (
                     <button type="button" disabled={busy} onClick={() => onEditItem(item)}>
                       Edit
@@ -258,12 +421,12 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                       Restore
                     </button>
                   ) : null}
-                </span>
-              </li>
+                </td>
+              </tr>
             ))}
-          </ul>
-        </>
-      )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
