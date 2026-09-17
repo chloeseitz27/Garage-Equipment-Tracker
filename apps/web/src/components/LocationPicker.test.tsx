@@ -126,7 +126,8 @@ const key = async (input: HTMLInputElement, value: string): Promise<void> => {
   })); });
 };
 const button = (text: string): HTMLButtonElement => {
-  const result = [...host.querySelectorAll('button')].find((node) => node.textContent?.trim() === text);
+  const result = [...host.querySelectorAll('button')]
+    .find((node) => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === text);
   assert.ok(result, `Missing button ${text}`);
   return result;
 };
@@ -416,7 +417,7 @@ test('unchecking items discards pending edits without a separate Deselect button
   await click(checkboxFor('Vise'));
   await choose(combobox('Move to'));
   await setCategory('materials');
-  assert.deepEqual([...host.querySelectorAll('.bulk-actions > button')].map((node) => node.textContent),
+  assert.deepEqual([...host.querySelectorAll('.bulk-actions > button')].map((node) => node.getAttribute('aria-label') ?? node.textContent),
     ['Save', 'Delete']);
   await click(checkboxFor('Vise'));
   assert.equal(writes.length, 0);
@@ -483,10 +484,12 @@ test('pending saves disable repeated actions and changes to the selection', asyn
   await click(button('Save'));
   assert.equal(button('Save').disabled, true);
   assert.equal(button('Delete').disabled, true);
+  assert.equal(button('Delete Vise').disabled, true);
   assert.equal(host.querySelector<HTMLInputElement>('.select-all input')?.disabled, true);
   assert.equal(checkboxFor('Solder').disabled, true);
   assert.equal(combobox('Move to').disabled, true);
   await click(button('Save'));
+  await click(button('Delete Vise'));
   assert.equal(writes.length, 1);
   await act(async () => {
     release(new Response(JSON.stringify({ updated: 1, items: [] }), { status: 200 }));
@@ -1120,4 +1123,93 @@ test('flag-queue bookmarks preserve Show resolved in the URL', async () => {
   await click(button('History back'));
   assert.equal(checkbox.checked, true);
   assert.ok(host.querySelector('.flat-list li.resolved'));
+});
+
+test('bulk Save and row Delete use labeled icons without visible text', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  const remove = button('Delete Vise');
+  assert.equal(remove.textContent?.trim(), '');
+  assert.match(remove.title, /Vise.*recycle bin/);
+  assert.equal(remove.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
+  await click(checkboxFor('Vise'));
+  const save = button('Save');
+  assert.equal(save.textContent?.trim(), '');
+  assert.equal(save.title, 'Save changes to selected items');
+  assert.equal(save.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
+  assert.equal(save.disabled, true);
+  await choose(combobox('Move to'));
+  await click(save);
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { locationId: 'destination' } });
+});
+
+test('row Delete needs no checked selection and sends only that item to the recycle bin', async () => {
+  let refreshes = 0;
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  await click(button('Delete Vise'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: true });
+  assert.equal(refreshes, 1);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /Moved Vise to the recycle bin/);
+});
+
+test('deleting an unselected row preserves unrelated checked items and unsaved bulk edits', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Solder'));
+  assert.deepEqual(writes[0]?.body, { ids: ['solder'], retired: true });
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(button('Save').disabled, false);
+  assert.equal(writes.length, 1);
+});
+
+test('deleting a checked row removes only its selection and discards the old bulk draft', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Vise'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: true });
+  assert.equal(checkboxFor('Vise').checked, false);
+  assert.equal(checkboxFor('Solder').checked, true);
+  assert.equal(combobox('Move to').value, '');
+  assert.equal(button('Save').disabled, true);
+});
+
+test('a failed row Delete surfaces its error and preserves selection for retry', async () => {
+  let refreshes = 0;
+  const succeed = globalThis.fetch;
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return new Response(JSON.stringify({ error: 'Could not delete item' }), { status: 500 });
+  };
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Vise'));
+  assert.equal(refreshes, 0);
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not delete item/);
+  assert.equal(button('Delete Vise').disabled, false);
+  globalThis.fetch = succeed;
+  await click(button('Delete Vise'));
+  assert.equal(refreshes, 1);
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+});
+
+test('recycle-bin rows retain Restore and do not offer permanent Delete', async () => {
+  const binCatalog = { ...catalog, items: [{ ...item, retiredAt: '2026-09-17T00:00:00.000Z' }] };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  assert.equal(host.querySelector('.item-row-actions [aria-label^="Delete "]'), null);
+  await click(button('Restore'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
 });

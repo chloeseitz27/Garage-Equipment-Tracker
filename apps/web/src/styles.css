@@ -846,7 +846,39 @@ code {
 .item-column-category { width: 10rem; }
 .item-column-state { width: 9rem; }
 .item-column-deleted { width: 11rem; }
-.item-column-actions { width: 7rem; }
+.item-column-actions { width: 9rem; }
+
+.item-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bulk-actions > .icon-button,
+.item-action-buttons > .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+}
+
+.action-icon {
+  display: block;
+  flex: none;
+}
+
+.item-action-buttons > .danger {
+  background: #7a3340;
+  color: #ffe6ea;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .item-table .select-all {
   margin: 0;

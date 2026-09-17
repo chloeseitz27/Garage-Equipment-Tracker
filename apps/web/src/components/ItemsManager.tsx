@@ -15,6 +15,7 @@ import {
 import { bulkRetireItems, bulkUpdateItems, type BulkChanges } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 import { MultiSelectFilter } from './MultiSelectFilter.js';
+import { ActionIcon } from './ActionIcon.js';
 
 interface Props {
   catalog: CatalogResponse;
@@ -201,14 +202,18 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
   const toggleAll = (): void =>
     setSelected(allVisibleSelected ? new Set() : new Set(rows.map((row) => row.item.id)));
 
-  const run = async (action: () => Promise<string>): Promise<void> => {
+  const run = async (action: () => Promise<string>, deselectIds?: string[]): Promise<void> => {
     if (busy) return;
     setBusy(true);
     setError(null);
     setNote(null);
     try {
       setNote(await action());
-      setSelected(new Set());
+      setSelected((current) => {
+        if (!deselectIds) return new Set();
+        const next = new Set([...current].filter((id) => !deselectIds.includes(id)));
+        return next.size === current.size ? current : next;
+      });
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not update the selected items.');
@@ -322,8 +327,15 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
               </label>
 
               <div className="bulk-actions">
-                <button type="button" disabled={busy || !hasChanges} onClick={() => void save()}>
-                  Save
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Save"
+                  title="Save changes to selected items"
+                  disabled={busy || !hasChanges}
+                  onClick={() => void save()}
+                >
+                  <ActionIcon name="save" />
                 </button>
                 <button type="button" className="danger" disabled={busy} onClick={() => void setRetired(true)}>
                   Delete
@@ -491,25 +503,42 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                   </td>
                 ) : null}
                 <td className="item-row-actions">
-                  {mode === 'live' && onEditItem ? (
-                    <button type="button" disabled={busy} onClick={() => onEditItem(item)}>
-                      Edit
-                    </button>
-                  ) : null}
-                  {mode === 'bin' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          const response = await bulkRetireItems([item.id], false);
-                          return `Restored ${response.updated} item(s).`;
-                        })
-                      }
-                    >
-                      Restore
-                    </button>
-                  ) : null}
+                  <div className="item-action-buttons">
+                    {mode === 'live' && onEditItem ? (
+                      <button type="button" disabled={busy} onClick={() => onEditItem(item)}>
+                        Edit
+                      </button>
+                    ) : null}
+                    {mode === 'live' ? (
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        aria-label={`Delete ${item.name}`}
+                        title={`Delete ${item.name} (move to recycle bin)`}
+                        disabled={busy}
+                        onClick={() => void run(async () => {
+                          await bulkRetireItems([item.id], true);
+                          return `Moved ${item.name} to the recycle bin.`;
+                        }, [item.id])}
+                      >
+                        <ActionIcon name="delete" />
+                      </button>
+                    ) : null}
+                    {mode === 'bin' ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            const response = await bulkRetireItems([item.id], false);
+                            return `Restored ${response.updated} item(s).`;
+                          })
+                        }
+                      >
+                        Restore
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

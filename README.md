@@ -96,6 +96,10 @@ write. Use the row checkboxes or select-all checkbox to change the selection;
 changing the selection clears its draft. If a save fails, the choices and selection
 remain available to correct or retry. **Delete** sends items to the recycle bin;
 it does not apply any unsaved location or category changes.
+The bulk **Save** control uses a save icon. Each active item row also has a
+delete icon beside **Edit**, which moves only that item to the recycle bin,
+regardless of other checked rows. Icon buttons include tooltips and accessible
+labels.
 
 The table keeps names, kinds, categories, location paths, and status/stock levels
 in left-aligned columns. Click a column header to toggle ascending/descending
