@@ -144,17 +144,17 @@ export function MultiSelectFilter({
           {hint ? <p className="hint">{hint}</p> : null}
           <div className="multi-filter-options" role="group" aria-label={`${label} options`}>
             {matches.length === 0 ? <p role="status">No matching options.</p> : matches.map((option) => (
-              <label key={option.value}>
-                <input
-                  type="checkbox"
-                  value={option.value}
-                  checked={selected.includes(option.value)}
-                  onChange={(event) => onChange(event.target.checked
-                    ? [...selected, option.value]
-                    : selected.filter((value) => value !== option.value))}
-                />
-                <span>{option.label}</span>
-              </label>
+              <button
+                key={option.value}
+                type="button"
+                value={option.value}
+                aria-pressed={selected.includes(option.value)}
+                onClick={() => onChange(selected.includes(option.value)
+                  ? selected.filter((value) => value !== option.value)
+                  : [...selected, option.value])}
+              >
+                {option.label}
+              </button>
             ))}
           </div>
           <div className="multi-filter-actions">

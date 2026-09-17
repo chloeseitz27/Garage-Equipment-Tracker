@@ -77,13 +77,12 @@ real Garage inventory — see the open questions in the product spec.
 
 ## Staff editing
 
-Sign in with the staff passphrase and a **Manage catalog** tab appears, with one
-surface per data source:
+Sign in with the staff passphrase and a **Manage catalog** tab appears.
+Its sections share one navigation bar with slim separators:
 
-| Tab | Does |
+| Section | Does |
 |---|---|
-| Items | Filter, create, and edit any item — every field, including safety notes |
-| Bulk entry | Paste or type one row per item to catalog a whole shelf at once |
+| Items | Filter, create, and edit items; expand Bulk entry to add a whole shelf at once |
 | Locations | Walk the tree; rename, re-parent, add, and delete nodes |
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
@@ -102,7 +101,9 @@ The table keeps names, kinds, categories, location paths, and status/stock level
 in left-aligned columns. Click a column header to toggle ascending/descending
 sorting, and combine the filters beneath the headers to narrow the list.
 Kind, category, location, and status/stock filters accept multiple choices using
-searchable checkbox lists. Choices within a column match **any** selected value;
+searchable option lists. Click an option to toggle its lighter selected
+background; keyboard users can focus an option and press Enter or Space.
+Choices within a column match **any** selected value;
 different columns combine with **AND**. Selecting a location includes its
 sub-locations. No choices means no restriction for that column. Name stays a text
 search; **Clear filter** clears one column without resetting the others.
@@ -131,7 +132,9 @@ Retirement is a shared field rather than an equipment status, so consumables
 retire the same way. `isRetired` in `packages/shared` is the one predicate used
 by search, assistant candidates, and the bin.
 
-Bulk entry takes one item per line — `name, kind, status/stock, training, tags`
+**Bulk entry** expands inline above the Items grid, rather than opening a separate
+page. Collapsing it keeps any unsubmitted rows while you stay on Items.
+It takes one item per line — `name, kind, status/stock, training, tags`
 — where only the name is required and everything else falls back to defaults
 picked in the form. A live preview shows exactly what will be created, and the
 batch is committed in a single write or not at all.

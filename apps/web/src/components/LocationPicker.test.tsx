@@ -24,6 +24,7 @@ const { createRoot } = await import('react-dom/client');
 // Portal components import react-dom too; initialize it only after the DOM exists.
 const { ItemsManager } = await import('./ItemsManager.js');
 const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
+const { StaffPanel } = await import('./StaffPanel.js');
 
 const locations: Location[] = [
   { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
@@ -534,11 +535,11 @@ const panelButton = (panel: HTMLElement, text: string): HTMLButtonElement => {
   assert.ok(result, `Missing panel button ${text}`);
   return result;
 };
-const optionCheckbox = (panel: HTMLElement, value: string): HTMLInputElement => {
-  const checkbox = [...panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+const optionButton = (panel: HTMLElement, value: string): HTMLButtonElement => {
+  const option = [...panel.querySelectorAll<HTMLButtonElement>('.multi-filter-options button')]
     .find((node) => node.value === value);
-  assert.ok(checkbox, `Missing option ${value}`);
-  return checkbox;
+  assert.ok(option, `Missing option ${value}`);
+  return option;
 };
 const filterBy = async (label: string, value: string | string[]): Promise<void> => {
   const control = host.querySelector<HTMLInputElement | HTMLButtonElement>(`[aria-label="${label}"]`);
@@ -550,7 +551,7 @@ const filterBy = async (label: string, value: string | string[]): Promise<void> 
     const panel = await openFilter(label);
     await click(panelButton(panel, 'Clear filter'));
     const values = Array.isArray(value) ? value : value ? [value] : [];
-    for (const choice of values) await click(optionCheckbox(panel, choice));
+    for (const choice of values) await click(optionButton(panel, choice));
     await click(panelButton(panel, 'Done'));
   }
 };
@@ -693,18 +694,18 @@ test('location filters include sub-locations and match IDs rather than similarly
   assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
 });
 
-test('searching options preserves checked values outside the search and the popup stays open', async () => {
+test('searching options preserves selected values outside the search and the popup stays open', async () => {
   await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
   const panel = await openFilter('Filter by category');
   assert.equal(host.querySelector('.item-table-scroll')?.contains(panel), false);
-  await click(optionCheckbox(panel, 'tools'));
+  await click(optionButton(panel, 'tools'));
   assert.equal(document.body.contains(panel), true);
   assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
   const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
   assert.ok(search);
   await type(search, 'mat');
-  assert.equal(panel.querySelectorAll('input[type="checkbox"]').length, 1);
-  await click(optionCheckbox(panel, 'materials'));
+  assert.equal(panel.querySelectorAll('.multi-filter-options button').length, 1);
+  await click(optionButton(panel, 'materials'));
   assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
   await click(panelButton(panel, 'Done'));
   const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by category"]');
@@ -712,8 +713,8 @@ test('searching options preserves checked values outside the search and the popu
   assert.match(trigger.textContent ?? '', /2 selected/);
   assert.equal(document.activeElement, trigger);
   const reopened = await openFilter('Filter by category');
-  assert.equal(optionCheckbox(reopened, 'tools').checked, true);
-  assert.equal(optionCheckbox(reopened, 'materials').checked, true);
+  assert.equal(optionButton(reopened, 'tools').getAttribute('aria-pressed'), 'true');
+  assert.equal(optionButton(reopened, 'materials').getAttribute('aria-pressed'), 'true');
   assert.equal(writes.length, 0);
 });
 
@@ -729,7 +730,7 @@ test('clearing one column preserves other filters and reset clears all selection
   assert.equal(button('Reset filters').disabled, true);
   for (const label of ['kind', 'category', 'location', 'status or stock']) {
     const panel = await openFilter(`Filter by ${label}`);
-    assert.equal(panel.querySelectorAll('input:checked').length, 0);
+    assert.equal(panel.querySelectorAll('[aria-pressed="true"]').length, 0);
     await click(panelButton(panel, 'Done'));
   }
 });
@@ -749,7 +750,7 @@ test('select-all and bulk Save target the union of the selected filter values on
 test('option search, keyboard dismissal, and outside focus do not reset active filters', async () => {
   await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
   const panel = await openFilter('Filter by kind');
-  await click(optionCheckbox(panel, 'equipment'));
+  await click(optionButton(panel, 'equipment'));
   const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
   assert.ok(search);
   await type(search, 'zzz');
@@ -787,7 +788,7 @@ test('filter popup handles an empty list and closes when disabled without changi
 test('the filter popup stays open through table scrolling and window resizing', async () => {
   await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
   const panel = await openFilter('Filter by category');
-  await click(optionCheckbox(panel, 'tools'));
+  await click(optionButton(panel, 'tools'));
   const scroller = host.querySelector('.item-table-scroll');
   assert.ok(scroller);
   await act(() => {
@@ -795,7 +796,7 @@ test('the filter popup stays open through table scrolling and window resizing', 
     window.dispatchEvent(new dom.window.Event('resize'));
   });
   assert.equal(document.body.contains(panel), true);
-  assert.equal(optionCheckbox(panel, 'tools').checked, true);
+  assert.equal(optionButton(panel, 'tools').getAttribute('aria-pressed'), 'true');
   assert.equal(writes.length, 0);
 });
 
@@ -812,4 +813,79 @@ test('multiselect filters behave the same way in the recycle bin without reveali
   await filterBy('Filter by status or stock', ['available', 'low']);
   assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
   assert.equal(gridNames().includes('Vise'), false);
+});
+
+test('filter options use accessible toggle buttons without checkboxes and clicking again deselects', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by kind');
+  assert.equal(panel.querySelectorAll('input[type="checkbox"]').length, 0);
+  const equipment = optionButton(panel, 'equipment');
+  const consumable = optionButton(panel, 'consumable');
+  assert.equal(equipment.type, 'button');
+  assert.equal(equipment.tabIndex, 0);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'false');
+  await click(equipment);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'true');
+  assert.equal(consumable.getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await click(consumable);
+  assert.equal(consumable.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  await click(equipment);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(gridNames(), ['Solder']);
+  await click(consumable);
+  assert.equal(panel.querySelectorAll('[aria-pressed="true"]').length, 0);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(writes.length, 0);
+});
+
+test('catalog sections share one navigation bar without a separate Bulk entry tab', async () => {
+  await render(createElement(StaffPanel, {
+    catalog, editingItem: null, onEditItem: () => {}, onChanged: () => {},
+  }));
+  const navigation = host.querySelector('nav[aria-label="Catalog sections"]');
+  assert.ok(navigation);
+  assert.deepEqual([...navigation.querySelectorAll('button')].map((node) => node.textContent?.trim()),
+    ['Items', 'Locations', 'Categories', 'Flag queue', 'Recycle bin']);
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Items');
+  await click(button('Locations'));
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Locations');
+  assert.equal(host.querySelector('.bulk-entry-section'), null);
+  await click(button('Categories'));
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Categories');
+  await click(button('Items'));
+  assert.ok(host.querySelector('.item-table'));
+  assert.ok(host.querySelector('.bulk-entry-section'));
+});
+
+test('inline Bulk entry retains drafts when collapsed and submits without leaving the Items grid', async () => {
+  let refreshes = 0;
+  await render(createElement(StaffPanel, {
+    catalog, editingItem: null, onEditItem: () => {}, onChanged: () => { refreshes++; },
+  }));
+  const details = host.querySelector<HTMLDetailsElement>('.bulk-entry-section');
+  const summary = details?.querySelector<HTMLElement>('summary');
+  assert.ok(details && summary);
+  assert.equal(details.open, false);
+  await click(summary);
+  assert.equal(details.open, true);
+  assert.ok(host.querySelector('.item-table'));
+  const rows = details.querySelector<HTMLTextAreaElement>('.bulk-input');
+  assert.ok(rows);
+  await type(rows, 'New drill\nNew tape, consumable');
+  await choose(combobox('Default location'));
+  await click(summary);
+  assert.equal(details.open, false);
+  await click(summary);
+  assert.equal(rows.value, 'New drill\nNew tape, consumable');
+  assert.equal(combobox('Default location').value, path('destination'));
+  assert.equal(writes.length, 0);
+  await click(button('Add 2 item(s)'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk');
+  assert.equal(refreshes, 1);
+  assert.equal(rows.value, '');
+  assert.ok(host.querySelector('.item-table'));
+  assert.equal(host.querySelector('nav[aria-label="Catalog sections"] [aria-current="page"]')?.textContent?.trim(), 'Items');
 });

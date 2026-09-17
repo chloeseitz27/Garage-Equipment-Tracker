@@ -8,7 +8,7 @@ import { ItemEditor } from './ItemEditor.js';
 import { ItemsManager } from './ItemsManager.js';
 import { LocationManager } from './LocationManager.js';
 
-type StaffTab = 'items' | 'bulk' | 'locations' | 'categories' | 'flags' | 'bin';
+type StaffTab = 'items' | 'locations' | 'categories' | 'flags' | 'bin';
 
 interface Props {
   catalog: CatalogResponse;
@@ -19,7 +19,6 @@ interface Props {
 
 const TABS: Array<[StaffTab, string]> = [
   ['items', 'Items'],
-  ['bulk', 'Bulk entry'],
   ['locations', 'Locations'],
   ['categories', 'Categories'],
   ['flags', 'Flag queue'],
@@ -46,12 +45,13 @@ export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Prop
 
   return (
     <section className="staff-panel">
-      <nav className="tabs sub-tabs">
+      <nav className="tabs sub-tabs" aria-label="Catalog sections">
         {TABS.map(([value, label]) => (
           <button
             key={value}
             type="button"
             className={tab === value ? 'active' : ''}
+            aria-current={tab === value ? 'page' : undefined}
             onClick={() => {
               setTab(value);
               closeEditor();
@@ -82,6 +82,14 @@ export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Prop
                 New item
               </button>
             </div>
+            <details className="bulk-entry-section">
+              <summary>Bulk entry</summary>
+              <BulkEntry
+                categories={catalog.categories}
+                locations={catalog.locations}
+                onCreated={onChanged}
+              />
+            </details>
             <ItemsManager
               catalog={catalog}
               mode="live"
@@ -94,14 +102,6 @@ export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Prop
 
       {tab === 'bin' ? (
         <ItemsManager catalog={catalog} mode="bin" onChanged={onChanged} />
-      ) : null}
-
-      {tab === 'bulk' ? (
-        <BulkEntry
-          categories={catalog.categories}
-          locations={catalog.locations}
-          onCreated={onChanged}
-        />
       ) : null}
 
       {tab === 'locations' ? (
