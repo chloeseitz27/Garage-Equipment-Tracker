@@ -7,6 +7,7 @@ import { DiscoveryView } from './components/DiscoveryView.js';
 import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { ItemDraftContext } from './components/UnsavedItemChanges.js';
+import { RoomMapsPage } from './components/RoomMapsPage.js';
 
 export function App(): JSX.Element {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
@@ -50,11 +51,12 @@ export function App(): JSX.Element {
           </div>
           <nav className="tabs" aria-label="Main navigation">
             <NavLink to="/" end>Search &amp; browse</NavLink>
+            <NavLink to="/maps">Room maps</NavLink>
             <NavLink to="/assistant">Project Assistant</NavLink>
             {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
           </nav>
           <StaffBar staff={staff} beforeSignOut={() =>
-            !dirtyItem || window.confirm('This item has unsaved changes. Sign out and discard them?')
+            !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
           } onChange={(signedIn) => {
             setStaff(signedIn);
             setSessionError(null);
@@ -64,6 +66,7 @@ export function App(): JSX.Element {
         <Routes>
           <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
           <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
+          <Route path="/maps" element={<RoomMapsPage catalog={catalog} />} />
           <Route path="/manage/*" element={
             sessionLoading ? <p role="status">Checking staff sign-in…</p> :
               staff ? <StaffPanel catalog={catalog} onChanged={() => void loadCatalog()} /> : (

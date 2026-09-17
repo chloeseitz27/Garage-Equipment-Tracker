@@ -155,6 +155,13 @@ Rules:
   valid.
 - Locations are browsable in their own right: "show me everything in Cabinet B."
 
+Room maps use the supplied Common Makerspace and Advanced Makerspace plans.
+Locations can carry map markers; items inherit them through their location path.
+Selecting a map marker lists active items at or beneath that location. Item
+details highlight the closest mapped location, stating when it is a parent
+rather than the exact bin. Staff can position or remove markers with an explicit
+save. Floor plans do not imply any tool availability or unverified item placement.
+
 ### 5.3 Category
 
 A flat, staff-managed list used for browsing and filtering. Categories are for

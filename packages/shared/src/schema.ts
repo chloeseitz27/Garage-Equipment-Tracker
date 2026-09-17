@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROOM_MAP_IDS } from './room-maps.js';
 
 /**
  * Schemas are the source of truth for the data model; the TypeScript types in
@@ -17,7 +18,7 @@ export const ITEM_KINDS = ['equipment', 'consumable'] as const;
 export const EQUIPMENT_STATUSES = ['available', 'in-use', 'out-for-repair'] as const;
 export const STOCK_LEVELS = ['in-stock', 'low', 'out'] as const;
 export const TRAINING_LEVELS = ['none', 'orientation', 'supervised', 'certified'] as const;
-export const LOCATION_KINDS = ['room', 'zone', 'shelf', 'bin'] as const;
+export const LOCATION_KINDS = ['room', 'zone', 'table', 'workbench', 'cabinet', 'shelf', 'bin'] as const;
 export const FLAG_TYPES = ['not-here', 'low', 'out'] as const;
 
 export const itemKindSchema = z.enum(ITEM_KINDS);
@@ -74,6 +75,13 @@ export const locationSchema = z.object({
   name: z.string().min(1),
   parentId: idSchema.nullable(),
   kind: locationKindSchema,
+  mapId: z.enum(ROOM_MAP_IDS).optional(),
+  mapPosition: z.object({
+    roomId: idSchema,
+    mapId: z.enum(ROOM_MAP_IDS),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+  }).optional(),
 });
 
 export const categorySchema = z.object({

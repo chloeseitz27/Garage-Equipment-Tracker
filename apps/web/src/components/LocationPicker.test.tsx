@@ -6,7 +6,6 @@ import type { Root } from 'react-dom/client';
 import { formatLocationPath, getLocationPath, type Item, type Location } from '@garage/shared';
 import { LocationPicker } from './LocationPicker.js';
 import { BulkEntry } from './BulkEntry.js';
-import { LocationManager } from './LocationManager.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -24,6 +23,10 @@ dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; 
 const { createRoot } = await import('react-dom/client');
 // Portal components import react-dom too; initialize it only after the DOM exists.
 const { ItemEditor } = await import('./ItemEditor.js');
+const { LocationManager } = await import('./LocationManager.js');
+const { RoomMapsPage } = await import('./RoomMapsPage.js');
+const { RoomMap } = await import('./RoomMap.js');
+const { LocationMapEditor } = await import('./LocationMapEditor.js');
 const { ItemsManager } = await import('./ItemsManager.js');
 const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
 const { StaffPanel } = await import('./StaffPanel.js');
@@ -1487,4 +1490,145 @@ test('the item-detail paintbrush stays hidden from visitors', async () => {
   await render(createElement(App), '/?item=tool2');
   assert.ok(host.querySelector('.item-detail'));
   assert.equal(host.querySelector('.item-detail .action-icon-edit'), null);
+});
+
+const mapLocations: Location[] = [
+  { id: 'common', name: 'Common Makerspace', kind: 'room', parentId: null, mapId: 'common' },
+  { id: 'advanced', name: 'Advanced Makerspace', kind: 'room', parentId: null, mapId: 'advanced' },
+  { id: 'table-a', name: 'Table A', kind: 'table', parentId: 'common', mapPosition: { roomId: 'common', mapId: 'common', x: 0.5, y: 0.6 } },
+  { id: 'bin-a', name: 'Bin A', kind: 'bin', parentId: 'table-a' },
+  { id: 'table-3', name: 'Table 3', kind: 'table', parentId: 'advanced', mapPosition: { roomId: 'advanced', mapId: 'advanced', x: 0.8, y: 0.14 } },
+];
+const mappedCatalog = {
+  categories, locations: mapLocations,
+  items: [
+    { ...item, locationId: 'bin-a' },
+    { ...item, id: 'retired-vise', name: 'Retired vise', locationId: 'bin-a', retiredAt: '2026-01-01T00:00:00Z' },
+  ],
+};
+
+test('room maps use the correct images, include active descendant items, and navigate by URL', async () => {
+  await render(createElement(RoomMapsPage, { catalog: mappedCatalog }), '/maps?room=common&location=bin-a');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.png');
+  assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
+  assert.match(host.textContent ?? '', /nearest mapped location: Table A/);
+  assert.equal(link('Vise').getAttribute('href'), '/?item=vise');
+  assert.equal([...host.querySelectorAll('a')].some((a) => a.textContent === 'Retired vise'), false);
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/maps?room=advanced');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/advanced-makerspace.png');
+  const marker = host.querySelector<HTMLButtonElement>('.map-marker');
+  assert.ok(marker);
+  await click(marker);
+  assert.equal(currentUrl(), '/maps?room=advanced&location=table-3');
+  assert.equal(writes.length, 0);
+});
+
+test('room-map image errors are visible and do not leave misleading markers', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const image = host.querySelector('img');
+  assert.ok(image);
+  await act(() => { image.dispatchEvent(new dom.window.Event('error')); });
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not load the floor plan/);
+  assert.equal(host.querySelector('.map-marker'), null);
+});
+
+test('staff marker placement is a draft until Save and stores normalized coordinates', async () => {
+  let changed = 0;
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => { changed++; },
+  }), '/manage/locations?room=common&pin=table-a');
+  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
+  const y = host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]');
+  assert.ok(x && y);
+  assert.equal(x.value, '50.0');
+  await type(x, '25');
+  await type(y, '40');
+  assert.equal(writes.length, 0);
+  assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '25%');
+  await click(button('Save marker'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/locations/table-a');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
+  assert.equal(changed, 1);
+});
+
+test('room-map click placement calculates percentages and keeps changes unsaved', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=bin-a');
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = () => ({
+    x: 10, y: 20, left: 10, top: 20, width: 1000, height: 500, right: 1010, bottom: 520,
+    toJSON: () => ({}),
+  });
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 260, clientY: 270 })); });
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(writes.length, 0);
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+});
+
+test('location rename preserves existing floor plan and marker metadata', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common');
+  const row = [...host.querySelectorAll('.tree-node')].find((node) => node.querySelector('.tree-name')?.textContent?.startsWith('Table A'));
+  const edit = row?.querySelector<HTMLButtonElement>('button');
+  assert.ok(edit);
+  await click(edit);
+  const name = host.querySelector<HTMLInputElement>('.tree-edit > input');
+  assert.ok(name);
+  await type(name, 'Table A renamed');
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body.mapPosition, mapLocations[2]?.mapPosition);
+  assert.equal(writes[0]?.body.name, 'Table A renamed');
+});
+
+test('item detail highlights the assigned room and falls back to a mapped parent', async () => {
+  mockAppApi();
+  const respond = globalThis.fetch;
+  globalThis.fetch = (url, init) => url === '/api/catalog' ? Promise.resolve(jsonResponse(mappedCatalog)) : respond(url, init);
+  await render(createElement(App), '/?item=vise');
+  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('src'), '/maps/common-makerspace.png');
+  assert.equal(host.querySelector('.item-detail .map-marker.selected')?.getAttribute('title'), 'Table A');
+  assert.match(host.querySelector('.item-detail')?.textContent ?? '', /exact location is not marked/);
+  const pin = host.querySelector<HTMLAnchorElement>('.item-detail .map-marker.selected');
+  assert.ok(pin);
+  await click(pin);
+  assert.equal(currentUrl(), '/maps?room=common&location=table-a');
+});
+
+test('removing a marker is staged until Save and omits its coordinates', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=table-a');
+  await click(button('Remove marker'));
+  assert.equal(writes.length, 0);
+  assert.equal(host.querySelector('.map-marker.selected'), null);
+  await click(button('Save marker'));
+  assert.equal(writes[0]?.body.id, 'table-a');
+  assert.equal('mapPosition' in (writes[0]?.body ?? {}), false);
+});
+
+test('failed and invalid map saves keep the placement draft', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Could not save marker' }), { status: 500 });
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=table-a');
+  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
+  assert.ok(x);
+  await type(x, '120');
+  await click(button('Save marker'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /between 0 and 100/);
+  await type(x, '25');
+  await click(button('Save marker'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save marker/);
+  assert.equal(x.value, '25');
+  assert.equal(button('Save marker').disabled, false);
 });

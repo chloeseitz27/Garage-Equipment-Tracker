@@ -41,9 +41,10 @@ interface Props {
   busy: boolean;
   onStay: () => void;
   onLeave: () => void;
+  subject?: string;
 }
 
-export function UnsavedItemDialog({ busy, onStay, onLeave }: Props): JSX.Element {
+export function UnsavedItemDialog({ busy, onStay, onLeave, subject = 'item' }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const stayRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -67,8 +68,8 @@ export function UnsavedItemDialog({ busy, onStay, onLeave }: Props): JSX.Element
     >
       <h2 id={titleId}>Unsaved changes</h2>
       <p id={descriptionId}>
-        {busy ? 'Your item is still being saved. Please wait before leaving.' :
-          'This item has unsaved changes. Leaving this page will discard them.'}
+        {busy ? `Your ${subject} is still being saved. Please wait before leaving.` :
+          `This ${subject} has unsaved changes. Leaving this page will discard them.`}
       </p>
       <div className="editor-actions">
         <button ref={stayRef} type="button" onClick={onStay}>Stay on page</button>

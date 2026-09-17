@@ -79,6 +79,7 @@ export function DiscoveryView({ catalog, staff, assistant = false }: Props): JSX
           <ItemDetail
             key={selected.item.id}
             record={selected}
+            locations={catalog.locations}
             onClose={() => update('item', null)}
             onEdit={staff ? () => navigate(`/manage/items/${encodeURIComponent(selected.item.id)}/edit`) : undefined}
           />

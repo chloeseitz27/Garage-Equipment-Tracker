@@ -91,7 +91,14 @@ interface Location {
   id: string;
   name: string;
   parentId: string | null;  // null = Room (root)
-  kind: 'room' | 'zone' | 'shelf' | 'bin';
+  kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'bin';
+  mapId?: 'common' | 'advanced'; // top-level rooms only
+  mapPosition?: {
+    roomId: string;
+    mapId: 'common' | 'advanced';
+    x: number; // 0..1 from the left edge of the image
+    y: number; // 0..1 from the top edge of the image
+  };
 }
 
 interface Category {
@@ -127,6 +134,20 @@ assigned once and never reused, including after retirement.
 
 Retirement is a state, not a delete. Retired items leave search and assistant
 results but keep their record.
+
+### 3.3 Room maps
+
+The Common Makerspace (larger plan) and Advanced Makerspace (smaller plan) use
+the supplied images, versioned in `apps/web/public/maps`. A marker belongs to a
+location, not an item. `resolveLocationMap` derives the room from the hierarchy
+and picks the nearest mapped ancestor. `roomId` and `mapId` in the coordinates
+must both match the current room; stale positions from cross-room moves or plan
+changes are ignored, never shown on the wrong floor plan.
+
+Staff stage marker positions using clicks or numeric percentages and save via
+the existing authenticated location-update API. Visitor map URLs preserve the
+selected room and location. Seed data now contains only the two mapped rooms,
+their labeled locations, starter categories, and empty item/report arrays.
 
 ---
 

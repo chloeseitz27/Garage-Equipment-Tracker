@@ -4,3 +4,5 @@ export * from './location.js';
 export * from './integrity.js';
 export * from './bulk.js';
 export * from './retirement.js';
+export * from './room-maps.js';
+export * from './map-location.js';

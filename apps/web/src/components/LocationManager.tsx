@@ -1,15 +1,19 @@
 import { useMemo, useState } from 'react';
 import {
   LOCATION_KINDS,
+  ROOM_MAP_IDS,
+  ROOM_MAPS,
   getChildLocations,
   getDescendantLocationIds,
   type Item,
   type Location,
   type LocationKind,
+  type RoomMapId,
 } from '@garage/shared';
 
 import { createLocation, deleteLocation, updateLocation } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { LocationMapEditor } from './LocationMapEditor.js';
 
 interface Props {
   locations: Location[];
@@ -29,9 +33,11 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
   const [draftName, setDraftName] = useState('');
   const [draftParentId, setDraftParentId] = useState<string | null>(null);
   const [draftKind, setDraftKind] = useState<LocationKind>('bin');
+  const [draftMapId, setDraftMapId] = useState<RoomMapId | ''>('');
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState<string | null>(null);
   const [newKind, setNewKind] = useState<LocationKind>('bin');
+  const [newMapId, setNewMapId] = useState<RoomMapId | ''>('');
   const [error, setError] = useState<string | null>(null);
 
   const itemCounts = useMemo(() => {
@@ -60,6 +66,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     setDraftName(location.name);
     setDraftParentId(location.parentId);
     setDraftKind(location.kind);
+    setDraftMapId(location.mapId ?? '');
     setError(null);
   };
 
@@ -92,15 +99,23 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
                 excludedIds={excludedParentIds}
                 onSelect={setDraftParentId}
               />
+              <label>Floor plan
+                <select aria-label="Floor plan" value={draftMapId} onChange={(event) => setDraftMapId(ROOM_MAP_IDS.find((id) => id === event.target.value) ?? '')}>
+                  <option value="">None (rooms only)</option>
+                  {ROOM_MAP_IDS.map((id) => <option key={id} value={id}>{ROOM_MAPS[id].name}</option>)}
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={() =>
                   void run(async () => {
                     await updateLocation({
+                      ...location,
                       id: location.id,
                       name: draftName.trim(),
                       parentId: draftParentId,
                       kind: draftKind,
+                      mapId: draftMapId || undefined,
                     });
                     setEditingId(null);
                   })
@@ -157,6 +172,8 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
 
       {error ? <p className="error">{error}</p> : null}
 
+      <LocationMapEditor locations={locations} onChanged={onChanged} />
+
       <ul className="tree">{getChildLocations(locations, null).map((root) => renderNode(root, 0))}</ul>
 
       <div className="add-row">
@@ -182,12 +199,18 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
           allowRoot
           onSelect={setNewParentId}
         />
+        <label>Floor plan
+          <select aria-label="New room floor plan" value={newMapId} onChange={(event) => setNewMapId(ROOM_MAP_IDS.find((id) => id === event.target.value) ?? '')}>
+            <option value="">None (rooms only)</option>
+            {ROOM_MAP_IDS.map((id) => <option key={id} value={id}>{ROOM_MAPS[id].name}</option>)}
+          </select>
+        </label>
         <button
           type="button"
           disabled={!newName.trim()}
           onClick={() =>
             void run(async () => {
-              await createLocation({ name: newName.trim(), parentId: newParentId, kind: newKind });
+              await createLocation({ name: newName.trim(), parentId: newParentId, kind: newKind, mapId: newMapId || undefined });
               setNewName('');
             })
           }

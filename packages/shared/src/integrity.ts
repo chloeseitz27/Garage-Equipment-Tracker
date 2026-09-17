@@ -37,6 +37,9 @@ export function findCatalogProblems(data: CatalogData): string[] {
   const itemIds = new Set(items.map((i) => i.id));
 
   for (const location of locations) {
+    if (location.mapId && (location.kind !== 'room' || location.parentId !== null)) {
+      problems.push(`Location ${location.id} has a floor plan but is not a top-level room.`);
+    }
     if (location.parentId !== null && !locationIndex.has(location.parentId)) {
       problems.push(`Location ${location.id} has unknown parentId: ${location.parentId}`);
       continue;

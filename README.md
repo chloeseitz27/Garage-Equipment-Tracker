@@ -9,9 +9,10 @@ one question quickly: *"Do we have X, and where exactly is it?"*
 
 ## Status
 
-Specifications are drafted and the app runs end to end against seeded demo
-data: search, browse, item detail, anonymous flagging, the Project Assistant,
-and a full staff editing surface for every data source.
+The app has search, room-map browsing, item detail, anonymous flagging, the
+Project Assistant, and staff editing. The initial location catalog now reflects
+the supplied Common and Advanced Makerspace plans; items start empty for real
+inventory entry.
 
 See [`docs/specs/`](docs/specs/):
 
@@ -70,10 +71,35 @@ validator can't drift apart.
 
 ## Demo data
 
-`data/seed` holds 79 items (47 equipment, 32 consumable) across 10 categories
-and a 27-node location tree, including a retired item and one piece of equipment
-out for repair so those paths get exercised. It is plausible fiction, not the
-real Garage inventory — see the open questions in the product spec.
+`data/seed` holds two rooms and 32 labeled storage/work surfaces from the supplied
+floor plans (34 location nodes total), plus 10 starter categories. The previous
+fictional inventory and room structure have been replaced; `items.json` and
+`flags.json` are empty. Tables and named stations are locations, not assertions
+that any particular tool or material is available.
+
+## Room maps
+
+- **Common Makerspace:** the larger plan, with central tables A-F and perimeter
+  tables/workbenches.
+- **Advanced Makerspace:** the smaller plan, with tables 3, 11, 18-21, workbench
+  16, the fire cabinet, laser station, and laptop cart.
+
+The original PNGs are served from `apps/web/public/maps`. Initial markers were
+placed approximately on the labeled surfaces, not inferred item placements.
+Open **Room maps** to switch rooms and click a marker or search a location to
+see its active items (including sub-locations). Item details highlight their
+location on the same map, falling back to the nearest mapped ancestor, explicitly
+labeled as an approximate location.
+
+In **Manage catalog → Locations**, select a location in the map editor, click
+its spot or enter X/Y percentages, then **Save marker**. **Remove marker** is
+also staged until saved. Unsaved marker moves warn before navigation.
+Renaming a location retains its marker. A cross-room move, or changing a room's
+floor plan, makes old coordinates inactive until the location is remapped.
+Existing item and location IDs remain stable during normal edits.
+
+`seed:cosmos` upserts seed records; it does **not** delete existing data or migrate
+an old demo automatically. Back up an existing catalog before replacing a demo.
 
 ## Staff editing
 
@@ -83,7 +109,7 @@ Its sections share one navigation bar with slim separators:
 | Section | Does |
 |---|---|
 | Items | Filter, create, and edit items; expand Bulk entry to add a whole shelf at once |
-| Locations | Walk the tree; rename, re-parent, add, and delete nodes |
+| Locations | View room maps, position markers, and manage the location tree |
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
@@ -155,10 +181,12 @@ Navigation uses real URLs and browser history:
 | `/` | Search and browse |
 | `/?q=solder&item=itm-solder` | A search with an item detail open |
 | `/assistant` | Project Assistant |
+| `/maps?room=loc-common-makerspace` | Common Makerspace floor plan |
+| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table 3 selected |
 | `/manage/items` | Items grid |
 | `/manage/items/new` | New item form |
 | `/manage/items/<id>/edit` | Edit an item |
-| `/manage/locations` | Location tree |
+| `/manage/locations?room=loc-common-makerspace&pin=loc-common-table-a` | Location tree and marker editor |
 | `/manage/categories` | Categories |
 | `/manage/flags` | Flag queue |
 | `/manage/recycle-bin` | Recycle bin |

@@ -19,7 +19,7 @@ import { staffRoutes } from './staff.js';
  */
 
 const locations: Location[] = [
-  { id: 'loc-room', name: 'Main Shop', parentId: null, kind: 'room' },
+  { id: 'loc-room', name: 'Main Shop', parentId: null, kind: 'room', mapId: 'common' },
   { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'shelf' },
   { id: 'loc-bin', name: 'Bin 4', parentId: 'loc-shelf', kind: 'bin' },
   { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'shelf' },
@@ -428,4 +428,41 @@ test('a bulk update with no changes is rejected', async () => {
   });
 
   assert.equal(response.status, 400);
+});
+
+test('location map updates preserve normalized coordinates', async () => {
+  const response = await call('PUT', '/api/locations/loc-bin', {
+    name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf',
+    mapPosition: { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).mapPosition, {
+    roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4,
+  });
+});
+
+test('location map updates reject coordinates outside the image or on another room', async () => {
+  for (const mapPosition of [
+    { roomId: 'loc-room', mapId: 'common', x: 1.1, y: 0.4 },
+    { roomId: 'different-room', mapId: 'common', x: 0.2, y: 0.4 },
+    { roomId: 'loc-room', mapId: 'advanced', x: 0.2, y: 0.4 },
+  ]) {
+    const response = await call('PUT', '/api/locations/loc-bin', {
+      name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf', mapPosition,
+    });
+    assert.equal(response.status, 400);
+  }
+});
+
+test('floor plans can only be attached to root rooms, and anonymous marker updates are refused', async () => {
+  const response = await call('PUT', '/api/locations/loc-bin', {
+    name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf', mapId: 'common',
+  });
+  assert.equal(response.status, 400);
+  const anonymous = await fetch(`${baseUrl}/api/locations/loc-bin`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf' }),
+  });
+  assert.equal(anonymous.status, 401);
 });

@@ -1,20 +1,23 @@
 import { useState } from 'react';
-import { PATH_SEPARATOR, type FlagType } from '@garage/shared';
+import { PATH_SEPARATOR, resolveLocationMap, type FlagType, type Location } from '@garage/shared';
 
 import { createFlag } from '../api.js';
 import type { SearchRecord } from '../search.js';
 import { ActionIcon } from './ActionIcon.js';
+import { RoomMap } from './RoomMap.js';
 
 interface Props {
   record: SearchRecord;
   onClose: () => void;
   /** Only supplied when a staff session is active. */
   onEdit?: () => void;
+  locations?: Location[];
 }
 
-export function ItemDetail({ record, onClose, onEdit }: Props): JSX.Element {
+export function ItemDetail({ record, onClose, onEdit, locations = record.locationPath }: Props): JSX.Element {
   const { item, categoryName, locationPath } = record;
   const [flagged, setFlagged] = useState<string | null>(null);
+  const mapped = resolveLocationMap(locations, item.locationId);
 
   const flag = async (type: FlagType): Promise<void> => {
     try {
@@ -52,6 +55,14 @@ export function ItemDetail({ record, onClose, onEdit }: Props): JSX.Element {
 
       {/* The breadcrumb is prominent and legible from a step back (product-spec.md §6.3). */}
       <div className="breadcrumb">{locationPath.map((node) => node.name).join(PATH_SEPARATOR)}</div>
+      {mapped ? (
+        <>
+          <RoomMap room={mapped.room} locations={locations} selectedLocationId={item.locationId} />
+          {mapped.marker?.location.id !== item.locationId ? (
+            <p className="muted small">{mapped.marker ? `Shown at ${mapped.marker.location.name}; this item's exact location is not marked.` : 'Room shown; this location has no marker yet.'}</p>
+          ) : null}
+        </>
+      ) : null}
 
       {item.description ? <p>{item.description}</p> : null}
 

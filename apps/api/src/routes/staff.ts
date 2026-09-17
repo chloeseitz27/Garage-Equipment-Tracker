@@ -7,6 +7,7 @@ import {
   createItemSchema,
   createLocationSchema,
   itemSchema,
+  locationMapProblem,
   resolveFlagSchema,
   updateCategorySchema,
   updateItemSchema,
@@ -260,6 +261,11 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
+      const mapProblem = locationMapProblem(parsed.data, locations);
+      if (mapProblem) {
+        res.status(400).json({ error: mapProblem });
+        return;
+      }
       res.status(201).json(await repository.createLocation(parsed.data));
     }),
   );
@@ -293,6 +299,11 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
+      const mapProblem = locationMapProblem(parsed.data, locations, locations.find((location) => location.id === id));
+      if (mapProblem) {
+        res.status(400).json({ error: mapProblem });
+        return;
+      }
       await repository.saveLocation(parsed.data);
       res.json(parsed.data);
     }),
