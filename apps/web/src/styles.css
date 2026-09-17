@@ -891,6 +891,8 @@ code {
 }
 
 .bulk-actions > .icon-button,
+.items-view-actions > .icon-button,
+.item-detail > .icon-button,
 .item-action-buttons > .icon-button {
   display: inline-flex;
   align-items: center;

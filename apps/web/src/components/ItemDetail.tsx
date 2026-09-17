@@ -3,6 +3,7 @@ import { PATH_SEPARATOR, type FlagType } from '@garage/shared';
 
 import { createFlag } from '../api.js';
 import type { SearchRecord } from '../search.js';
+import { ActionIcon } from './ActionIcon.js';
 
 interface Props {
   record: SearchRecord;
@@ -30,8 +31,14 @@ export function ItemDetail({ record, onClose, onEdit }: Props): JSX.Element {
         Close
       </button>
       {onEdit ? (
-        <button type="button" className="close" onClick={onEdit}>
-          Edit
+        <button
+          type="button"
+          className="close icon-button"
+          aria-label={`Edit ${item.name}`}
+          title={`Edit ${item.name}`}
+          onClick={onEdit}
+        >
+          <ActionIcon name="edit" />
         </button>
       ) : null}
 

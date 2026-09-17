@@ -248,7 +248,16 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
         {mode === 'live' && (onCreateItem || bulkEntry) ? (
           <div className="items-view-actions">
             {onCreateItem ? (
-              <button type="button" disabled={busy} onClick={onCreateItem}>New item</button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="New item"
+                title="New item"
+                disabled={busy}
+                onClick={onCreateItem}
+              >
+                <ActionIcon name="add" />
+              </button>
             ) : null}
             {bulkEntry ? (
               <button
@@ -505,8 +514,15 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                 <td className="item-row-actions">
                   <div className="item-action-buttons">
                     {mode === 'live' && onEditItem ? (
-                      <button type="button" disabled={busy} onClick={() => onEditItem(item)}>
-                        Edit
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Edit ${item.name}`}
+                        title={`Edit ${item.name}`}
+                        disabled={busy}
+                        onClick={() => onEditItem(item)}
+                      >
+                        <ActionIcon name="edit" />
                       </button>
                     ) : null}
                     {mode === 'live' ? (

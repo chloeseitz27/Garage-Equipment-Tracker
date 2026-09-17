@@ -941,7 +941,7 @@ test('New item and Bulk entry are header actions and the New item workflow is pr
   const header = host.querySelector('.items-view-header');
   assert.ok(header);
   assert.match(header.querySelector('h3')?.textContent ?? '', /Items.*1 shown/);
-  assert.deepEqual([...header.querySelectorAll('button')].map((node) => node.textContent),
+  assert.deepEqual([...header.querySelectorAll('button')].map((node) => node.getAttribute('aria-label') ?? node.textContent),
     ['New item', 'Bulk entry']);
   assert.equal(host.querySelectorAll('details, .new-item-row').length, 0);
   await click(button('New item'));
@@ -1315,7 +1315,7 @@ test('typing a location query does not dirty the form, but choosing a location d
 
 test('Back and Forward both block leaving a dirty item and retain their intended destinations', async () => {
   await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items');
-  await click(button('Edit'));
+  await click(button('Edit Vise'));
   await type(editorName(), 'Unsaved');
   await click(button('History back'));
   assert.equal(currentUrl(), '/manage/items/vise/edit');
@@ -1428,7 +1428,7 @@ test('real browser Back restores the edit URL while the warning is pending', { t
   const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
   testRouter = browserRouter;
   await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
-  await click(button('Edit'));
+  await click(button('Edit Tool 2'));
   const editUrl = window.location.pathname;
   await type(editorName(), 'Browser draft');
   const restored = new Promise<void>((resolve) => {
@@ -1449,4 +1449,42 @@ test('real browser Back restores the edit URL while the warning is pending', { t
   await click(button('Stay on page'));
   assert.equal(window.location.pathname, editUrl);
   assert.equal(editorName().value, 'Browser draft');
+});
+
+test('the New item plus and row Edit paintbrush retain accessible names and navigation', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }));
+  const add = button('New item');
+  assert.equal(add.textContent?.trim(), '');
+  assert.equal(add.title, 'New item');
+  assert.ok(add.querySelector('svg.action-icon-add[aria-hidden="true"]'));
+  await click(add);
+  assert.equal(currentUrl(), '/manage/items/new');
+  await click(button('Cancel'));
+  const edit = button('Edit Vise');
+  assert.equal(edit.textContent?.trim(), '');
+  assert.equal(edit.title, 'Edit Vise');
+  assert.ok(edit.querySelector('svg.action-icon-edit[aria-hidden="true"]'));
+  await click(edit);
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Vise');
+  assert.equal(writes.length, 0);
+});
+
+test('the item-detail paintbrush opens the editor for that item', async () => {
+  mockAppApi();
+  await render(createElement(App), '/?item=tool2');
+  const edit = button('Edit Tool 2');
+  assert.equal(edit.textContent?.trim(), '');
+  assert.equal(edit.title, 'Edit Tool 2');
+  assert.ok(edit.querySelector('svg.action-icon-edit'));
+  await click(edit);
+  assert.equal(currentUrl(), '/manage/items/tool2/edit');
+  assert.equal(editorName().value, 'Tool 2');
+});
+
+test('the item-detail paintbrush stays hidden from visitors', async () => {
+  mockAppApi(false);
+  await render(createElement(App), '/?item=tool2');
+  assert.ok(host.querySelector('.item-detail'));
+  assert.equal(host.querySelector('.item-detail .action-icon-edit'), null);
 });
