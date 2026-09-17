@@ -90,9 +90,13 @@ surface per data source:
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
 
 Items and the recycle bin share one multi-select table. Tick any number of rows
-and the action bar offers **Move to** a location, **Category**, and **Retire**
-(or **Restore** in the bin). Each action is a single transactional write, so a
-shelf move lands completely or not at all.
+and the action bar offers **Move to**, **Category**, **Save**, **Delete**, and
+**Deselect** (or **Restore** and **Deselect** in the bin). Location and category
+choices are drafts until **Save** applies them together in one transactional
+write. **Deselect** discards the draft without saving; changing the checked
+selection also clears its draft. If a save fails, the choices and selection
+remain available to correct or retry. **Delete** sends items to the recycle bin;
+it does not apply any unsaved location or category changes.
 
 All location selectors use the same searchable picker: **Move to**, the item
 editor, bulk-entry defaults, and the parent fields for new or existing locations.
@@ -105,7 +109,7 @@ does not change it, and Escape or leaving the field restores its displayed path.
 Parent pickers include **Top level (no parent)** and exclude the location being
 edited and its descendants. All matching locations are reachable by scrolling.
 
-**Nothing in this app deletes an item.** Retiring sets a `retiredAt` timestamp;
+**Delete never permanently destroys an item.** It sets a `retiredAt` timestamp;
 the record and its id survive, because the assistant grounds recommendations on
 ids and a reused id would resolve to the wrong physical object. There is
 deliberately no route that destroys an item.

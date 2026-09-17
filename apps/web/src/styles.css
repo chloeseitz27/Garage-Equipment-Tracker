@@ -503,7 +503,8 @@ header h1 {
 .editor-actions button,
 .add-row button,
 .tree-actions button,
-.tree-edit button {
+.tree-edit button,
+.bulk-bar > button {
   background: var(--accent);
   color: #07121f;
   font-weight: 600;
@@ -514,7 +515,8 @@ header h1 {
 
 .editor-actions button.secondary,
 .tree-actions button,
-.tree-edit button.secondary {
+.tree-edit button.secondary,
+.bulk-bar > button.secondary {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--line);

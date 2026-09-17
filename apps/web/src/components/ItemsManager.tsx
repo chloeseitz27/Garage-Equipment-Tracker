@@ -9,7 +9,7 @@ import {
   type Item,
 } from '@garage/shared';
 
-import { bulkRetireItems, bulkUpdateItems } from '../api.js';
+import { bulkRetireItems, bulkUpdateItems, type BulkChanges } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 
 interface Props {
@@ -35,6 +35,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [changes, setChanges] = useState<Pick<BulkChanges, 'locationId' | 'categoryId'>>({});
 
   const rows = useMemo(() => {
     const pool = mode === 'bin' ? retiredItems(catalog.items) : liveItems(catalog.items);
@@ -65,19 +66,14 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
     });
   }, [rows]);
 
-  const locationOptions = useMemo(
-    () =>
-      catalog.locations
-        .map((location) => ({
-          id: location.id,
-          label: formatLocationPath(getLocationPath(catalog.locations, location.id)),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [catalog.locations],
-  );
+  // A draft belongs to this exact selection, not the next set of checked rows.
+  useEffect(() => {
+    setChanges({});
+  }, [selected, mode]);
 
   const ids = [...selected];
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selected.has(row.item.id));
+  const hasChanges = changes.locationId !== undefined || changes.categoryId !== undefined;
 
   const toggle = (id: string): void =>
     setSelected((current) => {
@@ -91,6 +87,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
     setSelected(allVisibleSelected ? new Set() : new Set(rows.map((row) => row.item.id)));
 
   const run = async (action: () => Promise<string>): Promise<void> => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     setNote(null);
@@ -99,25 +96,19 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
       setSelected(new Set());
       onChanged();
     } catch (cause) {
-      setError((cause as Error).message);
+      setError(cause instanceof Error ? cause.message : 'Could not update the selected items.');
     } finally {
       setBusy(false);
     }
   };
 
-  const moveTo = (locationId: string): Promise<void> =>
-    run(async () => {
-      const response = await bulkUpdateItems(ids, { locationId });
-      const label = locationOptions.find((option) => option.id === locationId)?.label ?? locationId;
-      return `Moved ${response.updated} item(s) to ${label}.`;
+  const save = async (): Promise<void> => {
+    if (!hasChanges || ids.length === 0) return;
+    await run(async () => {
+      const response = await bulkUpdateItems(ids, changes);
+      return `Saved changes to ${response.updated} item(s).`;
     });
-
-  const recategorize = (categoryId: string): Promise<void> =>
-    run(async () => {
-      const response = await bulkUpdateItems(ids, { categoryId });
-      const label = catalog.categories.find((category) => category.id === categoryId)?.name ?? categoryId;
-      return `Moved ${response.updated} item(s) to ${label}.`;
-    });
+  };
 
   const setRetired = (retired: boolean): Promise<void> =>
     run(async () => {
@@ -128,7 +119,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
     });
 
   return (
-    <div className="manager">
+    <div className="manager" aria-busy={busy}>
       <h3>
         {mode === 'bin' ? 'Recycle bin' : 'Items'}{' '}
         <span className="muted small">{rows.length} shown</span>
@@ -137,14 +128,15 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
       <p className="muted small">
         {mode === 'bin' ? (
           <>
-            Retired items. They&apos;re hidden from search and the Project Assistant but never
+            Deleted items. They&apos;re hidden from search and the Project Assistant but never
             destroyed — their records and ids are kept, so restoring one brings back the same
             physical item the assistant may already have recommended.
           </>
         ) : (
           <>
-            Select items to move, recategorize, or retire. Retiring is reversible and sends items to
-            the recycle bin rather than deleting them.
+            Select items, choose a location or category, then click Save to apply changes.
+            Deselect discards unsaved changes. Delete sends items to the recycle bin, where they
+            can be restored.
           </>
         )}
       </p>
@@ -153,6 +145,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
         <input
           placeholder="Filter by name or location…"
           value={filter}
+          disabled={busy}
           onChange={(event) => setFilter(event.target.value)}
         />
       </div>
@@ -166,17 +159,19 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
               <LocationPicker
                 label="Move to"
                 locations={catalog.locations}
+                value={changes.locationId ?? ''}
                 disabled={busy}
-                onSelect={(locationId) => void moveTo(locationId)}
+                onSelect={(locationId) => setChanges((current) => ({ ...current, locationId }))}
               />
 
               <label>
                 Category
                 <select
-                  value=""
+                  value={changes.categoryId ?? ''}
                   disabled={busy}
                   onChange={(event) => {
-                    if (event.target.value) void recategorize(event.target.value);
+                    const categoryId = event.target.value || undefined;
+                    setChanges((current) => ({ ...current, categoryId }));
                   }}
                 >
                   <option value="">Choose a category…</option>
@@ -188,8 +183,12 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                 </select>
               </label>
 
+              <button type="button" disabled={busy || !hasChanges} onClick={() => void save()}>
+                Save
+              </button>
+
               <button type="button" className="danger" disabled={busy} onClick={() => void setRetired(true)}>
-                Retire
+                Delete
               </button>
             </>
           ) : (
@@ -198,14 +197,14 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
             </button>
           )}
 
-          <button type="button" className="secondary" onClick={() => setSelected(new Set())}>
-            Clear
+          <button type="button" className="secondary" disabled={busy} onClick={() => setSelected(new Set())}>
+            Deselect
           </button>
         </div>
       ) : null}
 
-      {error ? <p className="error">{error}</p> : null}
-      {note ? <p className="muted">{note}</p> : null}
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      {note ? <p className="muted" role="status">{note}</p> : null}
 
       {rows.length === 0 ? (
         <p className="muted">
@@ -214,7 +213,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
       ) : (
         <>
           <label className="inline-check select-all">
-            <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} />
+            <input type="checkbox" checked={allVisibleSelected} disabled={busy} onChange={toggleAll} />
             Select all {rows.length} shown
           </label>
 
@@ -225,6 +224,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                   <input
                     type="checkbox"
                     checked={selected.has(item.id)}
+                    disabled={busy}
                     onChange={() => toggle(item.id)}
                   />
                 </label>
@@ -243,7 +243,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
 
                 <span className="tree-actions">
                   {mode === 'live' && onEditItem ? (
-                    <button type="button" onClick={() => onEditItem(item)}>
+                    <button type="button" disabled={busy} onClick={() => onEditItem(item)}>
                       Edit
                     </button>
                   ) : null}

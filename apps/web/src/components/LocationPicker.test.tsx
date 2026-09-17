@@ -298,19 +298,199 @@ test('new location parents can be changed and reset to top level without an impl
   assert.equal(writes[0]?.body.parentId, null);
 });
 
-test('bulk Move to remains an immediate action, but typing and dismissal do not move items', async () => {
+test('bulk Move to is a draft until Save, including keyboard selection', async () => {
   await render(createElement(ItemsManager, { catalog, mode: 'live', onChanged: () => {} }));
   const checkbox = host.querySelector<HTMLInputElement>('.row-check input');
   assert.ok(checkbox);
   await click(checkbox);
+  assert.equal(button('Save').disabled, true);
   const input = combobox('Move to');
   await focus(input);
   await type(input, 'spare');
   await key(input, 'Escape');
   await key(input, 'Enter');
   assert.equal(writes.length, 0);
-  await choose(input);
+  await type(input, 'spare');
+  await key(input, 'Enter');
+  assert.equal(input.value, path('destination'));
+  assert.equal(writes.length, 0);
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
   assert.equal(writes.length, 1);
   assert.equal(writes[0]?.url, '/api/items/bulk-update');
   assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { locationId: 'destination' } });
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /Saved changes/);
+});
+
+const multiCatalog = {
+  ...catalog,
+  categories: [...categories, { id: 'materials', name: 'Materials' }],
+  items: [
+    item,
+    {
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'tools', locationId: 'bin-19',
+      tags: [], goodFor: [], stockLevel: 'in-stock',
+    } satisfies Item,
+  ],
+};
+
+const checkboxFor = (name: string): HTMLInputElement => {
+  const row = [...host.querySelectorAll('.flat-list li')]
+    .find((node) => node.querySelector('.tree-name')?.textContent?.startsWith(name));
+  const checkbox = row?.querySelector<HTMLInputElement>('.row-check input');
+  assert.ok(checkbox, `Missing checkbox for ${name}`);
+  return checkbox;
+};
+
+const setCategory = async (value: string): Promise<void> => {
+  const select = host.querySelector<HTMLSelectElement>('.bulk-bar select');
+  assert.ok(select);
+  await act(() => {
+    select.value = value;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+};
+
+test('Save applies location and category to the full selection in one request', async () => {
+  let refreshes = 0;
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  assert.equal(writes.length, 0);
+  assert.equal(refreshes, 0);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0]?.body, {
+    ids: ['vise', 'solder'], changes: { locationId: 'destination', categoryId: 'materials' },
+  });
+  assert.equal(refreshes, 1);
+});
+
+test('category-only drafts can be undone and saved without a location change', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await setCategory('materials');
+  assert.equal(writes.length, 0);
+  assert.equal(button('Save').disabled, false);
+  await setCategory('');
+  assert.equal(button('Save').disabled, true);
+  await setCategory('materials');
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { categoryId: 'materials' } });
+});
+
+test('Deselect discards pending edits without a request and clears drafts on reselect', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  await click(button('Deselect'));
+  assert.equal(writes.length, 0);
+  assert.equal(checkboxFor('Vise').checked, false);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  await click(checkboxFor('Solder'));
+  assert.equal(combobox('Move to').value, '');
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, '');
+  assert.equal(button('Save').disabled, true);
+});
+
+test('changing the selection or filtering away selected rows clears the old draft', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(checkboxFor('Solder'));
+  assert.equal(button('Save').disabled, true);
+  assert.equal(combobox('Move to').value, '');
+  await setCategory('materials');
+  const filter = host.querySelector<HTMLInputElement>('input[placeholder="Filter by name or location…"]');
+  assert.ok(filter);
+  await type(filter, 'Solder');
+  assert.equal(host.querySelector('.bulk-bar strong')?.textContent, '1 selected');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(writes.length, 0);
+});
+
+test('a failed Save preserves the draft and checked items for retry', async () => {
+  const succeed = globalThis.fetch;
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return new Response(JSON.stringify({ error: 'Could not save this batch' }), { status: 500 });
+  };
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save this batch/);
+  assert.equal(host.querySelector('[role="status"]'), null);
+  assert.equal(button('Save').disabled, false);
+  globalThis.fetch = succeed;
+  await click(button('Save'));
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+});
+
+test('pending saves disable repeated actions and changes to the selection', async () => {
+  const succeed = globalThis.fetch;
+  let release = (_response: Response): void => { throw new Error('Request not initialized'); };
+  const pending = new Promise<Response>((resolve) => { release = resolve; });
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return pending;
+  };
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Save'));
+  assert.equal(button('Save').disabled, true);
+  assert.equal(button('Delete').disabled, true);
+  assert.equal(button('Deselect').disabled, true);
+  assert.equal(checkboxFor('Solder').disabled, true);
+  assert.equal(combobox('Move to').disabled, true);
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  await act(async () => {
+    release(new Response(JSON.stringify({ updated: 1, items: [] }), { status: 200 }));
+    await pending;
+  });
+  assert.equal(host.querySelector('.bulk-bar'), null);
+});
+
+test('Delete sends items to the recycle bin without applying unsaved edits', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  assert.equal(writes.length, 0);
+  assert.equal([...host.querySelectorAll('button')].some((node) => node.textContent === 'Retire'), false);
+  await click(button('Delete'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise', 'solder'], retired: true });
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /recycle bin/);
+});
+
+test('the recycle bin uses Deselect and retains its Restore action', async () => {
+  const binCatalog = { ...catalog, items: [{ ...item, retiredAt: '2026-09-17T00:00:00.000Z' }] };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(button('Deselect'));
+  assert.equal(writes.length, 0);
+  assert.equal(checkboxFor('Vise').checked, false);
+  await click(checkboxFor('Vise'));
+  await click(button('Restore'));
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
 });
