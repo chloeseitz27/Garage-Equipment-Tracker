@@ -94,6 +94,12 @@ and the action bar offers **Move to** a location, **Category**, and **Retire**
 (or **Restore** in the bin). Each action is a single transactional write, so a
 shelf move lands completely or not at all.
 
+**Move to** is a type-to-find field rather than a dropdown, since the location
+tree outgrows a `<select>` quickly. It matches on the full breadcrumb, so
+`electronics` reaches every bin under that bench, and every token must match the
+start of a word — `bin b3` and `b3 bin` find the same node, while `bin` doesn't
+drag in every Cabinet. Arrows move the highlight, Enter picks, Escape closes.
+
 **Nothing in this app deletes an item.** Retiring sets a `retiredAt` timestamp;
 the record and its id survive, because the assistant grounds recommendations on
 ids and a reused id would resolve to the wrong physical object. There is

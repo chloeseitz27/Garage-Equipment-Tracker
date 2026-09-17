@@ -10,6 +10,7 @@ import {
 } from '@garage/shared';
 
 import { bulkRetireItems, bulkUpdateItems } from '../api.js';
+import { LocationPicker } from './LocationPicker.js';
 
 interface Props {
   catalog: CatalogResponse;
@@ -162,23 +163,12 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
 
           {mode === 'live' ? (
             <>
-              <label>
-                Move to
-                <select
-                  value=""
-                  disabled={busy}
-                  onChange={(event) => {
-                    if (event.target.value) void moveTo(event.target.value);
-                  }}
-                >
-                  <option value="">Choose a location…</option>
-                  {locationOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <LocationPicker
+                label="Move to"
+                locations={catalog.locations}
+                disabled={busy}
+                onSelect={(locationId) => void moveTo(locationId)}
+              />
 
               <label>
                 Category

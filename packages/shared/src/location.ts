@@ -80,3 +80,50 @@ export function wouldCreateCycle(
   if (nextParentId === locationId) return true;
   return getDescendantLocationIds(locations, locationId).includes(nextParentId);
 }
+
+export interface LocationMatch {
+  id: string;
+  kind: Location['kind'];
+  /** Full breadcrumb, e.g. "Main Shop → Electronics Bench → Cabinet B". */
+  label: string;
+}
+
+/**
+ * Type-to-find over the location tree.
+ *
+ * Matches against the full breadcrumb rather than the node name, so "electronics"
+ * reaches every bin under that bench. Every whitespace-separated token must
+ * match the start of some word in the path, which means word order doesn't
+ * matter — "b3 bin" finds the same node as "bin b3".
+ *
+ * Word-prefix rather than substring, deliberately: plain substring matching
+ * makes "bin" match "Cabinet" (ca-BIN-et), which is a confusing result in a
+ * space whose nodes are literally named Bin and Cabinet.
+ *
+ * An empty query returns the head of the list so the control has something to
+ * show on focus.
+ */
+export function searchLocations(
+  locations: Location[],
+  query: string,
+  limit = 12,
+): LocationMatch[] {
+  const index = indexLocations(locations);
+  const options: LocationMatch[] = locations
+    .map((location) => ({
+      id: location.id,
+      kind: location.kind,
+      label: formatLocationPath(getLocationPath(index, location.id)),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return options.slice(0, limit);
+
+  return options
+    .filter((option) => {
+      const words = option.label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      return tokens.every((token) => words.some((word) => word.startsWith(token)));
+    })
+    .slice(0, limit);
+}
