@@ -523,6 +523,42 @@ header h1 {
   max-width: 900px;
 }
 
+.editor-fields {
+  display: grid;
+  gap: 0.9rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.unsaved-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.5rem;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.unsaved-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.unsaved-dialog h2 {
+  margin-top: 0;
+}
+
+.unsaved-dialog .discard {
+  background: #7a3340;
+  color: #ffe6ea;
+}
+
+.unsaved-dialog button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .editor label,
 .manager label {
   display: flex;

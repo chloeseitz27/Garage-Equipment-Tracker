@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
@@ -12,6 +12,7 @@ import {
 
 import { createItem, updateItem } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
 interface Props {
   item: Item | null;
@@ -69,14 +70,27 @@ const optional = (value: string): string | undefined => {
 };
 
 export function ItemEditor({ item, categories, locations, onSaved, onCancel }: Props): JSX.Element {
-  const [form, setForm] = useState<FormState>(() => toForm(item, categories, locations));
+  const [baseline, setBaseline] = useState<FormState>(() => toForm(item, categories, locations));
+  const [form, setForm] = useState<FormState>(baseline);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  const { blocker, dirtyRef, markSaved } = useItemDraftGuard(dirty);
 
   useEffect(() => {
-    setForm(toForm(item, categories, locations));
+    // Catalog refreshes must not overwrite a draft while the user is editing it.
+    if (dirtyRef.current) return;
+    const next = toForm(item, categories, locations);
+    setForm(next);
+    setBaseline(next);
     setError(null);
-  }, [item, categories, locations]);
+  }, [item, categories, locations, dirtyRef]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -126,6 +140,7 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
   };
 
   const submit = async (): Promise<void> => {
+    if (busy) return;
     setError(null);
     const input = buildInput();
     if (!input) return;
@@ -136,11 +151,14 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
       // grounds its recommendations on them (technical-spec.md §3.2).
       if (item) await updateItem({ ...input, id: item.id } as Item);
       else await createItem(input);
+      if (!mounted.current) return;
+      setBaseline(form);
+      markSaved();
       onSaved();
     } catch (cause) {
-      setError((cause as Error).message);
+      if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not save the item.');
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -152,161 +170,166 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
         void submit();
       }}
     >
-      <h3>{item ? `Edit ${item.name}` : 'New item'}</h3>
-
-      <label>
-        Name
-        <input value={form.name} onChange={(event) => set('name', event.target.value)} required />
-      </label>
-
-      <div className="field-row">
-        <label>
-          Kind
-          <select
-            value={form.kind}
-            onChange={(event) => set('kind', event.target.value as ItemKind)}
-            disabled={item !== null}
-          >
-            <option value="equipment">Equipment</option>
-            <option value="consumable">Consumable</option>
-          </select>
-          {item ? <span className="hint">Kind can&apos;t change after creation.</span> : null}
-        </label>
+      <fieldset className="editor-fields" disabled={busy}>
+        <h3>{item ? `Edit ${item.name}` : 'New item'}</h3>
 
         <label>
-          Category
-          <select
-            value={form.categoryId}
-            onChange={(event) => set('categoryId', event.target.value)}
-          >
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+          Name
+          <input value={form.name} onChange={(event) => set('name', event.target.value)} required />
         </label>
-      </div>
 
-      <LocationPicker
-        label="Location"
-        locations={locations}
-        value={form.locationId}
-        disabled={busy}
-        onSelect={(locationId) => set('locationId', locationId)}
-      />
-
-      {form.kind === 'equipment' ? (
         <div className="field-row">
           <label>
-            Status
-            <select value={form.status} onChange={(event) => set('status', event.target.value)}>
-              {EQUIPMENT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Quantity
-            <input
-              type="number"
-              min={1}
-              value={form.quantity}
-              onChange={(event) => set('quantity', event.target.value)}
-            />
-          </label>
-
-          <label>
-            Training required
+            Kind
             <select
-              value={form.trainingRequired}
-              onChange={(event) => set('trainingRequired', event.target.value)}
+              value={form.kind}
+              onChange={(event) => set('kind', event.target.value as ItemKind)}
+              disabled={item !== null}
             >
-              {TRAINING_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
+              <option value="equipment">Equipment</option>
+              <option value="consumable">Consumable</option>
+            </select>
+            {item ? <span className="hint">Kind can&apos;t change after creation.</span> : null}
+          </label>
+
+          <label>
+            Category
+            <select
+              value={form.categoryId}
+              onChange={(event) => set('categoryId', event.target.value)}
+            >
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
                 </option>
               ))}
             </select>
           </label>
         </div>
-      ) : (
+
+        <LocationPicker
+          label="Location"
+          locations={locations}
+          value={form.locationId}
+          disabled={busy}
+          onSelect={(locationId) => set('locationId', locationId)}
+        />
+
+        {form.kind === 'equipment' ? (
+          <div className="field-row">
+            <label>
+              Status
+              <select value={form.status} onChange={(event) => set('status', event.target.value)}>
+                {EQUIPMENT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Quantity
+              <input
+                type="number"
+                min={1}
+                value={form.quantity}
+                onChange={(event) => set('quantity', event.target.value)}
+              />
+            </label>
+
+            <label>
+              Training required
+              <select
+                value={form.trainingRequired}
+                onChange={(event) => set('trainingRequired', event.target.value)}
+              >
+                {TRAINING_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <label>
+            Stock level
+            <select
+              value={form.stockLevel}
+              onChange={(event) => set('stockLevel', event.target.value)}
+            >
+              {STOCK_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+            <span className="hint">A coarse manual flag, never a count.</span>
+          </label>
+        )}
+
         <label>
-          Stock level
-          <select
-            value={form.stockLevel}
-            onChange={(event) => set('stockLevel', event.target.value)}
-          >
-            {STOCK_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-          <span className="hint">A coarse manual flag, never a count.</span>
+          Description
+          <textarea
+            rows={2}
+            value={form.description}
+            onChange={(event) => set('description', event.target.value)}
+          />
         </label>
-      )}
 
-      <label>
-        Description
-        <textarea
-          rows={2}
-          value={form.description}
-          onChange={(event) => set('description', event.target.value)}
-        />
-      </label>
+        <label>
+          Tags / aliases <span className="hint">Comma separated. Alternate names people search for.</span>
+          <input value={form.tags} onChange={(event) => set('tags', event.target.value)} />
+        </label>
 
-      <label>
-        Tags / aliases <span className="hint">Comma separated. Alternate names people search for.</span>
-        <input value={form.tags} onChange={(event) => set('tags', event.target.value)} />
-      </label>
+        <label>
+          Good for <span className="hint">Comma separated. Project types — improves assistant matching.</span>
+          <input value={form.goodFor} onChange={(event) => set('goodFor', event.target.value)} />
+        </label>
 
-      <label>
-        Good for <span className="hint">Comma separated. Project types — improves assistant matching.</span>
-        <input value={form.goodFor} onChange={(event) => set('goodFor', event.target.value)} />
-      </label>
+        <label>
+          Photo URL
+          <input value={form.photoUrl} onChange={(event) => set('photoUrl', event.target.value)} />
+        </label>
 
-      <label>
-        Photo URL
-        <input value={form.photoUrl} onChange={(event) => set('photoUrl', event.target.value)} />
-      </label>
+        <label>
+          Notes
+          <textarea
+            rows={2}
+            value={form.notes}
+            onChange={(event) => set('notes', event.target.value)}
+          />
+        </label>
 
-      <label>
-        Notes
-        <textarea
-          rows={2}
-          value={form.notes}
-          onChange={(event) => set('notes', event.target.value)}
-        />
-      </label>
+        <label className="safety-field">
+          Safety notes
+          <textarea
+            rows={3}
+            value={form.safetyNotes}
+            onChange={(event) => set('safetyNotes', event.target.value)}
+          />
+          {/* Shown verbatim wherever the item appears, including assistant output. */}
+          <span className="hint">
+            Shown word for word on the item and in assistant results. This is the one field where a
+            wrong value has physical consequences.
+          </span>
+        </label>
 
-      <label className="safety-field">
-        Safety notes
-        <textarea
-          rows={3}
-          value={form.safetyNotes}
-          onChange={(event) => set('safetyNotes', event.target.value)}
-        />
-        {/* Shown verbatim wherever the item appears, including assistant output. */}
-        <span className="hint">
-          Shown word for word on the item and in assistant results. This is the one field where a
-          wrong value has physical consequences.
-        </span>
-      </label>
+        {error ? <p className="error" role="alert">{error}</p> : null}
 
-      {error ? <p className="error">{error}</p> : null}
-
-      <div className="editor-actions">
-        <button type="submit" disabled={busy}>
-          {busy ? 'Saving…' : item ? 'Save changes' : 'Create item'}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+        <div className="editor-actions">
+          <button type="submit" disabled={busy}>
+            {busy ? 'Saving…' : item ? 'Save changes' : 'Create item'}
+          </button>
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </fieldset>
+      {blocker.state === 'blocked' ? (
+        <UnsavedItemDialog busy={busy} onStay={blocker.reset} onLeave={blocker.proceed} />
+      ) : null}
     </form>
   );
 }

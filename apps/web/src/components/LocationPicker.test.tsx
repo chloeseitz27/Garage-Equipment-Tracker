@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
-import { act, createElement, useState, type FormEvent, type ReactElement } from 'react';
+import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
 import { formatLocationPath, getLocationPath, type Item, type Location } from '@garage/shared';
 import { LocationPicker } from './LocationPicker.js';
-import { ItemEditor } from './ItemEditor.js';
 import { BulkEntry } from './BulkEntry.js';
 import { LocationManager } from './LocationManager.js';
 
@@ -20,13 +19,17 @@ Object.defineProperties(globalThis, {
 });
 // jsdom has no layout; browser verification covers scrolling and popup positioning.
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
+dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
 const { createRoot } = await import('react-dom/client');
 // Portal components import react-dom too; initialize it only after the DOM exists.
+const { ItemEditor } = await import('./ItemEditor.js');
 const { ItemsManager } = await import('./ItemsManager.js');
 const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
 const { StaffPanel } = await import('./StaffPanel.js');
 const { App } = await import('../App.js');
-const { BrowserRouter, MemoryRouter, Route, Routes, useLocation, useNavigate } = await import('react-router-dom');
+const { createBrowserRouter, createMemoryRouter, RouterProvider, useLocation, useNavigate } = await import('react-router-dom');
+const TestElementContext = createContext<ReactElement | null>(null);
 
 const locations: Location[] = [
   { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
@@ -49,14 +52,17 @@ const item: Item = {
 const catalog = { locations, categories, items: [item] };
 const path = (id: string): string => formatLocationPath(getLocationPath(locations, id));
 const originalFetch = globalThis.fetch;
+const originalConfirm = window.confirm;
 let root: Root;
 let host: HTMLDivElement;
+let testRouter: ReturnType<typeof createMemoryRouter> | null;
 let writes: Array<{ url: string; body: Record<string, unknown> }>;
 
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
+  testRouter = null;
   writes = [];
   globalThis.fetch = async (url, init) => {
     const text = init?.body;
@@ -72,8 +78,10 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(() => root.unmount());
+  testRouter?.dispose();
   host.remove();
   globalThis.fetch = originalFetch;
+  window.confirm = originalConfirm;
 });
 after(() => dom.window.close());
 
@@ -86,12 +94,20 @@ function HistoryControls(): ReactElement {
     createElement('button', { onClick: () => navigate(1) }, 'History forward'),
   );
 }
+function TestScreen(): ReactElement {
+  const element = useContext(TestElementContext);
+  return createElement('div', null, element, createElement(HistoryControls));
+}
 const render = async (element: ReactElement, initialPath = '/manage/items'): Promise<void> => {
-  await act(() => root.render(createElement(MemoryRouter, { initialEntries: [initialPath] },
-    createElement(Routes, null, createElement(Route, {
-      path: element.type === StaffPanel ? '/manage/*' : '*', element,
-    })),
-    createElement(HistoryControls),
+  if (!testRouter) {
+    testRouter = createMemoryRouter([{
+      path: element.type === StaffPanel ? '/manage/*' : '*',
+      element: createElement(TestScreen),
+    }], { initialEntries: [initialPath] });
+  }
+  const router = testRouter;
+  await act(() => root.render(createElement(TestElementContext.Provider, { value: element },
+    createElement(RouterProvider, { router }),
   )));
 };
 const currentUrl = (): string => host.querySelector('[data-test-url]')?.textContent ?? '';
@@ -1089,10 +1105,12 @@ test('unknown pages and missing-item links show an explicit not-found state', as
   assert.equal(currentUrl(), '/');
 });
 
-test('BrowserRouter follows real popstate events for browser Back and Forward', { timeout: 5000 }, async () => {
+test('the browser router follows real popstate events for browser Back and Forward', { timeout: 5000 }, async () => {
   mockAppApi();
   window.history.replaceState(null, '', '/manage/categories');
-  await act(() => root.render(createElement(BrowserRouter, null, createElement(App))));
+  const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
+  testRouter = browserRouter;
+  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
   assert.equal(host.querySelector('.manager h3')?.textContent, 'Categories');
   await click(link('Locations'));
   assert.equal(window.location.pathname, '/manage/locations');
@@ -1212,4 +1230,223 @@ test('recycle-bin rows retain Restore and do not offer permanent Delete', async 
   assert.equal(host.querySelector('.item-row-actions [aria-label^="Delete "]'), null);
   await click(button('Restore'));
   assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
+});
+
+const editorName = (): HTMLInputElement => {
+  const input = host.querySelector<HTMLInputElement>('.editor input');
+  assert.ok(input);
+  return input;
+};
+const unloadIsBlocked = (): boolean => {
+  const event = new dom.window.Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+test('unchanged item forms allow navigation and do not warn on unload', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  assert.equal(unloadIsBlocked(), false);
+  await click(link('Categories'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+});
+
+test('leaving a dirty item warns; staying or Escape preserves it, and discarding completes Cancel', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Updated vise');
+  assert.equal(unloadIsBlocked(), true);
+  await click(link('Categories'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  let dialog = host.querySelector<HTMLDialogElement>('[role="alertdialog"]');
+  assert.ok(dialog?.open);
+  assert.match(dialog.textContent ?? '', /unsaved changes/i);
+  assert.equal(document.activeElement, button('Stay on page'));
+  await click(button('Stay on page'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Updated vise');
+  await click(button('Cancel'));
+  dialog = host.querySelector<HTMLDialogElement>('[role="alertdialog"]');
+  assert.ok(dialog);
+  await act(() => { dialog.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(editorName().value, 'Updated vise');
+  await click(button('Cancel'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(unloadIsBlocked(), false);
+  assert.equal(writes.length, 0);
+});
+
+test('undoing an edit back to its original value clears the warning', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Changed');
+  assert.equal(unloadIsBlocked(), true);
+  await type(editorName(), 'Vise');
+  assert.equal(unloadIsBlocked(), false);
+  await click(button('Cancel'));
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+});
+
+test('new-item drafts are protected, including invalid unsaved values', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/new');
+  assert.equal(unloadIsBlocked(), false);
+  const notes = host.querySelector<HTMLTextAreaElement>('.safety-field textarea');
+  assert.ok(notes);
+  await type(notes, 'Draft safety text');
+  await click(link('Locations'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(notes.value, 'Draft safety text');
+  assert.equal(currentUrl(), '/manage/items/new');
+});
+
+test('typing a location query does not dirty the form, but choosing a location does', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, 'spare');
+  assert.equal(unloadIsBlocked(), false);
+  await key(input, 'Enter');
+  assert.equal(unloadIsBlocked(), true);
+  await click(button('Cancel'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+});
+
+test('Back and Forward both block leaving a dirty item and retain their intended destinations', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items');
+  await click(button('Edit'));
+  await type(editorName(), 'Unsaved');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(editorName().value, 'Unsaved');
+  await click(button('History back'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/items');
+  await click(button('History forward'));
+  assert.equal(editorName().value, 'Vise');
+  await click(link('Categories'));
+  await click(button('History back'));
+  await type(editorName(), 'Another draft');
+  await click(button('History forward'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(writes.length, 0);
+});
+
+test('successful Save leaves without a warning and removes unload protection', async () => {
+  let refreshes = 0;
+  await render(createElement(StaffPanel, {
+    catalog, onChanged: () => { refreshes++; },
+  }), '/manage/items/vise/edit');
+  await type(editorName(), 'Saved vise');
+  await click(button('Save changes'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.body.name, 'Saved vise');
+  assert.equal(refreshes, 1);
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('failed Save keeps the draft and its navigation warning', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save failed' }), { status: 500 });
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Still unsaved');
+  await click(button('Save changes'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Still unsaved');
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Save failed/);
+  assert.equal(unloadIsBlocked(), true);
+  await click(link('Categories'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(editorName().value, 'Still unsaved');
+});
+
+test('a catalog refresh cannot replace an unsaved item draft', async () => {
+  const props = { categories, locations, onSaved: () => {}, onCancel: () => {} };
+  await render(createElement(ItemEditor, { ...props, item }));
+  await type(editorName(), 'My local draft');
+  await render(createElement(ItemEditor, {
+    ...props, item: { ...item, name: 'Remote update' }, locations: [...locations],
+  }));
+  assert.equal(editorName().value, 'My local draft');
+  assert.equal(unloadIsBlocked(), true);
+});
+
+test('pending saves protect the snapshot and finish without a second leave warning', async () => {
+  let release = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pending = new Promise<Response>((resolve) => { release = resolve; });
+  globalThis.fetch = () => pending;
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Saving now');
+  await click(button('Save changes'));
+  assert.equal(host.querySelector<HTMLFieldSetElement>('.editor-fields')?.disabled, true);
+  await click(link('Locations'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(button('Discard changes').disabled, true);
+  await act(async () => {
+    release(jsonResponse({ ...item, name: 'Saving now' }));
+    await pending;
+  });
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('sign-out asks before discarding an unsaved item', async () => {
+  mockAppApi();
+  const respond = globalThis.fetch;
+  let signOuts = 0;
+  globalThis.fetch = (url, init) => {
+    if (url === '/api/auth/logout') signOuts++;
+    return respond(url, init);
+  };
+  let confirmations = 0;
+  window.confirm = () => { confirmations++; return false; };
+  await render(createElement(App), '/manage/items/tool2/edit');
+  await type(editorName(), 'Private draft');
+  await click(button('Sign out'));
+  assert.equal(confirmations, 1);
+  assert.equal(signOuts, 0);
+  assert.equal(editorName().value, 'Private draft');
+  window.confirm = () => true;
+  await click(button('Sign out'));
+  assert.equal(signOuts, 1);
+  assert.equal(host.querySelector('.editor'), null);
+  assert.match(host.textContent ?? '', /Staff sign-in required/);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('real browser Back restores the edit URL while the warning is pending', { timeout: 5000 }, async () => {
+  mockAppApi();
+  window.history.replaceState(null, '', '/manage/items');
+  const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
+  testRouter = browserRouter;
+  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
+  await click(button('Edit'));
+  const editUrl = window.location.pathname;
+  await type(editorName(), 'Browser draft');
+  const restored = new Promise<void>((resolve) => {
+    let events = 0;
+    const listener = (): void => {
+      // The initial Back pop is followed by the router restoring the blocked edit entry.
+      if (++events === 2) {
+        window.removeEventListener('popstate', listener);
+        resolve();
+      }
+    };
+    window.addEventListener('popstate', listener);
+  });
+  await act(async () => { window.history.back(); await restored; });
+  assert.equal(window.location.pathname, editUrl);
+  assert.equal(editorName().value, 'Browser draft');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(window.location.pathname, editUrl);
+  assert.equal(editorName().value, 'Browser draft');
 });

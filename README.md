@@ -172,6 +172,13 @@ Staff bookmarks retain their destination while waiting for sign-in. A URL never
 grants staff access. Passwords, assistant prompts/responses, checkbox selections,
 and unsaved form drafts are not stored in URLs.
 
+Leaving an edited item or a new-item draft opens an **Unsaved changes** dialog.
+**Stay on page** keeps the draft; **Discard changes** continues to the requested
+page without saving. This covers navigation links, Cancel, and Back/Forward.
+Reloading or closing the tab uses the browser's standard warning, and sign-out
+also asks before discarding a draft. Unchanged or successfully saved forms do not
+warn; failed saves keep the draft protected.
+
 Vite's dev and preview servers support direct links. A production frontend host
 must serve `index.html` for client-side routes (without rewriting `/api` calls or
 asset requests); the API remains under `/api`.

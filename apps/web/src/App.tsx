@@ -6,6 +6,7 @@ import { fetchCatalog, getSession } from './api.js';
 import { DiscoveryView } from './components/DiscoveryView.js';
 import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
+import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 
 export function App(): JSX.Element {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
@@ -13,6 +14,7 @@ export function App(): JSX.Element {
   const [staff, setStaff] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [dirtyItem, setDirtyItem] = useState(false);
 
   const loadCatalog = useCallback(
     () => fetchCatalog().then(setCatalog).catch((cause: Error) => setError(cause.message)),
@@ -39,43 +41,47 @@ export function App(): JSX.Element {
   if (!catalog) return <main className="state">Loading the catalog…</main>;
 
   return (
-    <div className="app">
-      <header>
-        <div className="brand">
-          <h1>Garage Inventory</h1>
-          <p className="muted">Reston Garage — find it, then go get it.</p>
-        </div>
-        <nav className="tabs" aria-label="Main navigation">
-          <NavLink to="/" end>Search &amp; browse</NavLink>
-          <NavLink to="/assistant">Project Assistant</NavLink>
-          {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
-        </nav>
-        <StaffBar staff={staff} onChange={(signedIn) => {
-          setStaff(signedIn);
-          setSessionError(null);
-        }} />
-      </header>
-      {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
-      <Routes>
-        <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
-        <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
-        <Route path="/manage/*" element={
-          sessionLoading ? <p role="status">Checking staff sign-in…</p> :
-            staff ? <StaffPanel catalog={catalog} onChanged={() => void loadCatalog()} /> : (
-              <section className="manager">
-                <h2>Staff sign-in required</h2>
-                <p>Sign in above to open this catalog page.</p>
-                <Link to="/">Return to search</Link>
-              </section>
-            )
-        } />
-        <Route path="*" element={
-          <main className="state">
-            <h2>Page not found</h2>
-            <Link to="/">Return to search</Link>
-          </main>
-        } />
-      </Routes>
-    </div>
+    <ItemDraftContext.Provider value={setDirtyItem}>
+      <div className="app">
+        <header>
+          <div className="brand">
+            <h1>Garage Inventory</h1>
+            <p className="muted">Reston Garage — find it, then go get it.</p>
+          </div>
+          <nav className="tabs" aria-label="Main navigation">
+            <NavLink to="/" end>Search &amp; browse</NavLink>
+            <NavLink to="/assistant">Project Assistant</NavLink>
+            {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
+          </nav>
+          <StaffBar staff={staff} beforeSignOut={() =>
+            !dirtyItem || window.confirm('This item has unsaved changes. Sign out and discard them?')
+          } onChange={(signedIn) => {
+            setStaff(signedIn);
+            setSessionError(null);
+          }} />
+        </header>
+        {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
+        <Routes>
+          <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
+          <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
+          <Route path="/manage/*" element={
+            sessionLoading ? <p role="status">Checking staff sign-in…</p> :
+              staff ? <StaffPanel catalog={catalog} onChanged={() => void loadCatalog()} /> : (
+                <section className="manager">
+                  <h2>Staff sign-in required</h2>
+                  <p>Sign in above to open this catalog page.</p>
+                  <Link to="/">Return to search</Link>
+                </section>
+              )
+          } />
+          <Route path="*" element={
+            <main className="state">
+              <h2>Page not found</h2>
+              <Link to="/">Return to search</Link>
+            </main>
+          } />
+        </Routes>
+      </div>
+    </ItemDraftContext.Provider>
   );
 }
