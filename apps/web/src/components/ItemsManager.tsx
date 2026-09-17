@@ -135,8 +135,8 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
         ) : (
           <>
             Select items, choose a location or category, then click Save to apply changes.
-            Deselect discards unsaved changes. Delete sends items to the recycle bin, where they
-            can be restored.
+            Changing the selection discards unsaved changes. Delete sends items to the recycle bin,
+            where they can be restored.
           </>
         )}
       </p>
@@ -197,9 +197,6 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
             </button>
           )}
 
-          <button type="button" className="secondary" disabled={busy} onClick={() => setSelected(new Set())}>
-            Deselect
-          </button>
         </div>
       ) : null}
 

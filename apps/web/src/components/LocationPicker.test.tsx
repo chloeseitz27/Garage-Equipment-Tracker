@@ -386,12 +386,14 @@ test('category-only drafts can be undone and saved without a location change', a
   assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { categoryId: 'materials' } });
 });
 
-test('Deselect discards pending edits without a request and clears drafts on reselect', async () => {
+test('unchecking items discards pending edits without a separate Deselect button', async () => {
   await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
   await click(checkboxFor('Vise'));
   await choose(combobox('Move to'));
   await setCategory('materials');
-  await click(button('Deselect'));
+  assert.deepEqual([...host.querySelectorAll('.bulk-bar > button')].map((node) => node.textContent),
+    ['Save', 'Delete']);
+  await click(checkboxFor('Vise'));
   assert.equal(writes.length, 0);
   assert.equal(checkboxFor('Vise').checked, false);
   assert.equal(host.querySelector('.bulk-bar'), null);
@@ -456,7 +458,7 @@ test('pending saves disable repeated actions and changes to the selection', asyn
   await click(button('Save'));
   assert.equal(button('Save').disabled, true);
   assert.equal(button('Delete').disabled, true);
-  assert.equal(button('Deselect').disabled, true);
+  assert.equal(host.querySelector<HTMLInputElement>('.select-all input')?.disabled, true);
   assert.equal(checkboxFor('Solder').disabled, true);
   assert.equal(combobox('Move to').disabled, true);
   await click(button('Save'));
@@ -482,11 +484,15 @@ test('Delete sends items to the recycle bin without applying unsaved edits', asy
   assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /recycle bin/);
 });
 
-test('the recycle bin uses Deselect and retains its Restore action', async () => {
+test('the recycle bin offers only Restore and supports unchecking via select-all', async () => {
   const binCatalog = { ...catalog, items: [{ ...item, retiredAt: '2026-09-17T00:00:00.000Z' }] };
   await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
   await click(checkboxFor('Vise'));
-  await click(button('Deselect'));
+  assert.deepEqual([...host.querySelectorAll('.bulk-bar > button')].map((node) => node.textContent),
+    ['Restore']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  await click(selectAll);
   assert.equal(writes.length, 0);
   assert.equal(checkboxFor('Vise').checked, false);
   await click(checkboxFor('Vise'));
