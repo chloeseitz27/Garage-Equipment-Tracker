@@ -6,15 +6,22 @@ import { fileURLToPath } from 'node:url';
  * the server process (technical-spec.md §9.1).
  */
 
-// Node loads .env natively; missing file is fine when everything is defaulted.
-try {
-  process.loadEnvFile();
-} catch {
-  // no .env — defaults below apply
-}
-
 const here = dirname(fileURLToPath(import.meta.url));
+// apps/api/src (tsx) or apps/api/dist (built) — three levels up either way.
 const repoRoot = resolve(here, '..', '..', '..');
+
+/*
+  Resolve .env against the repo root, not the working directory.
+  process.loadEnvFile() with no argument uses cwd, and npm workspace scripts run
+  with cwd set to apps/api — so the root .env was silently ignored and every
+  setting fell back to its default.
+*/
+try {
+  process.loadEnvFile(join(repoRoot, '.env'));
+} catch {
+  // No .env. Defaults below apply, and in Azure the settings come from the
+  // App Service configuration rather than a file.
+}
 
 export const config = {
   port: Number(process.env.PORT ?? 3001),
