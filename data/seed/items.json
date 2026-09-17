@@ -632,9 +632,10 @@
     "description": "Legacy FDM printer, retired from service.",
     "tags": ["3d printer", "makerbot", "legacy"],
     "goodFor": [],
-    "status": "retired",
+    "status": "out-for-repair",
     "quantity": 1,
     "trainingRequired": "orientation",
+    "retiredAt": "2026-03-14T16:00:00.000Z",
     "notes": "Retired 2026-03. Kept for parts only — extruder assembly is still good. Do not return to service."
   },
 

@@ -87,6 +87,16 @@ export class JsonCatalogRepository implements CatalogRepository {
     await this.persist('items.json', this.items);
   }
 
+  async saveItems(items: Item[]): Promise<void> {
+    for (const item of items) {
+      const index = this.items.findIndex((existing) => existing.id === item.id);
+      if (index === -1) throw new Error(`Unknown item: ${item.id}`);
+      this.items[index] = item;
+    }
+    // One rewrite for the whole batch, so a bulk edit can't half-apply.
+    await this.persist('items.json', this.items);
+  }
+
   async getLocations(): Promise<Location[]> {
     return [...this.locations];
   }

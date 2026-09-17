@@ -51,9 +51,10 @@ const items: Item[] = [
     locationId: 'loc-wood',
     tags: ['lathe'],
     goodFor: ['planter box'],
-    status: 'retired',
+    status: 'available',
     quantity: 1,
     trainingRequired: 'certified',
+    retiredAt: '2026-03-14T16:00:00.000Z',
   },
 ];
 

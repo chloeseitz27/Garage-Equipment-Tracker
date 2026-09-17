@@ -1,6 +1,7 @@
 import {
   getLocationPath,
   indexLocations,
+  isRetired,
   type AssistantProvider,
   type Item,
   type RecommendResponse,
@@ -48,7 +49,7 @@ export async function recommendForProject(
   for (const entry of recommendation.garageItems) {
     const item = catalogById.get(entry.id);
 
-    if (!item || (item.kind === 'equipment' && item.status === 'retired')) {
+    if (!item || isRetired(item)) {
       dropped.push(entry.id);
       continue;
     }

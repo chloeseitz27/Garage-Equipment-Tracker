@@ -6,6 +6,7 @@ import {
   CosmosClient,
   type CreateOperationInput,
   type JSONObject,
+  type UpsertOperationInput,
 } from '@azure/cosmos';
 import { DefaultAzureCredential } from '@azure/identity';
 import {
@@ -174,6 +175,24 @@ export class CosmosCatalogRepository implements CatalogRepository {
 
   async saveItem(item: Item): Promise<void> {
     await this.upsert('item', item);
+  }
+
+  async saveItems(items: Item[]): Promise<void> {
+    if (items.length === 0) return;
+
+    const operations: UpsertOperationInput[] = items.map((item) => ({
+      operationType: BulkOperationType.Upsert,
+      resourceBody: toDoc('item', item) as unknown as JSONObject,
+    }));
+
+    // All items share the `item` partition key, so this is a real transaction:
+    // a bulk move or retire lands completely or not at all.
+    const response = await this.container.items.batch(operations, 'item');
+
+    const failed = response.result?.find((entry) => entry.statusCode >= 400);
+    if (failed) {
+      throw new Error(`Bulk update failed (status ${failed.statusCode}); no items were changed.`);
+    }
   }
 
   async getLocations(): Promise<Location[]> {

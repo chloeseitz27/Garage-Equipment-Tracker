@@ -14,6 +14,8 @@ export interface CatalogRepository {
   /** Creates a batch in one write, so a partial shelf can't be left half-committed. */
   createItems(items: CreateItemInput[]): Promise<Item[]>;
   saveItem(item: Item): Promise<void>;
+  /** Saves a batch in one write, so a bulk edit can't half-apply. */
+  saveItems(items: Item[]): Promise<void>;
 
   getLocations(): Promise<Location[]>;
   createLocation(location: Omit<Location, 'id'>): Promise<Location>;

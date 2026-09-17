@@ -59,6 +59,26 @@ export const createItemsBulk = (
 ): Promise<{ created: number; items: Item[] }> =>
   request('/api/items/bulk', { method: 'POST', body: JSON.stringify({ items }) });
 
+export interface BulkChanges {
+  locationId?: string;
+  categoryId?: string;
+  status?: string;
+  stockLevel?: string;
+}
+
+export const bulkUpdateItems = (
+  ids: string[],
+  changes: BulkChanges,
+): Promise<{ updated: number; items: Item[] }> =>
+  request('/api/items/bulk-update', { method: 'POST', body: JSON.stringify({ ids, changes }) });
+
+/** Moves items to or from the recycle bin. Never destroys anything. */
+export const bulkRetireItems = (
+  ids: string[],
+  retired: boolean,
+): Promise<{ updated: number; retired: boolean; items: Item[] }> =>
+  request('/api/items/bulk-retire', { method: 'POST', body: JSON.stringify({ ids, retired }) });
+
 export const createLocation = (input: Omit<Location, 'id'>): Promise<Location> =>
   request('/api/locations', { method: 'POST', body: JSON.stringify(input) });
 

@@ -9,7 +9,12 @@ import { z } from 'zod';
  */
 
 export const ITEM_KINDS = ['equipment', 'consumable'] as const;
-export const EQUIPMENT_STATUSES = ['available', 'in-use', 'out-for-repair', 'retired'] as const;
+/**
+ * Operational state of a piece of equipment. Retirement is deliberately NOT a
+ * status: it applies to consumables too, so it lives on the shared `retiredAt`
+ * field instead of being duplicated per kind.
+ */
+export const EQUIPMENT_STATUSES = ['available', 'in-use', 'out-for-repair'] as const;
 export const STOCK_LEVELS = ['in-stock', 'low', 'out'] as const;
 export const TRAINING_LEVELS = ['none', 'orientation', 'supervised', 'certified'] as const;
 export const LOCATION_KINDS = ['room', 'zone', 'shelf', 'bin'] as const;
@@ -36,6 +41,15 @@ const itemBaseShape = {
   notes: z.string().optional(),
   /** Verbatim only. Never model-generated (chatbot-spec.md §5). */
   safetyNotes: z.string().optional(),
+  /**
+   * ISO timestamp set when the item is retired; absent means live.
+   *
+   * Retirement is a state, never a delete — the record and its id survive
+   * because the assistant grounds recommendations on ids (technical-spec.md
+   * §3.2). Retired items leave search and assistant results and appear only in
+   * the staff recycle bin, where they can be restored.
+   */
+  retiredAt: z.string().optional(),
 };
 
 export const equipmentSchema = z.object({
@@ -110,6 +124,33 @@ export const bulkCreateItemsSchema = z.object({
 
 export const resolveFlagSchema = z.object({
   resolved: z.boolean(),
+});
+
+/**
+ * Bulk edits to existing items (product-spec.md §6.5 — moving a shelf's worth
+ * of items should not be one modal at a time).
+ *
+ * Capped at 100 to match the Cosmos transactional-batch limit, so the whole
+ * selection lands or none of it does.
+ */
+export const bulkUpdateItemsSchema = z.object({
+  ids: z.array(idSchema).min(1).max(100),
+  changes: z
+    .object({
+      locationId: idSchema.optional(),
+      categoryId: idSchema.optional(),
+      status: equipmentStatusSchema.optional(),
+      stockLevel: stockLevelSchema.optional(),
+    })
+    .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
+      message: 'At least one change is required',
+    }),
+});
+
+/** Moves items to or from the recycle bin. Never destroys anything. */
+export const bulkRetireItemsSchema = z.object({
+  ids: z.array(idSchema).min(1).max(100),
+  retired: z.boolean(),
 });
 
 export const loginSchema = z.object({

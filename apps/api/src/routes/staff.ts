@@ -1,14 +1,18 @@
 import { Router } from 'express';
 import {
   bulkCreateItemsSchema,
+  bulkRetireItemsSchema,
+  bulkUpdateItemsSchema,
   createCategorySchema,
   createItemSchema,
   createLocationSchema,
+  itemSchema,
   resolveFlagSchema,
   updateCategorySchema,
   updateItemSchema,
   updateLocationSchema,
   wouldCreateCycle,
+  type Item,
 } from '@garage/shared';
 
 import { requireStaff } from '../auth.js';
@@ -100,6 +104,118 @@ export function staffRoutes(repository: CatalogRepository): Router {
 
       const created = await repository.createItems(parsed.data.items);
       res.status(201).json({ created: created.length, items: created });
+    }),
+  );
+
+  /**
+   * Applies the same change to many items at once — moving a shelf, or
+   * recategorizing a batch (product-spec.md §6.5).
+   */
+  router.post(
+    '/items/bulk-update',
+    asyncHandler(async (req, res) => {
+      const parsed = bulkUpdateItemsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid bulk update', details: parsed.error.issues });
+        return;
+      }
+
+      const { ids, changes } = parsed.data;
+      const all = await repository.getItems();
+      const byId = new Map(all.map((item) => [item.id, item]));
+
+      const missing = ids.filter((id) => !byId.has(id));
+      if (missing.length > 0) {
+        res.status(404).json({ error: `Unknown item id(s): ${missing.join(', ')}` });
+        return;
+      }
+
+      const selected = ids.map((id) => byId.get(id) as Item);
+
+      // status and stockLevel are kind-specific. Applying one to the wrong kind
+      // would produce a record that fails schema validation, so reject the whole
+      // request rather than silently skipping part of the selection.
+      if (changes.status !== undefined && selected.some((item) => item.kind !== 'equipment')) {
+        res.status(400).json({ error: 'Status applies to equipment only.' });
+        return;
+      }
+      if (changes.stockLevel !== undefined && selected.some((item) => item.kind !== 'consumable')) {
+        res.status(400).json({ error: 'Stock level applies to consumables only.' });
+        return;
+      }
+
+      const sets = await loadReferenceSets();
+      const updated: Item[] = [];
+
+      for (const item of selected) {
+        const merged = {
+          ...item,
+          ...(changes.locationId !== undefined ? { locationId: changes.locationId } : {}),
+          ...(changes.categoryId !== undefined ? { categoryId: changes.categoryId } : {}),
+          ...(changes.status !== undefined ? { status: changes.status } : {}),
+          ...(changes.stockLevel !== undefined ? { stockLevel: changes.stockLevel } : {}),
+        };
+
+        const problem = checkAgainst(sets, merged);
+        if (problem) {
+          res.status(400).json({ error: problem });
+          return;
+        }
+
+        // Re-validate rather than trusting the merge: a bad write here would
+        // only surface when the catalog next refuses to load.
+        const validated = itemSchema.safeParse(merged);
+        if (!validated.success) {
+          res.status(400).json({ error: `${item.id} would become invalid`, details: validated.error.issues });
+          return;
+        }
+
+        updated.push(validated.data);
+      }
+
+      await repository.saveItems(updated);
+      res.json({ updated: updated.length, items: updated });
+    }),
+  );
+
+  /**
+   * Moves items to or from the recycle bin.
+   *
+   * Retiring is a state, never a delete: the record and its id survive, because
+   * the assistant grounds recommendations on ids and a reused id would resolve
+   * to the wrong physical object (technical-spec.md §3.2). There is deliberately
+   * no route that destroys an item.
+   */
+  router.post(
+    '/items/bulk-retire',
+    asyncHandler(async (req, res) => {
+      const parsed = bulkRetireItemsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid request', details: parsed.error.issues });
+        return;
+      }
+
+      const { ids, retired } = parsed.data;
+      const all = await repository.getItems();
+      const byId = new Map(all.map((item) => [item.id, item]));
+
+      const missing = ids.filter((id) => !byId.has(id));
+      if (missing.length > 0) {
+        res.status(404).json({ error: `Unknown item id(s): ${missing.join(', ')}` });
+        return;
+      }
+
+      const retiredAt = new Date().toISOString();
+      const updated = ids.map((id) => {
+        const item = byId.get(id) as Item;
+        if (retired) return { ...item, retiredAt };
+
+        const { retiredAt: _dropped, ...restored } = item;
+        return restored as Item;
+      });
+
+      await repository.saveItems(updated);
+      res.json({ updated: updated.length, retired, items: updated });
     }),
   );
 

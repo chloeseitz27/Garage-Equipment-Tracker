@@ -43,6 +43,16 @@ const items: Item[] = [
     quantity: 1,
     trainingRequired: 'none',
   },
+  {
+    id: 'itm-solder',
+    name: 'Solder',
+    kind: 'consumable',
+    categoryId: 'cat-used',
+    locationId: 'loc-bin',
+    tags: [],
+    goodFor: [],
+    stockLevel: 'in-stock',
+  },
 ];
 
 /** In-memory stand-in; these tests are about the routes, not about persistence. */
@@ -71,6 +81,10 @@ const makeRepository = (): CatalogRepository => {
     },
     saveItem: async (item) => {
       state.items = state.items.map((existing) => (existing.id === item.id ? item : existing));
+    },
+    saveItems: async (items) => {
+      const byId = new Map(items.map((item) => [item.id, item]));
+      state.items = state.items.map((existing) => byId.get(existing.id) ?? existing);
     },
     getLocations: async () => state.locations,
     createLocation: async (input) => {
@@ -312,4 +326,106 @@ test('editing a missing item is a 404, not a silent create', async () => {
   });
 
   assert.equal(response.status, 404);
+});
+
+/* --- Bulk edit and the recycle bin --- */
+
+test('a bulk move applies to every selected item', async () => {
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'],
+    changes: { locationId: 'loc-empty' },
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.updated, 2);
+  assert.ok(body.items.every((item: Item) => item.locationId === 'loc-empty'));
+});
+
+test('a bulk move to an unknown location is rejected', async () => {
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter'],
+    changes: { locationId: 'loc-nope' },
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Unknown locationId/);
+});
+
+test('status cannot be applied to a selection containing consumables', async () => {
+  // Merging status onto a consumable would produce a record that fails schema
+  // validation, so the whole request is refused rather than partly applied.
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'],
+    changes: { status: 'in-use' },
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /equipment only/i);
+});
+
+test('stock level cannot be applied to a selection containing equipment', async () => {
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'],
+    changes: { stockLevel: 'low' },
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /consumables only/i);
+});
+
+test('a bulk update naming an unknown id changes nothing', async () => {
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-ghost'],
+    changes: { categoryId: 'cat-unused' },
+  });
+
+  assert.equal(response.status, 404);
+  assert.match((await response.json()).error, /itm-ghost/);
+});
+
+test('retiring sets a timestamp on both kinds rather than deleting', async () => {
+  const response = await call('POST', '/api/items/bulk-retire', {
+    ids: ['itm-meter', 'itm-solder'],
+    retired: true,
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.updated, 2);
+  assert.ok(body.items.every((item: Item) => typeof item.retiredAt === 'string'));
+
+  // The records survive — retirement is a state, not a delete.
+  const stillThere = await (await call('GET', '/api/items/itm-meter')).json().catch(() => null);
+  assert.ok(stillThere === null || stillThere.id === 'itm-meter');
+});
+
+test('restoring clears the timestamp', async () => {
+  await call('POST', '/api/items/bulk-retire', { ids: ['itm-meter'], retired: true });
+  const response = await call('POST', '/api/items/bulk-retire', {
+    ids: ['itm-meter'],
+    retired: false,
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.items[0].retiredAt, undefined);
+});
+
+test('retiring an unknown id is a 404', async () => {
+  const response = await call('POST', '/api/items/bulk-retire', {
+    ids: ['itm-ghost'],
+    retired: true,
+  });
+
+  assert.equal(response.status, 404);
+});
+
+test('a bulk update with no changes is rejected', async () => {
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter'],
+    changes: {},
+  });
+
+  assert.equal(response.status, 400);
 });

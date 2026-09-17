@@ -1,18 +1,14 @@
-import { useMemo, useState } from 'react';
-import {
-  formatLocationPath,
-  getLocationPath,
-  type CatalogResponse,
-  type Item,
-} from '@garage/shared';
+import { useState } from 'react';
+import { retiredItems, type CatalogResponse, type Item } from '@garage/shared';
 
 import { BulkEntry } from './BulkEntry.js';
 import { CategoryManager } from './CategoryManager.js';
 import { FlagQueue } from './FlagQueue.js';
 import { ItemEditor } from './ItemEditor.js';
+import { ItemsManager } from './ItemsManager.js';
 import { LocationManager } from './LocationManager.js';
 
-type StaffTab = 'items' | 'bulk' | 'locations' | 'categories' | 'flags';
+type StaffTab = 'items' | 'bulk' | 'locations' | 'categories' | 'flags' | 'bin';
 
 interface Props {
   catalog: CatalogResponse;
@@ -27,6 +23,7 @@ const TABS: Array<[StaffTab, string]> = [
   ['locations', 'Locations'],
   ['categories', 'Categories'],
   ['flags', 'Flag queue'],
+  ['bin', 'Recycle bin'],
 ];
 
 /**
@@ -37,22 +34,8 @@ const TABS: Array<[StaffTab, string]> = [
 export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Props): JSX.Element {
   const [tab, setTab] = useState<StaffTab>('items');
   const [creating, setCreating] = useState(false);
-  const [filter, setFilter] = useState('');
 
-  const rows = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    return catalog.items
-      .map((item) => ({
-        item,
-        path: formatLocationPath(getLocationPath(catalog.locations, item.locationId)),
-      }))
-      .filter(({ item, path }) =>
-        needle
-          ? item.name.toLowerCase().includes(needle) || path.toLowerCase().includes(needle)
-          : true,
-      )
-      .sort((a, b) => a.item.name.localeCompare(b.item.name));
-  }, [catalog, filter]);
+  const binCount = retiredItems(catalog.items).length;
 
   const showEditor = creating || editingItem !== null;
 
@@ -75,6 +58,7 @@ export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Prop
             }}
           >
             {label}
+            {value === 'bin' && binCount > 0 ? <span className="badge">{binCount}</span> : null}
           </button>
         ))}
       </nav>
@@ -92,46 +76,24 @@ export function StaffPanel({ catalog, editingItem, onEditItem, onChanged }: Prop
             onCancel={closeEditor}
           />
         ) : (
-          <div className="manager">
-            <h3>Items</h3>
-            <p className="muted small">
-              Retiring an item removes it from search and assistant results but keeps the record —
-              set its status to <code>retired</code> rather than deleting it.
-            </p>
-
-            <div className="add-row">
-              <input
-                placeholder="Filter by name or location…"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-              />
+          <>
+            <div className="add-row new-item-row">
               <button type="button" onClick={() => setCreating(true)}>
                 New item
               </button>
             </div>
-
-            <ul className="flat-list">
-              {rows.map(({ item, path }) => (
-                <li key={item.id}>
-                  <span className="tree-name">
-                    {item.name}
-                    <span className="kind">{item.kind}</span>
-                    {item.kind === 'equipment' && item.status === 'retired' ? (
-                      <span className="kind">retired</span>
-                    ) : null}
-                    {item.safetyNotes ? <span className="kind kind-safety">safety</span> : null}
-                    <span className="muted small">{path}</span>
-                  </span>
-                  <span className="tree-actions">
-                    <button type="button" onClick={() => onEditItem(item)}>
-                      Edit
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+            <ItemsManager
+              catalog={catalog}
+              mode="live"
+              onEditItem={onEditItem}
+              onChanged={onChanged}
+            />
+          </>
         )
+      ) : null}
+
+      {tab === 'bin' ? (
+        <ItemsManager catalog={catalog} mode="bin" onChanged={onChanged} />
       ) : null}
 
       {tab === 'bulk' ? (

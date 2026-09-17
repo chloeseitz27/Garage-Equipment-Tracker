@@ -223,9 +223,6 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
                 </option>
               ))}
             </select>
-            {form.status === 'retired' ? (
-              <span className="hint">Retired items leave search, but the record is kept.</span>
-            ) : null}
           </label>
 
           <label>

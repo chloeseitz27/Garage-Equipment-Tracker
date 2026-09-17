@@ -1,4 +1,4 @@
-import type { Item } from '@garage/shared';
+import { liveItems, type Item } from '@garage/shared';
 
 /**
  * Step [1] of the pipeline: deterministic, server-side candidate retrieval
@@ -56,7 +56,7 @@ export function retrieveCandidates(
   const queryTokens = new Set(tokenize(projectDescription).map(stem));
 
   // Retired items aren't unavailable, they're gone (technical-spec.md §6.2).
-  const live = items.filter((item) => !(item.kind === 'equipment' && item.status === 'retired'));
+  const live = liveItems(items);
 
   const scored = live
     .map((item) => ({ item, score: scoreItem(item, queryTokens, categoryNames.get(item.categoryId) ?? '') }))

@@ -3,3 +3,4 @@ export * from './types.js';
 export * from './location.js';
 export * from './integrity.js';
 export * from './bulk.js';
+export * from './retirement.js';

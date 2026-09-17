@@ -87,6 +87,21 @@ surface per data source:
 | Locations | Walk the tree; rename, re-parent, add, and delete nodes |
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
+| Recycle bin | Retired items, restorable — nothing is ever destroyed |
+
+Items and the recycle bin share one multi-select table. Tick any number of rows
+and the action bar offers **Move to** a location, **Category**, and **Retire**
+(or **Restore** in the bin). Each action is a single transactional write, so a
+shelf move lands completely or not at all.
+
+**Nothing in this app deletes an item.** Retiring sets a `retiredAt` timestamp;
+the record and its id survive, because the assistant grounds recommendations on
+ids and a reused id would resolve to the wrong physical object. There is
+deliberately no route that destroys an item.
+
+Retirement is a shared field rather than an equipment status, so consumables
+retire the same way. `isRetired` in `packages/shared` is the one predicate used
+by search, assistant candidates, and the bin.
 
 Bulk entry takes one item per line — `name, kind, status/stock, training, tags`
 — where only the name is required and everything else falls back to defaults
@@ -99,6 +114,7 @@ Writes are guarded so the catalog can't be left in a state that won't load:
 - A location can't be moved inside its own subtree
 - A location holding items or sub-locations can't be deleted
 - A category still in use can't be deleted
+- Kind-specific fields can't be bulk-applied to the wrong kind
 - Retiring is a status, never a delete — the record and its ID survive
 
 Every guard is enforced server-side; the UI only mirrors it.

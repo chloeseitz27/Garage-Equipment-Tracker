@@ -3,6 +3,7 @@ import {
   formatLocationPath,
   getLocationPath,
   indexLocations,
+  liveItems,
   type CatalogResponse,
   type Item,
   type Location,
@@ -27,9 +28,8 @@ export function buildRecords(catalog: CatalogResponse): SearchRecord[] {
   const locationIndex = indexLocations(catalog.locations);
   const categoryNames = new Map(catalog.categories.map((category) => [category.id, category.name]));
 
-  return catalog.items
-    // Retired items leave search but keep their record (technical-spec.md §3.2).
-    .filter((item) => !(item.kind === 'equipment' && item.status === 'retired'))
+  return liveItems(catalog.items)
+    // Retired items live only in the staff recycle bin.
     .map((item) => {
       const locationPath = getLocationPath(locationIndex, item.locationId);
       return {
