@@ -391,7 +391,7 @@ test('unchecking items discards pending edits without a separate Deselect button
   await click(checkboxFor('Vise'));
   await choose(combobox('Move to'));
   await setCategory('materials');
-  assert.deepEqual([...host.querySelectorAll('.bulk-bar > button')].map((node) => node.textContent),
+  assert.deepEqual([...host.querySelectorAll('.bulk-actions > button')].map((node) => node.textContent),
     ['Save', 'Delete']);
   await click(checkboxFor('Vise'));
   assert.equal(writes.length, 0);

@@ -183,20 +183,20 @@ export function ItemsManager({ catalog, mode, onEditItem, onChanged }: Props): J
                 </select>
               </label>
 
-              <button type="button" disabled={busy || !hasChanges} onClick={() => void save()}>
-                Save
-              </button>
-
-              <button type="button" className="danger" disabled={busy} onClick={() => void setRetired(true)}>
-                Delete
-              </button>
+              <div className="bulk-actions">
+                <button type="button" disabled={busy || !hasChanges} onClick={() => void save()}>
+                  Save
+                </button>
+                <button type="button" className="danger" disabled={busy} onClick={() => void setRetired(true)}>
+                  Delete
+                </button>
+              </div>
             </>
           ) : (
             <button type="button" disabled={busy} onClick={() => void setRetired(false)}>
               Restore
             </button>
           )}
-
         </div>
       ) : null}
 
