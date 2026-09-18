@@ -655,27 +655,71 @@ header h1 {
   margin: 1rem 0;
 }
 
-.room-map-scroll {
-  overflow: auto;
-  max-height: 70vh;
+.room-map-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: #fff;
+}
+
+.room-map-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  border-radius: inherit;
+  touch-action: pan-y pinch-zoom;
+}
+
+.room-map-viewport.zoomed {
+  cursor: grab;
+  touch-action: none;
+}
+
+.room-map-viewport.dragging,
+.room-map-viewport.dragging .room-map-stage.placing {
+  cursor: grabbing;
+}
+
+.room-map-viewport:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .room-map-controls {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px #0003;
 }
 
 .room-map-controls button {
-  padding: 0.35rem 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
   background: var(--panel-2);
   color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.1rem;
+}
+
+.room-map-controls .map-zoom-reset {
+  width: 3.2rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .room-map-controls button:focus-visible {
@@ -684,8 +728,10 @@ header h1 {
 }
 
 .room-map-stage {
-  position: relative;
-  min-width: 650px;
+  position: absolute;
+  inset: 0;
+  transform-origin: top left;
+  user-select: none;
 }
 
 .room-map-stage.placing {
@@ -695,7 +741,7 @@ header h1 {
 .room-map-stage img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
 .room-map-stage .map-marker {

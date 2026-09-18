@@ -97,7 +97,7 @@ function PinEditor({ room, location, locations, onSelect, onChanged }: PinProps)
   };
   return (
     <>
-      <p className="hint">Choose a location, then click its spot on the map or enter percentages from the top-left corner. Changes are a preview until saved.</p>
+      <p className="hint">Choose a location, then click its spot on the map or enter percentages from the top-left corner. Drag to pan when zoomed; dragging does not place a marker. Changes are a preview until saved.</p>
       <RoomMap
         room={room}
         locations={preview}

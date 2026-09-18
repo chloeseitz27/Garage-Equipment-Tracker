@@ -106,7 +106,9 @@ sits within the central table formation, and the fire cabinet is drawn with its
 back against Advanced's left wall and its doors facing into the room. The area
 directly below the upper-left wall projection is open floor, not a recess.
 Structural projections are shown as solid wall sections without separate post callouts.
-Use **Zoom in**, **Zoom out**, and **Reset zoom** for closer inspection.
+Compact **− / percentage / +** controls float at the map's bottom-left. Click
+the percentage to reset. Maps fit their container without an internal scrollbar;
+when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
 Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.

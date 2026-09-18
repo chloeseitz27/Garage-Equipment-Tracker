@@ -1643,16 +1643,178 @@ test('map zoom scales the plan and marker together without changing stored coord
   assert.equal(button('Zoom out').disabled, true);
   assert.equal(marker.style.left, '50%');
   await click(button('Zoom in'));
-  assert.equal(stage.style.width, '125%');
-  assert.equal(stage.style.minWidth, '812.5px');
+  assert.match(stage.style.transform, /scale\(1.25\)/);
+  assert.equal(stage.style.minWidth, '');
   assert.equal(marker.style.left, '50%');
+  assert.match(marker.style.transform, /scale\(0.8\)/);
   for (let count = 0; count < 7; count++) await click(button('Zoom in'));
   assert.equal(button('Zoom in').disabled, true);
-  assert.equal(stage.style.width, '300%');
+  assert.match(stage.style.transform, /scale\(3\)/);
   await click(button('Reset zoom'));
-  assert.equal(stage.style.width, '100%');
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
   assert.equal(button('Zoom out').disabled, true);
   assert.equal(writes.length, 0);
+});
+
+const mapViewport = (): HTMLDivElement => {
+  const viewport = host.querySelector<HTMLDivElement>('.room-map-viewport');
+  assert.ok(viewport);
+  viewport.getBoundingClientRect = () => ({
+    x: 0, y: 0, left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500,
+    toJSON: () => ({}),
+  });
+  const captured = new Set<number>();
+  viewport.setPointerCapture = (id: number) => { captured.add(id); };
+  viewport.hasPointerCapture = (id: number) => captured.has(id);
+  viewport.releasePointerCapture = (id: number) => { captured.delete(id); };
+  return viewport;
+};
+const pointer = async (
+  target: HTMLElement, eventType: string, x: number, y: number, pointerId = 1, pointerType = 'mouse',
+): Promise<void> => {
+  const event = new dom.window.MouseEvent(eventType, {
+    bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: pointerType },
+    isPrimary: { value: true },
+  });
+  await act(() => { target.dispatchEvent(event); });
+};
+
+test('compact map controls live inside the map and do not place markers', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  let placements = 0;
+  await render(createElement(RoomMap, {
+    room, locations: mapLocations, onPlace: () => { placements++; },
+  }));
+  const controls = host.querySelector('.room-map-canvas > .room-map-controls');
+  assert.ok(controls);
+  assert.equal(host.querySelector('.room-map-scroll'), null);
+  assert.equal(button('Zoom in').textContent, '+');
+  assert.equal(button('Zoom out').textContent, '-');
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(host.querySelector<HTMLElement>('.room-map-stage')?.style.minWidth, '');
+  await click(button('Zoom in'));
+  assert.equal(button('Reset zoom').textContent, '125%');
+  await click(button('Zoom out'));
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(placements, 0);
+});
+
+test('zoomed maps pan by dragging, clamp to their edges, and do not place a marker after dragging', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  let placements = 0;
+  await render(createElement(RoomMap, {
+    room, locations: mapLocations, onPlace: () => { placements++; },
+  }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = viewport.getBoundingClientRect;
+  await click(button('Zoom in'));
+  await pointer(viewport, 'pointerdown', 500, 250);
+  await pointer(viewport, 'pointermove', 400, 200);
+  assert.equal(viewport.classList.contains('dragging'), true);
+  assert.equal(viewport.hasPointerCapture(1), true);
+  assert.equal(stage.style.transform, 'translate(-22.5%, -22.5%) scale(1.25)');
+  await pointer(viewport, 'pointermove', -2000, -2000);
+  assert.equal(stage.style.transform, 'translate(-25%, -25%) scale(1.25)');
+  await pointer(viewport, 'pointerup', -2000, -2000);
+  assert.equal(viewport.classList.contains('dragging'), false);
+  assert.equal(viewport.hasPointerCapture(1), false);
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1, clientX: 400, clientY: 200,
+  })); });
+  assert.equal(placements, 0);
+  await pointer(viewport, 'pointerdown', 400, 200);
+  await pointer(viewport, 'pointerup', 400, 200);
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1, clientX: 400, clientY: 200,
+  })); });
+  assert.equal(placements, 1, 'A subsequent deliberate click can still place a marker');
+});
+
+test('touch panning cancels cleanly and fit-to-map does not drag the image', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  await pointer(viewport, 'pointerdown', 400, 200, 1, 'touch');
+  await pointer(viewport, 'pointermove', 300, 100, 1, 'touch');
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
+  await click(button('Zoom in'));
+  await pointer(viewport, 'pointerdown', 400, 200, 1, 'touch');
+  await pointer(viewport, 'pointermove', 450, 225, 1, 'touch');
+  assert.equal(stage.style.transform, 'translate(-7.5%, -7.5%) scale(1.25)');
+  await pointer(viewport, 'pointercancel', 450, 225, 1, 'touch');
+  assert.equal(viewport.classList.contains('dragging'), false);
+  assert.equal(viewport.hasPointerCapture(1), false);
+  const stopped = stage.style.transform;
+  await pointer(viewport, 'pointermove', 200, 100, 1, 'touch');
+  assert.equal(stage.style.transform, stopped);
+});
+
+test('map keyboard panning is bounded and Home restores the fitted view', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  await click(button('Zoom in'));
+  const press = async (key: string): Promise<void> => {
+    await act(() => { viewport.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      key, bubbles: true, cancelable: true,
+    })); });
+  };
+  await press('ArrowRight');
+  await press('ArrowDown');
+  assert.equal(stage.style.transform, 'translate(-22.5%, -22.5%) scale(1.25)');
+  await press('ArrowRight');
+  await press('ArrowDown');
+  assert.equal(stage.style.transform, 'translate(-25%, -25%) scale(1.25)');
+  await press('Home');
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
+  assert.equal(button('Reset zoom').textContent, '100%');
+});
+
+test('switching rooms resets zoom and pan without changing catalog coordinates', async () => {
+  const common = mapLocations[0], advanced = mapLocations[1];
+  assert.ok(common && advanced);
+  await render(createElement(RoomMap, { room: common, locations: mapLocations }));
+  await click(button('Zoom in'));
+  await render(createElement(RoomMap, { room: advanced, locations: mapLocations }));
+  assert.equal(host.querySelector<HTMLElement>('.room-map-stage')?.style.transform, 'translate(0%, 0%) scale(1)');
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(writes.length, 0);
+});
+
+test('dragging over a map marker does not select it; clicking it still works', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  const selected: string[] = [];
+  await render(createElement(RoomMap, { room, locations: mapLocations, onSelect: (id) => selected.push(id) }));
+  const viewport = mapViewport();
+  const marker = host.querySelector<HTMLButtonElement>('.map-marker');
+  assert.ok(marker);
+  await click(button('Zoom in'));
+  await pointer(marker, 'pointerdown', 500, 250);
+  await pointer(viewport, 'pointermove', 450, 225);
+  await pointer(viewport, 'pointerup', 450, 225);
+  await act(() => { marker.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1,
+  })); });
+  assert.deepEqual(selected, []);
+  await pointer(marker, 'pointerdown', 500, 250);
+  await pointer(marker, 'pointerup', 500, 250);
+  await click(marker);
+  assert.deepEqual(selected, ['table-a']);
 });
 
 test('marker placement stays normalized on a zoomed map', async () => {
