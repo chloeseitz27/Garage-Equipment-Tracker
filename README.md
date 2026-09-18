@@ -368,8 +368,10 @@ cross-process invalidation. For JSON resets or direct file edits, restart the
 API to reload its in-memory data.
 
 The browser shows saved data immediately, then revalidates on page load, window
-focus, reconnect, and **Refresh catalog** (the circular-arrow icon, which spins
-while refreshing unless reduced motion is preferred). Successful staff catalog mutations
+focus, reconnect, and **Refresh catalog** (the circular-arrow icon beside staff
+sign-in in the header, which spins while refreshing unless reduced motion is
+preferred). Connection notices below the header appear only when needed.
+Successful staff catalog mutations
 invalidate the saved snapshot and refetch. Another tab's saved catalog is
 adopted without an echoing network request; cross-tab invalidation triggers a
 refresh. Incoming updates wait while staff have unsaved catalog forms, bulk

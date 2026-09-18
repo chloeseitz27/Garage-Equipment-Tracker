@@ -120,6 +120,8 @@ test('saved data renders while loading; failure leaves browsing visible and a re
   assert.match(host.textContent ?? '', /Inspection camera/);
   assert.match(host.textContent ?? '', /Showing saved catalog data/);
   assert.match(host.textContent ?? '', /safety\/training information may be out of date/);
+  assert.ok(host.querySelector('.catalog-status'));
+  assert.equal(host.querySelector('.catalog-status button'), null);
   await act(() => reject(new Error('Offline')));
   assert.match(host.textContent ?? '', /Catalog refresh failed: Offline/);
   assert.ok(host.querySelector('.search'));
@@ -128,6 +130,7 @@ test('saved data renders while loading; failure leaves browsing visible and a re
   await click(button('Refresh catalog'));
   assert.match(host.textContent ?? '', /Updated camera/);
   assert.doesNotMatch(host.textContent ?? '', /Catalog refresh failed|Showing saved catalog data/);
+  assert.equal(host.querySelector('.catalog-status'), null);
   assert.equal(requestOptions?.cache, 'no-store');
   assert.ok(requestOptions?.signal instanceof AbortSignal);
 });
@@ -145,6 +148,9 @@ test('a failed first visit displays an actionable error and clears it after retr
 test('the refresh icon is labelled, indicates progress, and updates the saved catalog', async () => {
   await render();
   const refreshButton = button('Refresh catalog');
+  assert.ok(refreshButton.closest('header .header-actions'));
+  assert.ok(refreshButton.parentElement?.querySelector('.staff-bar'));
+  assert.equal(host.querySelector('.catalog-status'), null);
   assert.equal(refreshButton.textContent, '');
   assert.equal(refreshButton.title, 'Refresh catalog');
   assert.equal(refreshButton.disabled, false);
