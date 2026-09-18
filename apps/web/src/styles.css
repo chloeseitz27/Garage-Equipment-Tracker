@@ -89,12 +89,14 @@ header h1 {
   font-weight: 600;
 }
 
+.header-actions,
 .staff-bar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
+.header-actions > .icon-button,
 .staff-bar button,
 .staff-bar input {
   background: var(--panel-2);
@@ -1157,6 +1159,7 @@ code {
 .item-detail > .icon-button,
 .tree-actions > .icon-button,
 .tree-edit > .icon-button,
+.header-actions > .icon-button,
 .item-action-buttons > .icon-button {
   display: inline-flex;
   align-items: center;
@@ -1460,4 +1463,14 @@ code {
 }
 .catalog-status {
   padding: 0.75rem 0;
+}
+
+@keyframes catalog-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .icon-button[aria-busy="true"] .action-icon-refresh {
+    animation: catalog-refresh-spin 1s linear infinite;
+  }
 }

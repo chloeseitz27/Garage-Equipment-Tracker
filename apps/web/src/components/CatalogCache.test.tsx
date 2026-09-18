@@ -120,6 +120,8 @@ test('saved data renders while loading; failure leaves browsing visible and a re
   assert.match(host.textContent ?? '', /Inspection camera/);
   assert.match(host.textContent ?? '', /Showing saved catalog data/);
   assert.match(host.textContent ?? '', /safety\/training information may be out of date/);
+  assert.ok(host.querySelector('.catalog-status'));
+  assert.equal(host.querySelector('.catalog-status button'), null);
   await act(() => reject(new Error('Offline')));
   assert.match(host.textContent ?? '', /Catalog refresh failed: Offline/);
   assert.ok(host.querySelector('.search'));
@@ -128,6 +130,7 @@ test('saved data renders while loading; failure leaves browsing visible and a re
   await click(button('Refresh catalog'));
   assert.match(host.textContent ?? '', /Updated camera/);
   assert.doesNotMatch(host.textContent ?? '', /Catalog refresh failed|Showing saved catalog data/);
+  assert.equal(host.querySelector('.catalog-status'), null);
   assert.equal(requestOptions?.cache, 'no-store');
   assert.ok(requestOptions?.signal instanceof AbortSignal);
 });
@@ -140,6 +143,43 @@ test('a failed first visit displays an actionable error and clears it after retr
   await click(button('Retry catalog'));
   assert.match(host.textContent ?? '', /Inspection camera/);
   assert.doesNotMatch(host.textContent ?? '', /No connection|No saved catalog/);
+});
+
+test('the refresh icon is labelled, indicates progress, and updates the saved catalog', async () => {
+  await render();
+  const refreshButton = button('Refresh catalog');
+  assert.ok(refreshButton.closest('header .header-actions'));
+  assert.ok(refreshButton.parentElement?.querySelector('.staff-bar'));
+  assert.equal(host.querySelector('.catalog-status'), null);
+  assert.equal(refreshButton.textContent, '');
+  assert.equal(refreshButton.title, 'Refresh catalog');
+  assert.equal(refreshButton.disabled, false);
+  assert.equal(refreshButton.getAttribute('aria-busy'), 'false');
+  const icon = refreshButton.querySelector('svg.action-icon-refresh');
+  assert.ok(icon);
+  assert.equal(icon.getAttribute('aria-hidden'), 'true');
+  assert.equal(icon.getAttribute('focusable'), 'false');
+
+  let finish!: (response: Response) => void;
+  respond = () => new Promise<Response>((resolve) => { finish = resolve; });
+  await click(refreshButton);
+  assert.equal(reads, 2);
+  assert.equal(button('Refreshing catalog...'), refreshButton);
+  assert.equal(refreshButton.title, 'Refreshing catalog...');
+  assert.equal(refreshButton.disabled, true);
+  assert.equal(refreshButton.getAttribute('aria-busy'), 'true');
+  await click(refreshButton);
+  assert.equal(reads, 2);
+
+  remote.items[0]!.name = 'Refreshed camera';
+  await act(() => finish(Response.json(remote)));
+  assert.equal(button('Refresh catalog'), refreshButton);
+  assert.equal(refreshButton.title, 'Refresh catalog');
+  assert.equal(refreshButton.disabled, false);
+  assert.equal(refreshButton.getAttribute('aria-busy'), 'false');
+  assert.match(host.textContent ?? '', /Refreshed camera/);
+  const persisted = JSON.parse(dom.window.localStorage.getItem(CATALOG_CACHE_KEY)!);
+  assert.equal(persisted.catalog.items[0].name, 'Refreshed camera');
 });
 
 test('cached staff pages warn about connectivity and never queue or pretend to save offline', async () => {

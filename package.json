@@ -17,7 +17,7 @@
     "reset": "node scripts/seed.mjs --force",
     "validate:seed": "npm run build:shared && node scripts/validate-seed.mjs",
     "test": "npm run build:shared && node --import tsx --test \"**/*.test.ts\" && npm run test -w @garage/web && npm run validate:seed",
-    "dev": "npm run build:shared && concurrently --raw -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev": "npm run build:shared && concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run dev -w @garage/api",
     "dev:web": "npm run dev -w @garage/web",
     "typecheck": "tsc -b && npm run typecheck -w @garage/web"

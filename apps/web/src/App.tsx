@@ -8,6 +8,7 @@ import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 import { RoomMapsPage } from './components/RoomMapsPage.js';
+import { ActionIcon } from './components/ActionIcon.js';
 
 function AssistantRedirect(): JSX.Element {
   const location = useLocation();
@@ -71,28 +72,40 @@ export function App(): JSX.Element {
               <NavLink to="/maps">Room maps</NavLink>
               {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
             </nav>
-            <StaffBar staff={staff} beforeSignOut={() =>
-              !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
-            } onChange={(signedIn) => {
-              setStaff(signedIn);
-              setSessionError(null);
-            }} />
+            <div className="header-actions">
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                aria-busy={refreshing}
+                disabled={refreshing}
+                onClick={() => void refresh()}
+              >
+                <ActionIcon name="refresh" />
+              </button>
+              <StaffBar staff={staff} beforeSignOut={() =>
+                !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
+              } onChange={(signedIn) => {
+                setStaff(signedIn);
+                setSessionError(null);
+              }} />
+            </div>
           </header>
-          <section className="catalog-status" aria-label="Catalog connection">
-            {error ? <p className="error" role="alert">Catalog refresh failed: {error}</p> : null}
-            {!verified || stale ? (
-              <p role="status">
-                Showing saved catalog data{fetchedAt !== null ? ` fetched ${new Date(fetchedAt).toLocaleString()}` : ''}.
-                {' '}Locations, availability, and safety/training information may be out of date.
-                {!verified ? ' Changes still require an API connection; nothing is queued offline.' : ''}
-              </p>
-            ) : null}
-            {updatePending ? <p role="status">Catalog updates will appear after you save or discard your edits.</p> : null}
-            {storageWarning ? <p role="status">{storageWarning}</p> : null}
-            <button type="button" disabled={refreshing} onClick={() => void refresh()}>
-              {refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
-            </button>
-          </section>
+          {error || !verified || stale || updatePending || storageWarning ? (
+            <section className="catalog-status" aria-label="Catalog connection">
+              {error ? <p className="error" role="alert">Catalog refresh failed: {error}</p> : null}
+              {!verified || stale ? (
+                <p role="status">
+                  Showing saved catalog data{fetchedAt !== null ? ` fetched ${new Date(fetchedAt).toLocaleString()}` : ''}.
+                  {' '}Locations, availability, and safety/training information may be out of date.
+                  {!verified ? ' Changes still require an API connection; nothing is queued offline.' : ''}
+                </p>
+              ) : null}
+              {updatePending ? <p role="status">Catalog updates will appear after you save or discard your edits.</p> : null}
+              {storageWarning ? <p role="status">{storageWarning}</p> : null}
+            </section>
+          ) : null}
           {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
           <Routes>
             <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
