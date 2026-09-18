@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   Registers required resource providers, then runs an idempotent
-  subscription-scoped Bicep deployment. Safe to re-run.
+  subscription-scoped Bicep deployment. Safe to re-run: the Cosmos account
+  recorded by a previous deployment keeps its existing location.
 
   Note on error handling: PowerShell's $ErrorActionPreference does NOT apply to
   native commands like `az`. A failing az call sets $LASTEXITCODE but does not
@@ -16,6 +17,9 @@
 
 .EXAMPLE
   .\scripts\deploy-infra.ps1 -SubscriptionId <guid> -WhatIf
+
+.EXAMPLE
+  .\scripts\deploy-infra.ps1 -SubscriptionId <guid> -CosmosLocation eastus2
 #>
 [CmdletBinding()]
 param(
@@ -29,7 +33,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$template = Join-Path $repoRoot 'infra/main.bicep'
+$template = Join-Path $repoRoot 'infra\main.bicep'
 
 function Invoke-Az {
   param([string[]]$Arguments, [string]$Because)
@@ -68,6 +72,42 @@ if ($account.tenantDefaultDomain -eq 'microsoft.onmicrosoft.com') {
   throw "Refusing to deploy into the Microsoft corporate tenant. Run 'az login --tenant <your-tenant>' first."
 }
 
+# The module deployment records the exact deterministic account name, even
+# when deployment failed after creating the account. Do not guess from a prefix
+# or adopt another account that happens to be in the same resource group.
+$groupExists = ((Invoke-Az @('group', 'exists', '--name', $ResourceGroup, '-o', 'json') 'check resource group') | Out-String).Trim()
+if ($groupExists -notin @('true', 'false')) {
+  throw "Could not determine whether resource group '$ResourceGroup' exists."
+}
+if ($groupExists -eq 'true') {
+  $accountName = ((Invoke-Az @(
+    'deployment', 'group', 'list', '--resource-group', $ResourceGroup,
+    '--query', "[?name=='cosmos'].properties.parameters.accountName.value | [0]", '-o', 'tsv'
+  ) 'read previous Cosmos deployment') | Out-String).Trim()
+
+  if ($accountName) {
+    $accounts = (Invoke-Az @(
+      'cosmosdb', 'list', '--resource-group', $ResourceGroup,
+      '--query', '[].{name:name,location:location}', '-o', 'json'
+    ) 'read existing Cosmos accounts') | ConvertFrom-Json
+    $existingAccount = $accounts | Where-Object { $_.name -eq $accountName }
+    if ($existingAccount) {
+      $existingLocation = $existingAccount.location
+      if ([string]::IsNullOrWhiteSpace($existingLocation)) {
+        throw "Could not read the location of existing Cosmos account '$accountName'."
+      }
+      # ARM can return display names (East US 2) rather than CLI names (eastus2).
+      $existingLocation = $existingLocation.ToLowerInvariant() -replace '\s', ''
+      if ($CosmosLocation -and ($CosmosLocation -replace '\s', '') -ne $existingLocation) {
+        throw "Cosmos account '$accountName' already exists in '$existingLocation', not '$CosmosLocation'. Re-run without -CosmosLocation or use -CosmosLocation $existingLocation. This script cannot move an existing account."
+      }
+      $CosmosLocation = $existingLocation
+      Write-Host "Reusing Cosmos account '$accountName' in $CosmosLocation."
+    }
+  }
+}
+if (-not $CosmosLocation) { $CosmosLocation = $Location }
+
 if (-not $WhatIf -and -not $SkipConfirm) {
   if ((Read-Host 'Deploy here? (y/N)') -ne 'y') { Write-Host 'Aborted.'; exit 1 }
 }
@@ -85,8 +125,6 @@ foreach ($ns in @('Microsoft.DocumentDB', 'Microsoft.Web', 'Microsoft.Insights')
 }
 
 $principalId = ((Invoke-Az @('ad', 'signed-in-user', 'show', '--query', 'id', '-o', 'tsv') 'read signed-in user') | Out-String).Trim()
-
-if (-not $CosmosLocation) { $CosmosLocation = $Location }
 
 $parameters = @(
   "resourceGroupName=$ResourceGroup",
