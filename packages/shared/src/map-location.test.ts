@@ -181,7 +181,7 @@ test('Work Tables text is centered inside the six-table formation, not below it'
   assert.ok(group.includes('NO STORAGE'));
 });
 
-test('the fire cabinet stands along the left wall below the post and its marker remains centered', async () => {
+test('the fire cabinet stands along the left wall below the projection and its marker remains centered', async () => {
   const seed = locationsFileSchema.parse(JSON.parse(await readFile(new URL('../../../data/seed/locations.json', import.meta.url), 'utf8')));
   const svg = await readFile(new URL('../../../apps/web/public/maps/advanced-makerspace.svg', import.meta.url), 'utf8');
   const group = svg.match(/<g data-location-id="loc-advanced-fire-cabinet">([\s\S]*?)<\/g>/)?.[1];
@@ -192,21 +192,45 @@ test('the fire cabinet stands along the left wall below the post and its marker 
   assert.equal(width, 46);
   assert.equal(height, 140);
   assert.ok(x >= 22 && x <= 26, 'Back must be against the left wall at x=22');
-  assert.ok(y >= 181, 'Cabinet stays in its current position below the post and inside the room');
+  assert.ok(y >= 181, 'Cabinet stays in its current position below the wall projection and inside the room');
   const pin = seed.find((entry) => entry.id === 'loc-advanced-fire-cabinet')?.mapPosition;
   assert.ok(pin);
   assert.ok(Math.abs(pin.x * ROOM_MAPS.advanced.width - (x + width / 2)) < 1);
   assert.ok(Math.abs(pin.y * ROOM_MAPS.advanced.height - (y + height / 2)) < 1);
 });
 
-test('Advanced floor extends directly beneath the left post without a false wall recess', async () => {
+test('Advanced floor extends directly beneath the left wall projection without a false recess', async () => {
   const svg = await readFile(new URL('../../../apps/web/public/maps/advanced-makerspace.svg', import.meta.url), 'utf8');
-  const post = svg.match(/<rect id="advanced-left-post"[^>]+\/>/)?.[0];
+  const wall = svg.match(/<rect id="advanced-left-wall"[^>]+\/>/)?.[0];
   const floor = svg.match(/<path class="floor" d="([^"]+)"/)?.[1];
-  assert.ok(post && floor);
-  const left = svgNumber(post, 'x');
-  const bottom = svgNumber(post, 'y') + svgNumber(post, 'height');
-  const right = left + svgNumber(post, 'width');
+  assert.ok(wall && floor);
+  const left = svgNumber(wall, 'x');
+  const bottom = svgNumber(wall, 'y') + svgNumber(wall, 'height');
+  const right = left + svgNumber(wall, 'width');
   assert.ok(floor.endsWith(`H${left}V${bottom}H${right}Z`),
-    'The left floor boundary must meet the bottom of the post, not stop lower at the old cabinet footprint');
+    'The left floor boundary must meet the wall projection, not stop lower at the old cabinet footprint');
+});
+
+test('structural projections are solid wall sections without post callouts on either plan', async () => {
+  for (const [room, walls] of [
+    ['common', [{ id: 'common-right-wall', x: 1417, y: 238, width: 120, height: 185 }]],
+    ['advanced', [
+     { id: 'advanced-left-wall', x: 22, y: 22, width: 140, height: 112 },
+     { id: 'advanced-right-wall', x: 1244, y: 22, width: 70, height: 93 },
+    ]],
+  ] as const) {
+    const svg = await readFile(new URL(`../../../apps/web/public/maps/${room}-makerspace.svg`, import.meta.url), 'utf8');
+    assert.equal(/\bpost\b/i.test(svg), false);
+    assert.match(svg, /\.wall\s*\{\s*fill: #526776; stroke: #526776; stroke-width: 4;/);
+    for (const expected of walls) {
+     const wall = svg.match(new RegExp(`<rect id="${expected.id}"[^>]+/>`))?.[0];
+     assert.ok(wall);
+     assert.ok(wall.includes('class="wall"'));
+     assert.equal(/\brx=/.test(wall), false);
+     for (const axis of ['x', 'y', 'width', 'height'] as const) {
+       assert.equal(svgNumber(wall, axis), expected[axis]);
+     }
+    }
+    assert.ok(svg.includes('>SINK</text>'));
+  }
 });

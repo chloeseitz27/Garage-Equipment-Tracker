@@ -4,6 +4,7 @@
   <style>
     text { font-family: "Segoe UI", Arial, sans-serif; fill: #20384b; text-anchor: middle; }
     .floor { fill: #f8fafc; stroke: #526776; stroke-width: 4; }
+    .wall { fill: #526776; stroke: #526776; stroke-width: 4; }
     .surface { fill: #e0ecf4; stroke: #7895a9; stroke-width: 2; }
     .island { fill: #edf0f2; stroke: #8b9aa5; stroke-width: 2; }
     .station { fill: #dff0eb; stroke: #638a7f; stroke-width: 2; }
@@ -110,6 +111,5 @@
   </g>
   <rect class="landmark" x="1461" y="85" width="76" height="153" rx="4"/>
   <text x="1499" y="168" font-size="20" font-weight="600">SINK</text>
-  <rect class="landmark" x="1417" y="238" width="120" height="185" rx="4"/>
-  <text x="1477" y="338" font-size="22" font-weight="600">POST</text>
+  <rect id="common-right-wall" class="wall" x="1417" y="238" width="120" height="185"/>
 </svg>
