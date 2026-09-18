@@ -13,7 +13,7 @@
   { "id": "loc-common-workbench-17", "name": "Workbench K", "parentId": "loc-common-makerspace", "kind": "workbench", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.95, "y": 0.664 } },
   { "id": "loc-common-table-14", "name": "Table L", "parentId": "loc-common-makerspace", "kind": "table", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.732, "y": 0.061 } },
   { "id": "loc-common-table-13", "name": "Table M", "parentId": "loc-common-makerspace", "kind": "table", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.294, "y": 0.064 } },
-  { "id": "loc-common-roland", "name": "Roland station", "parentId": "loc-common-makerspace", "kind": "zone", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.13, "y": 0.075 } },
+  { "id": "loc-common-roland", "name": "Roland", "parentId": "loc-common-makerspace", "kind": "zone", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.13, "y": 0.075 } },
   { "id": "loc-common-supply-cabinet", "name": "Enclosed supply cabinet", "parentId": "loc-common-makerspace", "kind": "cabinet", "mapPosition": { "roomId": "loc-common-makerspace", "mapId": "common", "x": 0.95, "y": 0.494 } },
   { "id": "loc-advanced-makerspace", "name": "Advanced Makerspace", "parentId": null, "kind": "room", "mapId": "advanced" },
   { "id": "loc-advanced-table-20", "name": "Table Z", "parentId": "loc-advanced-makerspace", "kind": "table", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.169, "y": 0.796 } },
@@ -24,7 +24,7 @@
   { "id": "loc-advanced-table-18", "name": "Table U", "parentId": "loc-advanced-makerspace", "kind": "table", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.95, "y": 0.423 } },
   { "id": "loc-advanced-table-11", "name": "Table T", "parentId": "loc-advanced-makerspace", "kind": "table", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.327, "y": 0.874 } },
   { "id": "loc-common-toolbench", "name": "Toolbox", "parentId": "loc-advanced-makerspace", "kind": "cabinet", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.172, "y": 0.132 } },
-  { "id": "loc-advanced-fire-cabinet", "name": "Fire cabinet", "parentId": "loc-advanced-makerspace", "kind": "cabinet", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.068, "y": 0.312 } },
-  { "id": "loc-advanced-laser", "name": "Laser station", "parentId": "loc-advanced-makerspace", "kind": "zone", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.506, "y": 0.885 } },
+  { "id": "loc-advanced-fire-cabinet", "name": "Fire cabinet", "parentId": "loc-advanced-makerspace", "kind": "cabinet", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.0353, "y": 0.501 } },
+  { "id": "loc-advanced-laser", "name": "Laser", "parentId": "loc-advanced-makerspace", "kind": "zone", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.506, "y": 0.885 } },
   { "id": "loc-advanced-laptop-cart", "name": "Laptop cart", "parentId": "loc-advanced-makerspace", "kind": "shelf", "mapPosition": { "roomId": "loc-advanced-makerspace", "mapId": "advanced", "x": 0.628, "y": 0.899 } }
 ]

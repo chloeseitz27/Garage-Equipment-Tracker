@@ -138,3 +138,63 @@ test('six central work tables stay on the drawing but cannot be selected as stor
   assert.equal(roomMapMarkers(seed, 'loc-advanced-makerspace').length, 11);
   assert.deepEqual(searchLocations(seed, 'work table'), []);
 });
+
+test('Roland and Laser labels agree between the floor plans and catalog without changing IDs', async () => {
+  const seed = locationsFileSchema.parse(JSON.parse(await readFile(new URL('../../../data/seed/locations.json', import.meta.url), 'utf8')));
+  for (const [id, name, room] of [
+    ['loc-common-roland', 'Roland', 'common'],
+    ['loc-advanced-laser', 'Laser', 'advanced'],
+  ]) {
+    const location = seed.find((entry) => entry.id === id);
+    assert.ok(location);
+    assert.equal(location.name, name);
+    const svg = await readFile(new URL(`../../../apps/web/public/maps/${room}-makerspace.svg`, import.meta.url), 'utf8');
+    const group = svg.match(new RegExp(`<g data-location-id="${id}">([\\s\\S]*?)</g>`))?.[1];
+    assert.ok(group);
+    assert.ok(group.includes(`>${name}</text>`));
+    assert.equal(group.includes(`${name} station`), false);
+    assert.ok(searchLocations(seed, name ?? '', seed.length).some((result) => result.id === id));
+  }
+});
+
+const svgNumber = (element: string, attribute: string): number => {
+  const match = element.match(new RegExp(`\\b${attribute}="([\\d.]+)"`));
+  assert.ok(match?.[1], `Missing ${attribute} on ${element}`);
+  return Number(match[1]);
+};
+
+test('Work Tables text is centered inside the six-table formation, not below it', async () => {
+  const svg = await readFile(new URL('../../../apps/web/public/maps/common-makerspace.svg', import.meta.url), 'utf8');
+  const group = svg.match(/<g data-work-tables="true">([\s\S]*?)<\/g>/)?.[1];
+  assert.ok(group);
+  const tables = [...group.matchAll(/<rect[^>]+\/>/g)].map(([element]) => ({
+    x: svgNumber(element, 'x'), y: svgNumber(element, 'y'),
+    width: svgNumber(element, 'width'), height: svgNumber(element, 'height'),
+  }));
+  assert.equal(tables.length, 6);
+  const centerX = (Math.min(...tables.map((t) => t.x)) + Math.max(...tables.map((t) => t.x + t.width))) / 2;
+  const centerY = (Math.min(...tables.map((t) => t.y)) + Math.max(...tables.map((t) => t.y + t.height))) / 2;
+  const label = group.match(/<text[^>]+>WORK TABLES<\/text>/)?.[0];
+  assert.ok(label);
+  assert.ok(Math.abs(svgNumber(label, 'x') - centerX) <= 1);
+  assert.ok(Math.abs(svgNumber(label, 'y') - centerY) <= 15);
+  assert.ok(group.includes('NO STORAGE'));
+});
+
+test('the fire cabinet stands along the left wall below the post and its marker remains centered', async () => {
+  const seed = locationsFileSchema.parse(JSON.parse(await readFile(new URL('../../../data/seed/locations.json', import.meta.url), 'utf8')));
+  const svg = await readFile(new URL('../../../apps/web/public/maps/advanced-makerspace.svg', import.meta.url), 'utf8');
+  const group = svg.match(/<g data-location-id="loc-advanced-fire-cabinet">([\s\S]*?)<\/g>/)?.[1];
+  const rect = group?.match(/<rect[^>]+\/>/)?.[0];
+  assert.ok(rect);
+  const x = svgNumber(rect, 'x'), y = svgNumber(rect, 'y');
+  const width = svgNumber(rect, 'width'), height = svgNumber(rect, 'height');
+  assert.equal(width, 46);
+  assert.equal(height, 140);
+  assert.ok(x >= 22 && x <= 26, 'Back must be against the left wall at x=22');
+  assert.ok(y >= 181, 'Cabinet must be below the post/alcove and inside the room');
+  const pin = seed.find((entry) => entry.id === 'loc-advanced-fire-cabinet')?.mapPosition;
+  assert.ok(pin);
+  assert.ok(Math.abs(pin.x * ROOM_MAPS.advanced.width - (x + width / 2)) < 1);
+  assert.ok(Math.abs(pin.y * ROOM_MAPS.advanced.height - (y + height / 2)) < 1);
+});

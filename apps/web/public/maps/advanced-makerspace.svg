@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1333" height="507" viewBox="0 0 1333 507" role="img" aria-labelledby="title description">
   <title id="title">Advanced Makerspace</title>
-  <desc id="description">Advanced Makerspace storage surfaces run Z through T from the lower-left table up the left wall, across the top, down the right wall, and along the bottom. The toolbox occupies the former coat-rack area at the upper left. Named cabinets and stations retain their names. This diagram is not to scale.</desc>
+  <desc id="description">Advanced Makerspace storage surfaces run Z through T from the lower-left table up the left wall, across the top, down the right wall, and along the bottom. The toolbox occupies the former coat-rack area at the upper left. The fire cabinet has its back against the left wall and its doors facing into the room, not against the post. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
   <style>
     text { font-family: "Segoe UI", Arial, sans-serif; fill: #20384b; text-anchor: middle; }
     .floor { fill: #f8fafc; stroke: #526776; stroke-width: 4; }
@@ -33,9 +33,12 @@
     <text x="230" y="46" font-size="22" font-weight="700">Toolbox</text>
   </g>
   <g data-location-id="loc-advanced-fire-cabinet">
-    <rect class="cabinet" x="22" y="136" width="140" height="46" rx="7"/>
-    <path d="M164 158H177" stroke="#aa8750" stroke-width="2"/>
-    <text x="185" y="164" font-size="20" font-weight="600" style="text-anchor:start">Fire cabinet</text>
+    <rect class="cabinet" x="24" y="184" width="46" height="140" rx="7"/>
+    <path d="M24 191V317" stroke="#876833" stroke-width="4"/>
+    <path d="M66 198V310M61 241V267" stroke="#aa8750" stroke-width="2"/>
+    <path d="M72 254H82" stroke="#aa8750" stroke-width="2"/>
+    <text x="88" y="247" font-size="20" font-weight="600" style="text-anchor:start">Fire</text>
+    <text x="88" y="272" font-size="20" font-weight="600" style="text-anchor:start">cabinet</text>
   </g>
   <g data-location-id="loc-advanced-workbench-16" data-storage-letter="X">
     <rect class="surface" x="383" y="24" width="326" height="91" rx="8"/>
@@ -70,7 +73,7 @@
   </g>
   <g data-location-id="loc-advanced-laser">
     <rect class="station" x="591" y="400" width="180" height="86" rx="8"/>
-    <text class="label" x="681" y="425">Laser station</text>
+    <text class="label" x="681" y="425">Laser</text>
   </g>
   <g data-location-id="loc-advanced-laptop-cart">
     <rect class="surface" x="785" y="422" width="104" height="64" rx="8"/>
