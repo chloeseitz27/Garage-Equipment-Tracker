@@ -192,9 +192,21 @@ test('the fire cabinet stands along the left wall below the post and its marker 
   assert.equal(width, 46);
   assert.equal(height, 140);
   assert.ok(x >= 22 && x <= 26, 'Back must be against the left wall at x=22');
-  assert.ok(y >= 181, 'Cabinet must be below the post/alcove and inside the room');
+  assert.ok(y >= 181, 'Cabinet stays in its current position below the post and inside the room');
   const pin = seed.find((entry) => entry.id === 'loc-advanced-fire-cabinet')?.mapPosition;
   assert.ok(pin);
   assert.ok(Math.abs(pin.x * ROOM_MAPS.advanced.width - (x + width / 2)) < 1);
   assert.ok(Math.abs(pin.y * ROOM_MAPS.advanced.height - (y + height / 2)) < 1);
+});
+
+test('Advanced floor extends directly beneath the left post without a false wall recess', async () => {
+  const svg = await readFile(new URL('../../../apps/web/public/maps/advanced-makerspace.svg', import.meta.url), 'utf8');
+  const post = svg.match(/<rect id="advanced-left-post"[^>]+\/>/)?.[0];
+  const floor = svg.match(/<path class="floor" d="([^"]+)"/)?.[1];
+  assert.ok(post && floor);
+  const left = svgNumber(post, 'x');
+  const bottom = svgNumber(post, 'y') + svgNumber(post, 'height');
+  const right = left + svgNumber(post, 'width');
+  assert.ok(floor.endsWith(`H${left}V${bottom}H${right}Z`),
+    'The left floor boundary must meet the bottom of the post, not stop lower at the old cabinet footprint');
 });
