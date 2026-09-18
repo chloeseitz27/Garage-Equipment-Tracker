@@ -4,6 +4,7 @@ obj/
 dist/
 build/
 out/
+*.tsbuildinfo
 
 # Dependencies
 node_modules/
@@ -15,7 +16,12 @@ __pycache__/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 *.local
+
+# Runtime data — the live working copy (technical-spec.md §4.2).
+# data/seed/ is committed; data/runtime/ is not.
+data/runtime/
 
 # Editor / OS
 .vs/

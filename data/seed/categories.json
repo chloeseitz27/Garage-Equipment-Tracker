@@ -1,0 +1,12 @@
+[
+  { "id": "cat-3d-printing", "name": "3D Printing" },
+  { "id": "cat-laser-cnc", "name": "Laser & CNC" },
+  { "id": "cat-electronics", "name": "Electronics" },
+  { "id": "cat-woodworking", "name": "Woodworking" },
+  { "id": "cat-hand-tools", "name": "Hand Tools" },
+  { "id": "cat-textiles", "name": "Textiles & Soft Goods" },
+  { "id": "cat-prototyping", "name": "Prototyping & Craft" },
+  { "id": "cat-av", "name": "Audio & Video" },
+  { "id": "cat-safety", "name": "Safety Equipment" },
+  { "id": "cat-materials", "name": "Raw Materials" }
+]

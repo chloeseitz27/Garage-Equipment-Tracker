@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1333" height="507" viewBox="0 0 1333 507" role="img" aria-labelledby="title description">
+  <title id="title">Advanced Makerspace</title>
+  <desc id="description">Advanced Makerspace storage surfaces run Z through T from the lower-left table up the left wall, across the top, down the right wall, and along the bottom. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
+  <style>
+    text { font-family: "Segoe UI", Arial, sans-serif; fill: #20384b; text-anchor: middle; }
+    .floor { fill: #f8fafc; stroke: #526776; stroke-width: 4; }
+    .wall { fill: #526776; stroke: #526776; stroke-width: 4; }
+    .surface { fill: #e0ecf4; stroke: #7895a9; stroke-width: 2; }
+    .station { fill: #dff0eb; stroke: #638a7f; stroke-width: 2; }
+    .cabinet { fill: #fff0d4; stroke: #aa8750; stroke-width: 2; }
+    .landmark { fill: #e9edf0; stroke: #a5b3bd; stroke-width: 2; }
+    .label { font-size: 26px; font-weight: 600; }
+    .letter { font-size: 32px; font-weight: 700; }
+    .small { font-size: 16px; font-weight: 600; letter-spacing: 1px; fill: #415d70; }
+  </style>
+  <rect width="1333" height="507" fill="#fff"/>
+  <!-- Same source-image coordinates as the original plan, so existing catalog pins still align. -->
+  <path class="floor" d="M162 22H1244V115H1314V407H1220V486H22V134H162Z"/>
+  <path d="M293 496H934M1145 496H1220" stroke="#53a5bd" stroke-width="6"/>
+  <text class="small" x="645" y="503">VIEWING WINDOWS</text>
+  <path d="M938 486H1144" stroke="#fff" stroke-width="9"/>
+  <path d="M938 486H1144" stroke="#416170" stroke-width="3" stroke-dasharray="8 6"/>
+  <text class="small" x="1041" y="503">ENTRANCE</text>
+  <text x="745" y="246" font-size="40" font-weight="700" letter-spacing="1">ADVANCED MAKERSPACE</text>
+  <text class="small" x="745" y="275">STORAGE Z&#8211;T &#183; NOT TO SCALE</text>
+
+  <rect id="advanced-left-wall" class="wall" x="22" y="22" width="140" height="112"/>
+  <rect id="advanced-right-wall" class="wall" x="1244" y="22" width="70" height="93"/>
+
+  <g data-location-id="loc-common-toolbench">
+    <rect class="cabinet" x="166" y="24" width="127" height="87" rx="8"/>
+    <text x="230" y="46" font-size="22" font-weight="700">Toolbox</text>
+  </g>
+  <g data-location-id="loc-advanced-fire-cabinet">
+    <rect class="cabinet" x="24" y="184" width="46" height="140" rx="7"/>
+    <path d="M24 191V317" stroke="#876833" stroke-width="4"/>
+    <path d="M66 198V310M61 241V267" stroke="#aa8750" stroke-width="2"/>
+    <path d="M72 254H82" stroke="#aa8750" stroke-width="2"/>
+    <text x="88" y="247" font-size="20" font-weight="600" style="text-anchor:start">Fire</text>
+    <text x="88" y="272" font-size="20" font-weight="600" style="text-anchor:start">cabinet</text>
+  </g>
+  <g data-location-id="loc-advanced-workbench-16" data-storage-letter="X">
+    <rect class="surface" x="383" y="24" width="326" height="91" rx="8"/>
+    <text class="label" x="546" y="49">Workbench X</text>
+  </g>
+  <g data-location-id="loc-advanced-table-19" data-storage-letter="W">
+    <rect class="surface" x="709" y="24" width="285" height="91" rx="8"/>
+    <text class="label" x="851" y="49">Table W</text>
+  </g>
+  <g data-location-id="loc-advanced-table-3" data-storage-letter="V">
+    <rect class="surface" x="994" y="24" width="250" height="91" rx="8"/>
+    <text class="label" x="1119" y="49">Table V</text>
+  </g>
+  <g data-location-id="loc-advanced-table-18" data-storage-letter="U">
+    <rect class="surface" x="1220" y="115" width="94" height="199" rx="8"/>
+    <text class="small" x="1267" y="162">TABLE</text>
+    <text class="letter" x="1267" y="193">U</text>
+  </g>
+  <g data-location-id="loc-advanced-table-21" data-storage-letter="Y">
+    <rect class="surface" x="183" y="175" width="81" height="147" rx="8"/>
+    <text x="224" y="201" font-size="14" font-weight="600">TABLE</text>
+    <text class="letter" x="224" y="226">Y</text>
+  </g>
+  <g data-location-id="loc-advanced-table-20" data-storage-letter="Z">
+    <rect class="surface" x="183" y="322" width="81" height="164" rx="8"/>
+    <text x="224" y="350" font-size="14" font-weight="600">TABLE</text>
+    <text class="letter" x="224" y="381">Z</text>
+  </g>
+  <g data-location-id="loc-advanced-table-11" data-storage-letter="T">
+    <rect class="surface" x="294" y="398" width="284" height="88" rx="8"/>
+    <text class="label" x="436" y="420">Table T</text>
+  </g>
+  <g data-location-id="loc-advanced-laser">
+    <rect class="station" x="591" y="400" width="180" height="86" rx="8"/>
+    <text class="label" x="681" y="425">Laser</text>
+  </g>
+  <g data-location-id="loc-advanced-laptop-cart">
+    <rect class="surface" x="785" y="422" width="104" height="64" rx="8"/>
+    <path d="M837 421V400" stroke="#7895a9" stroke-width="2"/>
+    <text x="837" y="391" font-size="22" font-weight="600">Laptop cart</text>
+  </g>
+  <rect class="landmark" x="1220" y="407" width="94" height="79" rx="4"/>
+  <text x="1267" y="455" font-size="20" font-weight="600">SINK</text>
+</svg>

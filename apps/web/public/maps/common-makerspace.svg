@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1555" height="982" viewBox="0 0 1555 982" role="img" aria-labelledby="title description">
+  <title id="title">Common Makerspace</title>
+  <desc id="description">Common Makerspace storage surfaces run A through M from the upper-left desk down the left wall, across the bottom, up the right wall, and along the top. Six central work tables are unlettered and must remain clear of stored items. The toolbox is in Advanced Makerspace. This diagram is not to scale.</desc>
+  <style>
+    text { font-family: "Segoe UI", Arial, sans-serif; fill: #20384b; text-anchor: middle; }
+    .floor { fill: #f8fafc; stroke: #526776; stroke-width: 4; }
+    .wall { fill: #526776; stroke: #526776; stroke-width: 4; }
+    .surface { fill: #e0ecf4; stroke: #7895a9; stroke-width: 2; }
+    .island { fill: #edf0f2; stroke: #8b9aa5; stroke-width: 2; }
+    .station { fill: #dff0eb; stroke: #638a7f; stroke-width: 2; }
+    .cabinet { fill: #fff0d4; stroke: #aa8750; stroke-width: 2; }
+    .landmark { fill: #e9edf0; stroke: #a5b3bd; stroke-width: 2; }
+    .label { font-size: 26px; font-weight: 600; }
+    .letter { font-size: 34px; font-weight: 700; }
+    .small { font-size: 16px; font-weight: 600; letter-spacing: 1px; fill: #415d70; }
+    .window { stroke: #53a5bd; stroke-width: 6; }
+    .entry { stroke: #416170; stroke-width: 3; stroke-dasharray: 8 6; }
+  </style>
+  <rect width="1555" height="982" fill="#fff"/>
+  <!-- Keep this coordinate system unchanged: catalog markers use normalized source-image coordinates. -->
+  <path class="floor" d="M22 22H1537V85H1460V238H1417V423H1537V964H22Z"/>
+  <path d="M742 22H967" stroke="#fff" stroke-width="9"/>
+  <path class="entry" d="M742 22H967"/>
+  <text class="small" x="854" y="16">ENTRANCE</text>
+  <path class="window" d="M1006 13H1459M13 150V772M211 973H1269"/>
+  <text class="small" x="1240" y="16">VIEWING WINDOWS</text>
+  <text class="small" x="740" y="980">WINDOWS</text>
+  <text x="777" y="177" font-size="40" font-weight="700" letter-spacing="1">COMMON MAKERSPACE</text>
+  <text class="small" x="777" y="205">STORAGE A&#8211;M &#183; NOT TO SCALE</text>
+
+  <g data-location-id="loc-common-desk-1" data-storage-letter="A">
+    <rect class="surface" x="22" y="22" width="77" height="77" rx="7"/>
+    <text x="60" y="39" font-size="13" font-weight="600">DESK</text>
+    <text x="60" y="94" font-size="26" font-weight="700">A</text>
+  </g>
+  <g data-location-id="loc-common-roland">
+    <rect class="station" x="101" y="43" width="204" height="45" rx="8"/>
+    <text class="label" x="203" y="121">Roland</text>
+  </g>
+  <g data-location-id="loc-common-table-13" data-storage-letter="M">
+    <rect class="surface" x="325" y="24" width="265" height="78" rx="8"/>
+    <text x="458" y="43" font-size="24" font-weight="600">Table M</text>
+  </g>
+  <g data-location-id="loc-common-table-14" data-storage-letter="L">
+    <rect class="surface" x="1005" y="22" width="264" height="76" rx="8"/>
+    <text x="1137" y="42" font-size="24" font-weight="600">Table L</text>
+  </g>
+
+  <g data-location-id="loc-common-table-9" data-storage-letter="B">
+    <rect class="surface" x="22" y="150" width="93" height="210" rx="8"/>
+    <text class="small" x="68" y="201">TABLE</text>
+    <text class="letter" x="68" y="234">B</text>
+  </g>
+  <g data-location-id="loc-common-table-8" data-storage-letter="C">
+    <rect class="surface" x="22" y="360" width="95" height="207" rx="8"/>
+    <text class="small" x="69" y="411">TABLE</text>
+    <text class="letter" x="69" y="445">C</text>
+  </g>
+  <g data-location-id="loc-common-table-7" data-storage-letter="D">
+    <rect class="surface" x="22" y="567" width="94" height="206" rx="8"/>
+    <text class="small" x="69" y="616">TABLE</text>
+    <text class="letter" x="69" y="650">D</text>
+  </g>
+  <g data-location-id="loc-common-table-6-5" data-storage-letter="E">
+    <path class="surface" d="M22 773H116L211 869V964H22Z"/>
+    <text class="small" x="105" y="844">CORNER TABLE</text>
+    <text class="letter" x="111" y="885">E</text>
+  </g>
+  <g data-location-id="loc-common-table-6" data-storage-letter="F">
+    <rect class="surface" x="211" y="870" width="264" height="94" rx="8"/>
+    <text class="label" x="343" y="896">Table F</text>
+  </g>
+  <g data-location-id="loc-common-table-5" data-storage-letter="G">
+    <rect class="surface" x="475" y="870" width="266" height="94" rx="8"/>
+    <text class="label" x="608" y="896">Table G</text>
+  </g>
+  <g data-location-id="loc-common-table-10" data-storage-letter="H">
+    <rect class="surface" x="741" y="870" width="264" height="94" rx="8"/>
+    <text class="label" x="873" y="896">Table H</text>
+  </g>
+  <g data-location-id="loc-common-table-4" data-storage-letter="I">
+    <rect class="surface" x="1005" y="870" width="264" height="94" rx="8"/>
+    <text class="label" x="1137" y="896">Table I</text>
+  </g>
+
+  <g data-work-tables="true">
+    <rect class="island" x="344" y="266" width="264" height="94" rx="8"/>
+    <rect class="island" x="344" y="360" width="95" height="206" rx="8"/>
+    <rect class="island" x="344" y="567" width="265" height="94" rx="8"/>
+    <rect class="island" x="778" y="266" width="265" height="94" rx="8"/>
+    <rect class="island" x="948" y="360" width="95" height="206" rx="8"/>
+    <rect class="island" x="778" y="567" width="265" height="94" rx="8"/>
+    <text class="label" x="694" y="455">WORK TABLES</text>
+    <text class="small" x="694" y="483">KEEP CLEAR &#183; NO STORAGE</text>
+  </g>
+
+  <g data-location-id="loc-common-supply-cabinet">
+    <rect class="cabinet" x="1421" y="423" width="116" height="124" rx="8"/>
+    <text x="1479" y="455" font-size="23" font-weight="600">Supply</text>
+    <text x="1479" y="534" font-size="23" font-weight="600">cabinet</text>
+  </g>
+  <g data-location-id="loc-common-workbench-17" data-storage-letter="K">
+    <rect class="surface" x="1421" y="547" width="116" height="210" rx="8"/>
+    <text x="1479" y="599" font-size="14" font-weight="600">WORKBENCH</text>
+    <text class="letter" x="1479" y="630">K</text>
+  </g>
+  <g data-location-id="loc-common-workbench-2" data-storage-letter="J">
+    <rect class="surface" x="1421" y="757" width="116" height="207" rx="8"/>
+    <text x="1479" y="807" font-size="14" font-weight="600">WORKBENCH</text>
+    <text class="letter" x="1479" y="838">J</text>
+  </g>
+  <rect class="landmark" x="1461" y="85" width="76" height="153" rx="4"/>
+  <text x="1499" y="168" font-size="20" font-weight="600">SINK</text>
+  <rect id="common-right-wall" class="wall" x="1417" y="238" width="120" height="185"/>
+</svg>

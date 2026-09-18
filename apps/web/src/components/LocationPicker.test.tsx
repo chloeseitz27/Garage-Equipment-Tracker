@@ -1,0 +1,1837 @@
+import assert from 'node:assert/strict';
+import { after, afterEach, beforeEach, test } from 'node:test';
+import { JSDOM } from 'jsdom';
+import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
+import type { Root } from 'react-dom/client';
+import { formatLocationPath, getLocationPath, type Item, type Location } from '@garage/shared';
+import { LocationPicker } from './LocationPicker.js';
+import { BulkEntry } from './BulkEntry.js';
+
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
+Object.defineProperties(globalThis, {
+  window: { configurable: true, value: dom.window },
+  document: { configurable: true, value: dom.window.document },
+  navigator: { configurable: true, value: dom.window.navigator },
+  Node: { configurable: true, value: dom.window.Node },
+  HTMLElement: { configurable: true, value: dom.window.HTMLElement },
+  IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
+});
+// jsdom has no layout; browser verification covers scrolling and popup positioning.
+dom.window.HTMLElement.prototype.scrollIntoView = () => {};
+dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+const { createRoot } = await import('react-dom/client');
+// Portal components import react-dom too; initialize it only after the DOM exists.
+const { ItemEditor } = await import('./ItemEditor.js');
+const { LocationManager } = await import('./LocationManager.js');
+const { RoomMapsPage } = await import('./RoomMapsPage.js');
+const { RoomMap } = await import('./RoomMap.js');
+const { LocationMapEditor } = await import('./LocationMapEditor.js');
+const { ItemsManager } = await import('./ItemsManager.js');
+const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
+const { StaffPanel } = await import('./StaffPanel.js');
+const { App } = await import('../App.js');
+const { createBrowserRouter, createMemoryRouter, RouterProvider, useLocation, useNavigate } = await import('react-router-dom');
+const TestElementContext = createContext<ReactElement | null>(null);
+
+const locations: Location[] = [
+  { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
+  { id: 'bench', name: 'Electronics Bench', parentId: 'room', kind: 'zone' },
+  { id: 'cabinet', name: 'Cabinet B', parentId: 'bench', kind: 'shelf' },
+  ...Array.from({ length: 20 }, (_, index): Location => ({
+    id: `bin-${index}`,
+    name: `Bin B${index}`,
+    parentId: 'cabinet',
+    kind: 'bin',
+  })),
+  { id: 'storage', name: 'Storage Room', parentId: null, kind: 'room' },
+  { id: 'destination', name: 'Spare Shelf', parentId: 'storage', kind: 'shelf' },
+];
+const categories = [{ id: 'tools', name: 'Tools' }];
+const item: Item = {
+  id: 'vise', name: 'Vise', kind: 'equipment', categoryId: 'tools', locationId: 'bin-19',
+  tags: [], goodFor: [], status: 'available', quantity: 1, trainingRequired: 'none',
+};
+const catalog = { locations, categories, items: [item] };
+const path = (id: string): string => formatLocationPath(getLocationPath(locations, id));
+const originalFetch = globalThis.fetch;
+const originalConfirm = window.confirm;
+let root: Root;
+let host: HTMLDivElement;
+let testRouter: ReturnType<typeof createMemoryRouter> | null;
+let writes: Array<{ url: string; body: Record<string, unknown> }>;
+
+beforeEach(() => {
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  testRouter = null;
+  writes = [];
+  globalThis.fetch = async (url, init) => {
+    const text = init?.body;
+    assert.ok(typeof text === 'string', 'Unexpected request: tests must not access a real API');
+    const body: Record<string, unknown> = JSON.parse(text);
+    writes.push({ url: String(url), body });
+    return new Response(JSON.stringify({ ...body, id: 'saved', created: 1, updated: 1, items: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+});
+
+afterEach(async () => {
+  await act(() => root.unmount());
+  testRouter?.dispose();
+  host.remove();
+  globalThis.fetch = originalFetch;
+  window.confirm = originalConfirm;
+});
+after(() => dom.window.close());
+
+function HistoryControls(): ReactElement {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return createElement('div', null,
+    createElement('output', { 'data-test-url': true }, `${location.pathname}${location.search}`),
+    createElement('button', { onClick: () => navigate(-1) }, 'History back'),
+    createElement('button', { onClick: () => navigate(1) }, 'History forward'),
+  );
+}
+function TestScreen(): ReactElement {
+  const element = useContext(TestElementContext);
+  return createElement('div', null, element, createElement(HistoryControls));
+}
+const render = async (element: ReactElement, initialPath = '/manage/items'): Promise<void> => {
+  if (!testRouter) {
+    testRouter = createMemoryRouter([{
+      path: element.type === StaffPanel ? '/manage/*' : '*',
+      element: createElement(TestScreen),
+    }], { initialEntries: [initialPath] });
+  }
+  const router = testRouter;
+  await act(() => root.render(createElement(TestElementContext.Provider, { value: element },
+    createElement(RouterProvider, { router }),
+  )));
+};
+const currentUrl = (): string => host.querySelector('[data-test-url]')?.textContent ?? '';
+const link = (text: string): HTMLAnchorElement => {
+  const result = [...host.querySelectorAll('a')].find((node) => node.textContent?.trim() === text);
+  assert.ok(result, `Missing link ${text}`);
+  return result;
+};
+const combobox = (label: string): HTMLInputElement => {
+  const labelNode = [...host.querySelectorAll('label')].find((node) => node.textContent === label);
+  assert.ok(labelNode, `Missing label ${label}`);
+  const input = document.getElementById(labelNode.htmlFor);
+  assert.ok(input instanceof dom.window.HTMLInputElement);
+  return input;
+};
+const options = (): HTMLButtonElement[] => [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+const focus = async (input: HTMLInputElement): Promise<void> => { await act(() => input.focus()); };
+const click = async (element: HTMLElement): Promise<void> => { await act(() => element.click()); };
+const type = async (input: HTMLInputElement | HTMLTextAreaElement, text: string): Promise<void> => {
+  const prototype = input instanceof dom.window.HTMLTextAreaElement
+    ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  assert.ok(setter);
+  await act(() => {
+    setter.call(input, text);
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+};
+const key = async (input: HTMLInputElement, value: string): Promise<void> => {
+  await act(() => { input.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+    key: value, bubbles: true, cancelable: true,
+  })); });
+};
+const button = (text: string): HTMLButtonElement => {
+  const result = [...host.querySelectorAll('button')]
+    .find((node) => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === text);
+  assert.ok(result, `Missing button ${text}`);
+  return result;
+};
+const choose = async (input: HTMLInputElement, text = 'spare'): Promise<void> => {
+  await focus(input);
+  await type(input, text);
+  assert.equal(options().length, 1);
+  await click(options()[0]!);
+};
+
+function Field(): ReactElement {
+  const [value, setValue] = useState('bin-19');
+  return createElement(LocationPicker, { locations, value, onSelect: setValue, label: 'Location' });
+}
+
+test('a selected path is visible; every location remains reachable, including beyond the old 12-result cap', async () => {
+  await render(createElement(Field));
+  const input = combobox('Location');
+  assert.equal(input.value, path('bin-19'));
+  await focus(input);
+  assert.equal(options().length, locations.length);
+  assert.ok(document.getElementById(input.getAttribute('aria-controls') ?? ''));
+  assert.ok(document.getElementById(input.getAttribute('aria-activedescendant') ?? ''));
+  assert.equal(options().filter((node) => node.getAttribute('aria-selected') === 'true').length, 1);
+  await choose(input);
+  assert.equal(input.value, path('destination'));
+  assert.equal(input.getAttribute('aria-expanded'), 'false');
+  assert.equal(writes.length, 0);
+});
+
+test('pasting a full breadcrumb or a punctuated location name finds that location', async () => {
+  await render(createElement(Field));
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, path('destination'));
+  assert.equal(options().length, 1);
+  assert.match(options()[0]?.textContent ?? '', /Spare Shelf/);
+});
+
+test('querying, Escape, blur, and outside clicks never change the stored value', async () => {
+  await render(createElement(Field));
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, 'not a location');
+  assert.equal(options().length, 0);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /No location matches/);
+  await key(input, 'Enter');
+  await key(input, 'Escape');
+  assert.equal(input.value, path('bin-19'));
+  await key(input, 'Enter');
+  assert.equal(input.value, path('bin-19'));
+  await type(input, 'spare');
+  await act(() => input.blur());
+  assert.equal(input.getAttribute('aria-expanded'), 'false');
+  assert.equal(input.value, path('bin-19'));
+  await focus(input);
+  await type(input, 'storage');
+  await act(() => document.body.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true })));
+  assert.equal(input.value, path('bin-19'));
+  assert.equal(input.getAttribute('aria-expanded'), 'false');
+});
+
+test('arrow navigation and Enter select without submitting a surrounding form', async () => {
+  let submits = 0;
+  let selected = '';
+  await render(createElement('form', {
+    onSubmit: (event: FormEvent) => { event.preventDefault(); submits++; },
+  }, createElement(LocationPicker, { locations, onSelect: (id: string) => { selected = id; } })));
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, 'no results');
+  await key(input, 'ArrowDown');
+  assert.equal(input.getAttribute('aria-activedescendant'), null);
+  await type(input, 'storage');
+  await key(input, 'ArrowDown');
+  const active = document.getElementById(input.getAttribute('aria-activedescendant') ?? '');
+  assert.match(active?.textContent ?? '', /Spare Shelf/);
+  await key(input, 'Enter');
+  assert.equal(selected, 'destination');
+  assert.equal(submits, 0);
+  assert.equal(input.value, '');
+  await key(input, 'Enter');
+  assert.equal(selected, 'destination');
+});
+
+test('a disabled picker is closed and cannot dispatch a selection', async () => {
+  let count = 0;
+  const onSelect = (): void => { count++; };
+  await render(createElement(LocationPicker, { locations, onSelect }));
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, 'spare');
+  await render(createElement(LocationPicker, { locations, onSelect, disabled: true }));
+  assert.equal(input.disabled, true);
+  assert.equal(options().length, 0);
+  await key(input, 'Enter');
+  assert.equal(count, 0);
+});
+
+test('multiple pickers have distinct labels and listbox ids', async () => {
+  await render(createElement('div', null,
+    createElement(LocationPicker, { locations, label: 'First', onSelect: () => {} }),
+    createElement(LocationPicker, { locations, label: 'Second', onSelect: () => {} })));
+  const first = combobox('First');
+  const second = combobox('Second');
+  assert.notEqual(first.id, second.id);
+  await focus(first);
+  const firstList = first.getAttribute('aria-controls');
+  await focus(second);
+  assert.equal(first.getAttribute('aria-expanded'), 'false');
+  assert.notEqual(second.getAttribute('aria-controls'), firstList);
+});
+
+test('the item editor retains and submits the chosen location only on Save', async () => {
+  await render(createElement(ItemEditor, { item, categories, locations, onSaved: () => {}, onCancel: () => {} }));
+  const input = combobox('Location');
+  assert.equal(input.value, path(item.locationId));
+  await focus(input);
+  await type(input, 'spare');
+  await key(input, 'Enter');
+  assert.equal(writes.length, 0);
+  assert.equal(input.value, path('destination'));
+  await click(button('Save changes'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/vise');
+  assert.equal(writes[0]?.body.locationId, 'destination');
+  assert.equal(writes[0]?.body.name, item.name);
+});
+
+test('new items use the same picker and changing the edited item refreshes its selected path', async () => {
+  const props = { categories, locations, onSaved: () => {}, onCancel: () => {} };
+  await render(createElement(ItemEditor, { ...props, item: null }));
+  assert.equal(combobox('Location').value, path('room'));
+  await render(createElement(ItemEditor, { ...props, item }));
+  assert.equal(combobox('Location').value, path('bin-19'));
+});
+
+test('bulk-entry location defaults are retained and used for every submitted row', async () => {
+  await render(createElement(BulkEntry, { locations, categories, onCreated: () => {} }));
+  const input = combobox('Default location');
+  assert.equal(input.value, path('room'));
+  await choose(input);
+  assert.equal(input.value, path('destination'));
+  const rows = host.querySelector<HTMLTextAreaElement>('textarea');
+  assert.ok(rows);
+  await type(rows, 'Vise\nTape, consumable');
+  assert.equal(writes.length, 0);
+  await click(button('Add 2 item(s)'));
+  assert.equal(writes[0]?.url, '/api/items/bulk');
+  assert.deepEqual((writes[0]?.body.items as Array<{ locationId: string }>).map((row) => row.locationId),
+    ['destination', 'destination']);
+  assert.equal(input.value, path('destination'));
+});
+
+test('parent selectors support null, filter self and descendants, and keep full ancestor paths', async () => {
+  await render(createElement(LocationManager, { locations, items: [item], onChanged: () => {} }));
+  const row = [...host.querySelectorAll('.tree-node')].find((node) =>
+    node.querySelector('.tree-name')?.textContent?.startsWith('Cabinet B'));
+  assert.ok(row);
+  const edit = row.querySelector<HTMLButtonElement>('button');
+  assert.ok(edit);
+  await click(edit);
+  const input = combobox('Parent location');
+  assert.equal(input.value, path('bench'));
+  await focus(input);
+  assert.equal(options().length, 5); // Four ancestors/unrelated locations and top level.
+  assert.equal(options().some((node) => /Cabinet B|Bin B/.test(node.textContent ?? '')), false);
+  await type(input, 'electronics');
+  assert.equal(options().length, 1);
+  assert.match(options()[0]?.textContent ?? '', /Main Shop.*Electronics Bench/);
+  await type(input, 'top');
+  await key(input, 'Enter');
+  assert.equal(input.value, 'Top level (no parent)');
+  assert.equal(writes.length, 0);
+  await click(button('Save'));
+  assert.equal(writes[0]?.url, '/api/locations/cabinet');
+  assert.equal(writes[0]?.body.parentId, null);
+});
+
+test('new location parents can be changed and reset to top level without an implicit write', async () => {
+  await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
+  const input = combobox('New location parent');
+  assert.equal(input.value, 'Top level (no parent)');
+  await choose(input);
+  assert.equal(input.value, path('destination'));
+  await choose(input, 'top');
+  assert.equal(input.value, 'Top level (no parent)');
+  const name = host.querySelector<HTMLInputElement>('input[placeholder="New location name"]');
+  assert.ok(name);
+  await type(name, 'Annex');
+  assert.equal(writes.length, 0);
+  await click(button('Add location'));
+  assert.equal(writes[0]?.url, '/api/locations');
+  assert.equal(writes[0]?.body.parentId, null);
+});
+
+test('bulk Move to is a draft until Save, including keyboard selection', async () => {
+  await render(createElement(ItemsManager, { catalog, mode: 'live', onChanged: () => {} }));
+  const checkbox = host.querySelector<HTMLInputElement>('.row-check input');
+  assert.ok(checkbox);
+  await click(checkbox);
+  assert.equal(button('Save').disabled, true);
+  const input = combobox('Move to');
+  await focus(input);
+  await type(input, 'spare');
+  await key(input, 'Escape');
+  await key(input, 'Enter');
+  assert.equal(writes.length, 0);
+  await type(input, 'spare');
+  await key(input, 'Enter');
+  assert.equal(input.value, path('destination'));
+  assert.equal(writes.length, 0);
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk-update');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { locationId: 'destination' } });
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /Saved changes/);
+});
+
+const multiCatalog = {
+  ...catalog,
+  categories: [...categories, { id: 'materials', name: 'Materials' }],
+  items: [
+    item,
+    {
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'tools', locationId: 'bin-19',
+      tags: [], goodFor: [], stockLevel: 'in-stock',
+    } satisfies Item,
+  ],
+};
+
+const checkboxFor = (name: string): HTMLInputElement => {
+  const row = [...host.querySelectorAll('.item-table tbody tr')]
+    .find((node) => node.querySelector('.item-name')?.textContent === name);
+  const checkbox = row?.querySelector<HTMLInputElement>('.row-check input');
+  assert.ok(checkbox, `Missing checkbox for ${name}`);
+  return checkbox;
+};
+
+const setCategory = async (value: string): Promise<void> => {
+  const select = host.querySelector<HTMLSelectElement>('.bulk-bar select');
+  assert.ok(select);
+  await act(() => {
+    select.value = value;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+};
+
+test('Save applies location and category to the full selection in one request', async () => {
+  let refreshes = 0;
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  assert.equal(writes.length, 0);
+  assert.equal(refreshes, 0);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0]?.body, {
+    ids: ['vise', 'solder'], changes: { locationId: 'destination', categoryId: 'materials' },
+  });
+  assert.equal(refreshes, 1);
+});
+
+test('category-only drafts can be undone and saved without a location change', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await setCategory('materials');
+  assert.equal(writes.length, 0);
+  assert.equal(button('Save').disabled, false);
+  await setCategory('');
+  assert.equal(button('Save').disabled, true);
+  await setCategory('materials');
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { categoryId: 'materials' } });
+});
+
+test('unchecking items discards pending edits without a separate Deselect button', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  assert.deepEqual([...host.querySelectorAll('.bulk-actions > button')].map((node) => node.getAttribute('aria-label') ?? node.textContent),
+    ['Save', 'Delete']);
+  await click(checkboxFor('Vise'));
+  assert.equal(writes.length, 0);
+  assert.equal(checkboxFor('Vise').checked, false);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  await click(checkboxFor('Solder'));
+  assert.equal(combobox('Move to').value, '');
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, '');
+  assert.equal(button('Save').disabled, true);
+});
+
+test('changing the selection or filtering away selected rows clears the old draft', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(checkboxFor('Solder'));
+  assert.equal(button('Save').disabled, true);
+  assert.equal(combobox('Move to').value, '');
+  await setCategory('materials');
+  const filter = host.querySelector<HTMLInputElement>('input[aria-label="Filter by name"]');
+  assert.ok(filter);
+  await type(filter, 'Solder');
+  assert.equal(host.querySelector('.bulk-bar strong')?.textContent, '1 selected');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(writes.length, 0);
+});
+
+test('a failed Save preserves the draft and checked items for retry', async () => {
+  const succeed = globalThis.fetch;
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return new Response(JSON.stringify({ error: 'Could not save this batch' }), { status: 500 });
+  };
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await setCategory('materials');
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save this batch/);
+  assert.equal(host.querySelector('[role="status"]'), null);
+  assert.equal(button('Save').disabled, false);
+  globalThis.fetch = succeed;
+  await click(button('Save'));
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+});
+
+test('pending saves disable repeated actions and changes to the selection', async () => {
+  const succeed = globalThis.fetch;
+  let release = (_response: Response): void => { throw new Error('Request not initialized'); };
+  const pending = new Promise<Response>((resolve) => { release = resolve; });
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return pending;
+  };
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Save'));
+  assert.equal(button('Save').disabled, true);
+  assert.equal(button('Delete').disabled, true);
+  assert.equal(button('Delete Vise').disabled, true);
+  assert.equal(host.querySelector<HTMLInputElement>('.select-all input')?.disabled, true);
+  assert.equal(checkboxFor('Solder').disabled, true);
+  assert.equal(combobox('Move to').disabled, true);
+  await click(button('Save'));
+  await click(button('Delete Vise'));
+  assert.equal(writes.length, 1);
+  await act(async () => {
+    release(new Response(JSON.stringify({ updated: 1, items: [] }), { status: 200 }));
+    await pending;
+  });
+  assert.equal(host.querySelector('.bulk-bar'), null);
+});
+
+test('Delete sends items to the recycle bin without applying unsaved edits', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  assert.equal(writes.length, 0);
+  assert.equal([...host.querySelectorAll('button')].some((node) => node.textContent === 'Retire'), false);
+  await click(button('Delete'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise', 'solder'], retired: true });
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /recycle bin/);
+});
+
+test('the recycle bin offers only Restore and supports unchecking via select-all', async () => {
+  const binCatalog = { ...catalog, items: [{ ...item, retiredAt: '2026-09-17T00:00:00.000Z' }] };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  assert.deepEqual([...host.querySelectorAll('.bulk-bar > button')].map((node) => node.textContent),
+    ['Restore']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  await click(selectAll);
+  assert.equal(writes.length, 0);
+  assert.equal(checkboxFor('Vise').checked, false);
+  await click(checkboxFor('Vise'));
+  await click(button('Restore'));
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
+});
+
+const gridCatalog = {
+  ...multiCatalog,
+  items: [
+    { ...item, id: 'tool10', name: 'Tool 10', locationId: 'bin-10', status: 'out-for-repair' } satisfies Item,
+    { ...item, id: 'tool2', name: 'Tool 2', locationId: 'bin-2' },
+    {
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'materials', locationId: 'destination',
+      tags: [], goodFor: [], stockLevel: 'low',
+    } satisfies Item,
+  ],
+};
+const gridNames = (): string[] => [...host.querySelectorAll('.item-table tbody .item-name')]
+  .map((node) => node.textContent ?? '');
+const sortBy = async (label: string): Promise<void> => {
+  const header = host.querySelector<HTMLButtonElement>(`button[aria-label="Sort by ${label}"]`);
+  assert.ok(header, `Missing sortable header ${label}`);
+  await click(header);
+};
+const openFilter = async (label: string): Promise<HTMLDivElement> => {
+  const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  assert.ok(trigger, `Missing filter ${label}`);
+  await click(trigger);
+  const panel = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+  assert.ok(panel instanceof dom.window.HTMLDivElement);
+  return panel;
+};
+const panelButton = (panel: HTMLElement, text: string): HTMLButtonElement => {
+  const result = [...panel.querySelectorAll('button')].find((node) => node.textContent === text);
+  assert.ok(result, `Missing panel button ${text}`);
+  return result;
+};
+const optionButton = (panel: HTMLElement, value: string): HTMLButtonElement => {
+  const option = [...panel.querySelectorAll<HTMLButtonElement>('.multi-filter-options button')]
+    .find((node) => node.value === value);
+  assert.ok(option, `Missing option ${value}`);
+  return option;
+};
+const filterBy = async (label: string, value: string | string[]): Promise<void> => {
+  const control = host.querySelector<HTMLInputElement | HTMLButtonElement>(`[aria-label="${label}"]`);
+  assert.ok(control, `Missing filter ${label}`);
+  if (control instanceof dom.window.HTMLInputElement) {
+    assert.equal(typeof value, 'string');
+    await type(control, String(value));
+  } else {
+    const panel = await openFilter(label);
+    await click(panelButton(panel, 'Clear filter'));
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    for (const choice of values) await click(optionButton(panel, choice));
+    await click(panelButton(panel, 'Done'));
+  }
+};
+
+test('item information is separated into headed columns with visible category, state and location', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  assert.equal(host.querySelectorAll('.item-table thead th[scope="col"]').length, 7);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  const row = host.querySelector('.item-table tbody tr');
+  assert.ok(row);
+  const cells = row.querySelectorAll('td');
+  assert.equal(cells.length, 7);
+  assert.equal(cells[1]?.textContent, 'Solder');
+  assert.equal(cells[2]?.textContent, 'consumable');
+  assert.equal(cells[3]?.textContent, 'Materials');
+  assert.equal(cells[4]?.textContent, path('destination'));
+  assert.equal(cells[5]?.textContent, 'low');
+  assert.equal(writes.length, 0);
+});
+
+test('headers toggle sorting in either direction across every item column', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await sortBy('Name');
+  assert.deepEqual(gridNames(), ['Tool 10', 'Tool 2', 'Solder']);
+  assert.equal(host.querySelector('th[aria-sort="descending"] button')?.getAttribute('aria-label'), 'Sort by Name');
+  await sortBy('Name');
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  const cases = [
+    { label: 'Kind', asc: ['Solder', 'Tool 2', 'Tool 10'], desc: ['Tool 2', 'Tool 10', 'Solder'] },
+    { label: 'Category', asc: ['Solder', 'Tool 2', 'Tool 10'], desc: ['Tool 2', 'Tool 10', 'Solder'] },
+    { label: 'Location', asc: ['Tool 2', 'Tool 10', 'Solder'], desc: ['Solder', 'Tool 10', 'Tool 2'] },
+    { label: 'Status / stock', asc: ['Tool 2', 'Solder', 'Tool 10'], desc: ['Tool 10', 'Solder', 'Tool 2'] },
+  ];
+  for (const { label, asc, desc } of cases) {
+    await sortBy(label);
+    assert.deepEqual(gridNames(), asc, `${label} ascending`);
+    await sortBy(label);
+    assert.deepEqual(gridNames(), desc, `${label} descending`);
+    assert.equal(host.querySelectorAll('th[aria-sort="descending"]').length, 1);
+  }
+  assert.equal(writes.length, 0);
+});
+
+test('column filters combine and select-all targets only the matching rows', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by name', 'TOOL');
+  await filterBy('Filter by kind', 'equipment');
+  await filterBy('Filter by category', 'tools');
+  await filterBy('Filter by location', 'bin-2');
+  await filterBy('Filter by status or stock', 'available');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  assert.equal(selectAll.getAttribute('aria-label'), 'Select all 1 shown');
+  await click(selectAll);
+  await choose(combobox('Move to'));
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['tool2'], changes: { locationId: 'destination' } });
+  await click(button('Reset filters'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(button('Reset filters').disabled, true);
+});
+
+test('sorting preserves checked items and pending edits; filtering them out clears both', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Tool 2'));
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  assert.equal(selectAll.indeterminate, true);
+  await choose(combobox('Move to'));
+  await sortBy('Location');
+  await sortBy('Location');
+  assert.equal(checkboxFor('Tool 2').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(button('Save').disabled, false);
+  await filterBy('Filter by status or stock', 'low');
+  assert.deepEqual(gridNames(), ['Solder']);
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  assert.equal(selectAll.indeterminate, false);
+  assert.equal(writes.length, 0);
+});
+
+test('an empty filtered table retains its headers and can be reset', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by category', 'materials');
+  await filterBy('Filter by kind', 'equipment');
+  assert.deepEqual(gridNames(), []);
+  assert.match(host.querySelector('tbody')?.textContent ?? '', /No items match these filters/);
+  assert.equal(host.querySelectorAll('thead th[scope="col"]').length, 7);
+  assert.equal(host.querySelector<HTMLInputElement>('.select-all input')?.disabled, true);
+  await click(button('Reset filters'));
+  assert.equal(gridNames().length, 3);
+  assert.equal(writes.length, 0);
+});
+
+test('the recycle-bin grid defaults to newest first and supports filtering and date sorting', async () => {
+  const binCatalog = {
+    ...catalog,
+    items: [
+      { ...item, id: 'old', name: 'Old vise', retiredAt: '2026-01-01T00:00:00.000Z' },
+      { ...item, id: 'new', name: 'New vise', retiredAt: '2026-09-17T00:00:00.000Z' },
+      item,
+    ],
+  };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  assert.equal(host.querySelectorAll('thead th[scope="col"]').length, 8);
+  assert.deepEqual(gridNames(), ['New vise', 'Old vise']);
+  await sortBy('Deleted');
+  assert.deepEqual(gridNames(), ['Old vise', 'New vise']);
+  await filterBy('Filter by name', 'New');
+  assert.deepEqual(gridNames(), ['New vise']);
+  const date = host.querySelector('tbody time');
+  assert.equal(date?.getAttribute('datetime'), '2026-09-17T00:00:00.000Z');
+  await click(button('Restore'));
+  assert.deepEqual(writes[0]?.body, { ids: ['new'], retired: false });
+});
+
+test('every categorical filter accepts multiple values with OR within columns and AND between them', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by kind', ['equipment', 'consumable']);
+  await filterBy('Filter by category', ['tools', 'materials']);
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  await filterBy('Filter by location', ['bin-2', 'destination']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  await filterBy('Filter by category', 'tools');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by category', []);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  assert.equal(writes.length, 0);
+});
+
+test('location filters include sub-locations and match IDs rather than similarly named nodes', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by location', ['cabinet']);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await filterBy('Filter by location', ['bin-2']);
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by location', ['room', 'storage']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+});
+
+test('searching options preserves selected values outside the search and the popup stays open', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by category');
+  assert.equal(host.querySelector('.item-table-scroll')?.contains(panel), false);
+  await click(optionButton(panel, 'tools'));
+  assert.equal(document.body.contains(panel), true);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
+  assert.ok(search);
+  await type(search, 'mat');
+  assert.equal(panel.querySelectorAll('.multi-filter-options button').length, 1);
+  await click(optionButton(panel, 'materials'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  await click(panelButton(panel, 'Done'));
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by category"]');
+  assert.ok(trigger);
+  assert.match(trigger.textContent ?? '', /2 selected/);
+  assert.equal(document.activeElement, trigger);
+  const reopened = await openFilter('Filter by category');
+  assert.equal(optionButton(reopened, 'tools').getAttribute('aria-pressed'), 'true');
+  assert.equal(optionButton(reopened, 'materials').getAttribute('aria-pressed'), 'true');
+  assert.equal(writes.length, 0);
+});
+
+test('clearing one column preserves other filters and reset clears all selections', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by kind', 'equipment');
+  await filterBy('Filter by status or stock', 'available');
+  assert.deepEqual(gridNames(), ['Tool 2']);
+  await filterBy('Filter by status or stock', []);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await click(button('Reset filters'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(button('Reset filters').disabled, true);
+  for (const label of ['kind', 'category', 'location', 'status or stock']) {
+    const panel = await openFilter(`Filter by ${label}`);
+    assert.equal(panel.querySelectorAll('[aria-pressed="true"]').length, 0);
+    await click(panelButton(panel, 'Done'));
+  }
+});
+
+test('select-all and bulk Save target the union of the selected filter values only', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  const selectAll = host.querySelector<HTMLInputElement>('.select-all input');
+  assert.ok(selectAll);
+  await click(selectAll);
+  await choose(combobox('Move to'));
+  assert.equal(writes.length, 0);
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, { ids: ['solder', 'tool2'], changes: { locationId: 'destination' } });
+});
+
+test('option search, keyboard dismissal, and outside focus do not reset active filters', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by kind');
+  await click(optionButton(panel, 'equipment'));
+  const search = panel.querySelector<HTMLInputElement>('input[type="search"]');
+  assert.ok(search);
+  await type(search, 'zzz');
+  assert.match(panel.querySelector('[role="status"]')?.textContent ?? '', /No matching options/);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await key(search, 'Escape');
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by kind"]');
+  assert.ok(trigger);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.activeElement, trigger);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await openFilter('Filter by kind');
+  const nameFilter = host.querySelector<HTMLInputElement>('input[aria-label="Filter by name"]');
+  assert.ok(nameFilter);
+  await focus(nameFilter);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+});
+
+test('filter popup handles an empty list and closes when disabled without changing values', async () => {
+  let calls = 0;
+  const props = { label: 'test', emptyLabel: 'All', options: [], selected: [], onChange: () => { calls++; } };
+  await render(createElement(MultiSelectFilter, props));
+  const panel = await openFilter('Filter by test');
+  assert.match(panel.textContent ?? '', /No matching options/);
+  await render(createElement(MultiSelectFilter, { ...props, disabled: true }));
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Filter by test"]');
+  assert.ok(trigger);
+  assert.equal(trigger.disabled, true);
+  assert.equal(document.body.contains(panel), false);
+  await click(trigger);
+  assert.equal(calls, 0);
+});
+
+test('the filter popup stays open through table scrolling and window resizing', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by category');
+  await click(optionButton(panel, 'tools'));
+  const scroller = host.querySelector('.item-table-scroll');
+  assert.ok(scroller);
+  await act(() => {
+    scroller.dispatchEvent(new dom.window.Event('scroll'));
+    window.dispatchEvent(new dom.window.Event('resize'));
+  });
+  assert.equal(document.body.contains(panel), true);
+  assert.equal(optionButton(panel, 'tools').getAttribute('aria-pressed'), 'true');
+  assert.equal(writes.length, 0);
+});
+
+test('multiselect filters behave the same way in the recycle bin without revealing live items', async () => {
+  const binCatalog = {
+    ...gridCatalog,
+    items: [
+      ...gridCatalog.items.map((row) => ({ ...row, retiredAt: '2026-09-17T00:00:00.000Z' })),
+      item,
+    ],
+  };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  await filterBy('Filter by kind', ['equipment', 'consumable']);
+  await filterBy('Filter by status or stock', ['available', 'low']);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2']);
+  assert.equal(gridNames().includes('Vise'), false);
+});
+
+test('filter options use accessible toggle buttons without checkboxes and clicking again deselects', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  const panel = await openFilter('Filter by kind');
+  assert.equal(panel.querySelectorAll('input[type="checkbox"]').length, 0);
+  const equipment = optionButton(panel, 'equipment');
+  const consumable = optionButton(panel, 'consumable');
+  assert.equal(equipment.type, 'button');
+  assert.equal(equipment.tabIndex, 0);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'false');
+  await click(equipment);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'true');
+  assert.equal(consumable.getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await click(consumable);
+  assert.equal(consumable.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  await click(equipment);
+  assert.equal(equipment.getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(gridNames(), ['Solder']);
+  await click(consumable);
+  assert.equal(panel.querySelectorAll('[aria-pressed="true"]').length, 0);
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  assert.equal(writes.length, 0);
+});
+
+test('catalog sections share one navigation bar without a separate Bulk entry tab', async () => {
+  await render(createElement(StaffPanel, {
+    catalog, onChanged: () => {},
+  }));
+  const navigation = host.querySelector('nav[aria-label="Catalog sections"]');
+  assert.ok(navigation);
+  assert.deepEqual([...navigation.querySelectorAll('a')].map((node) => node.textContent?.trim()),
+    ['Items', 'Locations', 'Categories', 'Flag queue', 'Recycle bin']);
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Items');
+  await click(link('Locations'));
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Locations');
+  assert.equal(host.querySelector('.bulk-entry-section'), null);
+  await click(link('Categories'));
+  assert.equal(navigation.querySelector('[aria-current="page"]')?.textContent?.trim(), 'Categories');
+  await click(link('Items'));
+  assert.ok(host.querySelector('.item-table'));
+  assert.ok(host.querySelector('.bulk-entry-section'));
+});
+
+test('inline Bulk entry retains drafts when collapsed and submits without leaving the Items grid', async () => {
+  let refreshes = 0;
+  await render(createElement(StaffPanel, {
+    catalog, onChanged: () => { refreshes++; },
+  }));
+  const section = host.querySelector<HTMLElement>('.bulk-entry-section');
+  const toggle = button('Bulk entry');
+  assert.ok(section);
+  assert.equal(section.hidden, true);
+  assert.equal(toggle.getAttribute('aria-controls'), section.id);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  await click(toggle);
+  assert.equal(section.hidden, false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  assert.ok(host.querySelector('.item-table'));
+  const rows = section.querySelector<HTMLTextAreaElement>('.bulk-input');
+  assert.ok(rows);
+  await type(rows, 'New drill\nNew tape, consumable');
+  await choose(combobox('Default location'));
+  await click(toggle);
+  assert.equal(section.hidden, true);
+  await click(toggle);
+  assert.equal(rows.value, 'New drill\nNew tape, consumable');
+  assert.equal(combobox('Default location').value, path('destination'));
+  assert.equal(writes.length, 0);
+  await click(button('Add 2 item(s)'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk');
+  assert.equal(refreshes, 1);
+  assert.equal(rows.value, '');
+  assert.ok(host.querySelector('.item-table'));
+  assert.equal(host.querySelector('nav[aria-label="Catalog sections"] [aria-current="page"]')?.textContent?.trim(), 'Items');
+});
+
+test('New item and Bulk entry are header actions and the New item workflow is preserved', async () => {
+  await render(createElement(StaffPanel, {
+    catalog, onChanged: () => {},
+  }));
+  const header = host.querySelector('.items-view-header');
+  assert.ok(header);
+  assert.match(header.querySelector('h3')?.textContent ?? '', /Items.*1 shown/);
+  assert.deepEqual([...header.querySelectorAll('button')].map((node) => node.getAttribute('aria-label') ?? node.textContent),
+    ['New item', 'Bulk entry']);
+  assert.equal(host.querySelectorAll('details, .new-item-row').length, 0);
+  await click(button('New item'));
+  assert.equal(host.querySelector('.editor h3')?.textContent, 'New item');
+  await click(button('Cancel'));
+  assert.ok(host.querySelector('.items-view-header'));
+  assert.ok(host.querySelector('.item-table'));
+  await click(link('Recycle bin'));
+  assert.equal(host.querySelector('.items-view-actions'), null);
+});
+
+test('catalog navigation creates links and history entries for Back and Forward', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }));
+  assert.equal(link('Locations').getAttribute('href'), '/manage/locations');
+  await click(link('Locations'));
+  assert.equal(currentUrl(), '/manage/locations');
+  await click(link('Categories'));
+  assert.equal(currentUrl(), '/manage/categories');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/locations');
+  assert.equal(host.querySelector('nav [aria-current="page"]')?.textContent, 'Locations');
+  await click(button('History forward'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(host.querySelector('nav [aria-current="page"]')?.textContent, 'Categories');
+});
+
+test('bookmarked item filters, sort order and inline bulk entry are restored from the URL', async () => {
+  const initial = '/manage/items?kind=equipment&state=available&state=out-for-repair&sort=name&order=desc&bulk=1';
+  await render(createElement(StaffPanel, { catalog: gridCatalog, onChanged: () => {} }), initial);
+  assert.deepEqual(gridNames(), ['Tool 10', 'Tool 2']);
+  assert.equal(host.querySelector<HTMLElement>('.bulk-entry-section')?.hidden, false);
+  assert.equal(button('Bulk entry').getAttribute('aria-expanded'), 'true');
+  const filter = await openFilter('Filter by status or stock');
+  assert.equal(optionButton(filter, 'available').getAttribute('aria-pressed'), 'true');
+  assert.equal(optionButton(filter, 'out-for-repair').getAttribute('aria-pressed'), 'true');
+  await click(panelButton(filter, 'Done'));
+  await click(button('Bulk entry'));
+  assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.has('bulk'), false);
+  await click(button('History back'));
+  assert.equal(host.querySelector<HTMLElement>('.bulk-entry-section')?.hidden, false);
+  assert.equal(writes.length, 0);
+});
+
+test('filter and sort history restores the visible grid without saving data', async () => {
+  await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
+  await filterBy('Filter by kind', 'equipment');
+  assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.get('kind'), 'equipment');
+  await sortBy('Location');
+  assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.get('sort'), 'path');
+  await click(button('History back'));
+  assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.has('sort'), false);
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  await click(button('History back'));
+  assert.deepEqual(gridNames(), ['Solder', 'Tool 2', 'Tool 10']);
+  await click(button('History forward'));
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  assert.equal(writes.length, 0);
+});
+
+test('New item and Edit have bookmarkable paths and return to the original filtered grid', async () => {
+  await render(createElement(StaffPanel, { catalog: gridCatalog, onChanged: () => {} }), '/manage/items?q=Tool');
+  await click(button('New item'));
+  assert.equal(currentUrl(), '/manage/items/new?q=Tool');
+  assert.equal(host.querySelector('.editor h3')?.textContent, 'New item');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/items?q=Tool');
+  assert.deepEqual(gridNames(), ['Tool 2', 'Tool 10']);
+  const row = [...host.querySelectorAll('tbody tr')].find((node) => node.querySelector('.item-name')?.textContent === 'Tool 2');
+  const edit = row?.querySelector<HTMLButtonElement>('.item-row-actions button');
+  assert.ok(edit);
+  await click(edit);
+  assert.equal(currentUrl(), '/manage/items/tool2/edit?q=Tool');
+  assert.equal(host.querySelector('.editor h3')?.textContent, 'Edit Tool 2');
+  await click(button('Cancel'));
+  assert.equal(currentUrl(), '/manage/items?q=Tool');
+});
+
+test('direct edit URLs load the item without prior selection', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  assert.equal(host.querySelector('.editor h3')?.textContent, 'Edit Vise');
+  assert.equal(combobox('Location').value, path('bin-19'));
+});
+
+const jsonResponse = (body: unknown): Response => new Response(JSON.stringify(body), {
+  status: 200, headers: { 'content-type': 'application/json' },
+});
+const mockAppApi = (staff = true): void => {
+  globalThis.fetch = async (url) => {
+    if (url === '/api/catalog') return jsonResponse(gridCatalog);
+    if (url === '/api/auth/session') return jsonResponse({ staff });
+    if (url === '/api/auth/login') return jsonResponse({ staff: true });
+    if (url === '/api/auth/logout') return jsonResponse({ staff: false });
+    if (url === '/api/flags') return jsonResponse([]);
+    throw new Error(`Unexpected request: ${url}`);
+  };
+};
+
+test('public item details and search are bookmarkable, and closing details participates in history', async () => {
+  mockAppApi();
+  await render(createElement(App), '/?q=Tool&item=tool2');
+  assert.equal(host.querySelector<HTMLInputElement>('.search')?.value, 'Tool');
+  assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
+  await click(button('Close'));
+  assert.equal(currentUrl(), '/?q=Tool');
+  assert.equal(host.querySelector('.item-detail'), null);
+  await click(button('History back'));
+  assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
+  await click(link('Project Assistant'));
+  assert.equal(currentUrl(), '/assistant');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/?q=Tool&item=tool2');
+  assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
+});
+
+test('typing search replaces the current entry rather than creating one entry per keystroke', async () => {
+  mockAppApi();
+  await render(createElement(App), '/assistant');
+  await click(link('Search & browse'));
+  const input = host.querySelector<HTMLInputElement>('.search');
+  assert.ok(input);
+  await type(input, 'T');
+  await type(input, 'Tool');
+  assert.equal(currentUrl(), '/?q=Tool');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/assistant');
+  await click(button('History forward'));
+  assert.equal(host.querySelector<HTMLInputElement>('.search')?.value, 'Tool');
+});
+
+test('a protected bookmark waits for sign-in and opens the requested page after login', async () => {
+  let finishSession = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pendingSession = new Promise<Response>((resolve) => { finishSession = resolve; });
+  mockAppApi(false);
+  const respond = globalThis.fetch;
+  globalThis.fetch = (url, init) => url === '/api/auth/session' ? pendingSession : respond(url, init);
+  await render(createElement(App), '/manage/categories');
+  assert.match(host.textContent ?? '', /Checking staff sign-in/);
+  assert.equal(currentUrl(), '/manage/categories');
+  await act(async () => { finishSession(jsonResponse({ staff: false })); await pendingSession; });
+  assert.match(host.textContent ?? '', /Staff sign-in required/);
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(host.querySelector('.staff-panel'), null);
+  await click(button('Staff sign in'));
+  const passphrase = host.querySelector<HTMLInputElement>('input[type="password"]');
+  assert.ok(passphrase);
+  await type(passphrase, 'test-only');
+  await click(button('Sign in'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(host.querySelector('.manager h3')?.textContent, 'Categories');
+  assert.equal(currentUrl().includes('test-only'), false);
+  await click(button('Sign out'));
+  assert.equal(host.querySelector('.staff-panel'), null);
+  assert.match(host.textContent ?? '', /Staff sign-in required/);
+});
+
+test('unknown pages and missing-item links show an explicit not-found state', async () => {
+  mockAppApi();
+  await render(createElement(App), '/missing-page');
+  assert.match(host.textContent ?? '', /Page not found/);
+  await click(link('Return to search'));
+  assert.equal(currentUrl(), '/');
+});
+
+test('the browser router follows real popstate events for browser Back and Forward', { timeout: 5000 }, async () => {
+  mockAppApi();
+  window.history.replaceState(null, '', '/manage/categories');
+  const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
+  testRouter = browserRouter;
+  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
+  assert.equal(host.querySelector('.manager h3')?.textContent, 'Categories');
+  await click(link('Locations'));
+  assert.equal(window.location.pathname, '/manage/locations');
+  const back = new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+  await act(async () => { window.history.back(); await back; });
+  assert.equal(window.location.pathname, '/manage/categories');
+  assert.equal(host.querySelector('.manager h3')?.textContent, 'Categories');
+  const forward = new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+  await act(async () => { window.history.forward(); await forward; });
+  assert.equal(window.location.pathname, '/manage/locations');
+  assert.equal(host.querySelector('.manager h3')?.textContent, 'Locations');
+});
+
+test('flag-queue bookmarks preserve Show resolved in the URL', async () => {
+  mockAppApi();
+  const respond = globalThis.fetch;
+  globalThis.fetch = (url, init) => url === '/api/flags' ? Promise.resolve(jsonResponse([
+    { id: 'report', itemId: 'tool2', type: 'not-here', createdAt: '2026-09-17T00:00:00Z', resolved: true },
+  ])) : respond(url, init);
+  await render(createElement(App), '/manage/flags?resolved=1');
+  const checkbox = host.querySelector<HTMLInputElement>('.inline-check input');
+  assert.ok(checkbox);
+  assert.equal(checkbox.checked, true);
+  assert.ok(host.querySelector('.flat-list li.resolved'));
+  await click(checkbox);
+  assert.equal(currentUrl(), '/manage/flags');
+  assert.equal(host.querySelector('.flat-list li.resolved'), null);
+  await click(button('History back'));
+  assert.equal(checkbox.checked, true);
+  assert.ok(host.querySelector('.flat-list li.resolved'));
+});
+
+test('bulk Save and row Delete use labeled icons without visible text', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  const remove = button('Delete Vise');
+  assert.equal(remove.textContent?.trim(), '');
+  assert.match(remove.title, /Vise.*recycle bin/);
+  assert.equal(remove.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
+  await click(checkboxFor('Vise'));
+  const save = button('Save');
+  assert.equal(save.textContent?.trim(), '');
+  assert.equal(save.title, 'Save changes to selected items');
+  assert.equal(save.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
+  assert.equal(save.disabled, true);
+  await choose(combobox('Move to'));
+  await click(save);
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { locationId: 'destination' } });
+});
+
+test('row Delete needs no checked selection and sends only that item to the recycle bin', async () => {
+  let refreshes = 0;
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  assert.equal(host.querySelector('.bulk-bar'), null);
+  await click(button('Delete Vise'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/items/bulk-retire');
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: true });
+  assert.equal(refreshes, 1);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /Moved Vise to the recycle bin/);
+});
+
+test('deleting an unselected row preserves unrelated checked items and unsaved bulk edits', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Solder'));
+  assert.deepEqual(writes[0]?.body, { ids: ['solder'], retired: true });
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.equal(button('Save').disabled, false);
+  assert.equal(writes.length, 1);
+});
+
+test('deleting a checked row removes only its selection and discards the old bulk draft', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Vise'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: true });
+  assert.equal(checkboxFor('Vise').checked, false);
+  assert.equal(checkboxFor('Solder').checked, true);
+  assert.equal(combobox('Move to').value, '');
+  assert.equal(button('Save').disabled, true);
+});
+
+test('a failed row Delete surfaces its error and preserves selection for retry', async () => {
+  let refreshes = 0;
+  const succeed = globalThis.fetch;
+  globalThis.fetch = async (...args) => {
+    await succeed(...args);
+    return new Response(JSON.stringify({ error: 'Could not delete item' }), { status: 500 });
+  };
+  await render(createElement(ItemsManager, {
+    catalog: multiCatalog, mode: 'live', onChanged: () => { refreshes++; },
+  }));
+  await click(checkboxFor('Vise'));
+  await choose(combobox('Move to'));
+  await click(button('Delete Vise'));
+  assert.equal(refreshes, 0);
+  assert.equal(checkboxFor('Vise').checked, true);
+  assert.equal(combobox('Move to').value, path('destination'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not delete item/);
+  assert.equal(button('Delete Vise').disabled, false);
+  globalThis.fetch = succeed;
+  await click(button('Delete Vise'));
+  assert.equal(refreshes, 1);
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+});
+
+test('recycle-bin rows retain Restore and do not offer permanent Delete', async () => {
+  const binCatalog = { ...catalog, items: [{ ...item, retiredAt: '2026-09-17T00:00:00.000Z' }] };
+  await render(createElement(ItemsManager, { catalog: binCatalog, mode: 'bin', onChanged: () => {} }));
+  assert.equal(host.querySelector('.item-row-actions [aria-label^="Delete "]'), null);
+  await click(button('Restore'));
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], retired: false });
+});
+
+const editorName = (): HTMLInputElement => {
+  const input = host.querySelector<HTMLInputElement>('.editor input');
+  assert.ok(input);
+  return input;
+};
+const unloadIsBlocked = (): boolean => {
+  const event = new dom.window.Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+test('unchanged item forms allow navigation and do not warn on unload', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  assert.equal(unloadIsBlocked(), false);
+  await click(link('Categories'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+});
+
+test('leaving a dirty item warns; staying or Escape preserves it, and discarding completes Cancel', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Updated vise');
+  assert.equal(unloadIsBlocked(), true);
+  await click(link('Categories'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  let dialog = host.querySelector<HTMLDialogElement>('[role="alertdialog"]');
+  assert.ok(dialog?.open);
+  assert.match(dialog.textContent ?? '', /unsaved changes/i);
+  assert.equal(document.activeElement, button('Stay on page'));
+  await click(button('Stay on page'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Updated vise');
+  await click(button('Cancel'));
+  dialog = host.querySelector<HTMLDialogElement>('[role="alertdialog"]');
+  assert.ok(dialog);
+  await act(() => { dialog.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(editorName().value, 'Updated vise');
+  await click(button('Cancel'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(unloadIsBlocked(), false);
+  assert.equal(writes.length, 0);
+});
+
+test('undoing an edit back to its original value clears the warning', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Changed');
+  assert.equal(unloadIsBlocked(), true);
+  await type(editorName(), 'Vise');
+  assert.equal(unloadIsBlocked(), false);
+  await click(button('Cancel'));
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+});
+
+test('new-item drafts are protected, including invalid unsaved values', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/new');
+  assert.equal(unloadIsBlocked(), false);
+  const notes = host.querySelector<HTMLTextAreaElement>('.safety-field textarea');
+  assert.ok(notes);
+  await type(notes, 'Draft safety text');
+  await click(link('Locations'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(notes.value, 'Draft safety text');
+  assert.equal(currentUrl(), '/manage/items/new');
+});
+
+test('typing a location query does not dirty the form, but choosing a location does', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  const input = combobox('Location');
+  await focus(input);
+  await type(input, 'spare');
+  assert.equal(unloadIsBlocked(), false);
+  await key(input, 'Enter');
+  assert.equal(unloadIsBlocked(), true);
+  await click(button('Cancel'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+});
+
+test('Back and Forward both block leaving a dirty item and retain their intended destinations', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items');
+  await click(button('Edit Vise'));
+  await type(editorName(), 'Unsaved');
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(editorName().value, 'Unsaved');
+  await click(button('History back'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/items');
+  await click(button('History forward'));
+  assert.equal(editorName().value, 'Vise');
+  await click(link('Categories'));
+  await click(button('History back'));
+  await type(editorName(), 'Another draft');
+  await click(button('History forward'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/categories');
+  assert.equal(writes.length, 0);
+});
+
+test('successful Save leaves without a warning and removes unload protection', async () => {
+  let refreshes = 0;
+  await render(createElement(StaffPanel, {
+    catalog, onChanged: () => { refreshes++; },
+  }), '/manage/items/vise/edit');
+  await type(editorName(), 'Saved vise');
+  await click(button('Save changes'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.body.name, 'Saved vise');
+  assert.equal(refreshes, 1);
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('failed Save keeps the draft and its navigation warning', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save failed' }), { status: 500 });
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Still unsaved');
+  await click(button('Save changes'));
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Still unsaved');
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Save failed/);
+  assert.equal(unloadIsBlocked(), true);
+  await click(link('Categories'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(editorName().value, 'Still unsaved');
+});
+
+test('a catalog refresh cannot replace an unsaved item draft', async () => {
+  const props = { categories, locations, onSaved: () => {}, onCancel: () => {} };
+  await render(createElement(ItemEditor, { ...props, item }));
+  await type(editorName(), 'My local draft');
+  await render(createElement(ItemEditor, {
+    ...props, item: { ...item, name: 'Remote update' }, locations: [...locations],
+  }));
+  assert.equal(editorName().value, 'My local draft');
+  assert.equal(unloadIsBlocked(), true);
+});
+
+test('pending saves protect the snapshot and finish without a second leave warning', async () => {
+  let release = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pending = new Promise<Response>((resolve) => { release = resolve; });
+  globalThis.fetch = () => pending;
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }), '/manage/items/vise/edit');
+  await type(editorName(), 'Saving now');
+  await click(button('Save changes'));
+  assert.equal(host.querySelector<HTMLFieldSetElement>('.editor-fields')?.disabled, true);
+  await click(link('Locations'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(button('Discard changes').disabled, true);
+  await act(async () => {
+    release(jsonResponse({ ...item, name: 'Saving now' }));
+    await pending;
+  });
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('sign-out asks before discarding an unsaved item', async () => {
+  mockAppApi();
+  const respond = globalThis.fetch;
+  let signOuts = 0;
+  globalThis.fetch = (url, init) => {
+    if (url === '/api/auth/logout') signOuts++;
+    return respond(url, init);
+  };
+  let confirmations = 0;
+  window.confirm = () => { confirmations++; return false; };
+  await render(createElement(App), '/manage/items/tool2/edit');
+  await type(editorName(), 'Private draft');
+  await click(button('Sign out'));
+  assert.equal(confirmations, 1);
+  assert.equal(signOuts, 0);
+  assert.equal(editorName().value, 'Private draft');
+  window.confirm = () => true;
+  await click(button('Sign out'));
+  assert.equal(signOuts, 1);
+  assert.equal(host.querySelector('.editor'), null);
+  assert.match(host.textContent ?? '', /Staff sign-in required/);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('real browser Back restores the edit URL while the warning is pending', { timeout: 5000 }, async () => {
+  mockAppApi();
+  window.history.replaceState(null, '', '/manage/items');
+  const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
+  testRouter = browserRouter;
+  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
+  await click(button('Edit Tool 2'));
+  const editUrl = window.location.pathname;
+  await type(editorName(), 'Browser draft');
+  const restored = new Promise<void>((resolve) => {
+    let events = 0;
+    const listener = (): void => {
+      // The initial Back pop is followed by the router restoring the blocked edit entry.
+      if (++events === 2) {
+        window.removeEventListener('popstate', listener);
+        resolve();
+      }
+    };
+    window.addEventListener('popstate', listener);
+  });
+  await act(async () => { window.history.back(); await restored; });
+  assert.equal(window.location.pathname, editUrl);
+  assert.equal(editorName().value, 'Browser draft');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(window.location.pathname, editUrl);
+  assert.equal(editorName().value, 'Browser draft');
+});
+
+test('the New item plus and row Edit paintbrush retain accessible names and navigation', async () => {
+  await render(createElement(StaffPanel, { catalog, onChanged: () => {} }));
+  const add = button('New item');
+  assert.equal(add.textContent?.trim(), '');
+  assert.equal(add.title, 'New item');
+  assert.ok(add.querySelector('svg.action-icon-add[aria-hidden="true"]'));
+  await click(add);
+  assert.equal(currentUrl(), '/manage/items/new');
+  await click(button('Cancel'));
+  const edit = button('Edit Vise');
+  assert.equal(edit.textContent?.trim(), '');
+  assert.equal(edit.title, 'Edit Vise');
+  assert.ok(edit.querySelector('svg.action-icon-edit[aria-hidden="true"]'));
+  await click(edit);
+  assert.equal(currentUrl(), '/manage/items/vise/edit');
+  assert.equal(editorName().value, 'Vise');
+  assert.equal(writes.length, 0);
+});
+
+test('the item-detail paintbrush opens the editor for that item', async () => {
+  mockAppApi();
+  await render(createElement(App), '/?item=tool2');
+  const edit = button('Edit Tool 2');
+  assert.equal(edit.textContent?.trim(), '');
+  assert.equal(edit.title, 'Edit Tool 2');
+  assert.ok(edit.querySelector('svg.action-icon-edit'));
+  await click(edit);
+  assert.equal(currentUrl(), '/manage/items/tool2/edit');
+  assert.equal(editorName().value, 'Tool 2');
+});
+
+test('the item-detail paintbrush stays hidden from visitors', async () => {
+  mockAppApi(false);
+  await render(createElement(App), '/?item=tool2');
+  assert.ok(host.querySelector('.item-detail'));
+  assert.equal(host.querySelector('.item-detail .action-icon-edit'), null);
+});
+
+const mapLocations: Location[] = [
+  { id: 'common', name: 'Common Makerspace', kind: 'room', parentId: null, mapId: 'common' },
+  { id: 'advanced', name: 'Advanced Makerspace', kind: 'room', parentId: null, mapId: 'advanced' },
+  { id: 'table-a', name: 'Table A', kind: 'table', parentId: 'common', mapPosition: { roomId: 'common', mapId: 'common', x: 0.5, y: 0.6 } },
+  { id: 'bin-a', name: 'Bin A', kind: 'bin', parentId: 'table-a' },
+  { id: 'table-3', name: 'Table 3', kind: 'table', parentId: 'advanced', mapPosition: { roomId: 'advanced', mapId: 'advanced', x: 0.8, y: 0.14 } },
+];
+const mappedCatalog = {
+  categories, locations: mapLocations,
+  items: [
+    { ...item, locationId: 'bin-a' },
+    { ...item, id: 'retired-vise', name: 'Retired vise', locationId: 'bin-a', retiredAt: '2026-01-01T00:00:00Z' },
+  ],
+};
+
+test('room maps use the correct images, include active descendant items, and navigate by URL', async () => {
+  await render(createElement(RoomMapsPage, { catalog: mappedCatalog }), '/maps?room=common&location=bin-a');
+  assert.equal(host.querySelector('[role="combobox"]'), null);
+  assert.equal(host.textContent?.includes('Browse a location'), false);
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
+  assert.match(host.textContent ?? '', /nearest mapped location: Table A/);
+  assert.equal(link('Vise').getAttribute('href'), '/?item=vise');
+  assert.equal([...host.querySelectorAll('a')].some((a) => a.textContent === 'Retired vise'), false);
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/maps?room=advanced');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
+  const marker = host.querySelector<HTMLButtonElement>('.map-marker');
+  assert.ok(marker);
+  await click(marker);
+  assert.equal(currentUrl(), '/maps?room=advanced&location=table-3');
+  assert.equal(writes.length, 0);
+});
+
+test('room-map image errors are visible and do not leave misleading markers', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const image = host.querySelector('img');
+  assert.ok(image);
+  await act(() => { image.dispatchEvent(new dom.window.Event('error')); });
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not load the floor plan/);
+  assert.equal(host.querySelector('.map-marker'), null);
+});
+
+test('staff marker placement is a draft until Save and stores normalized coordinates', async () => {
+  let changed = 0;
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => { changed++; },
+  }), '/manage/locations?room=common&pin=table-a');
+  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
+  const y = host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]');
+  assert.ok(x && y);
+  assert.equal(x.value, '50.0');
+  await type(x, '25');
+  await type(y, '40');
+  assert.equal(writes.length, 0);
+  assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '25%');
+  await click(button('Save marker'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/locations/table-a');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
+  assert.equal(changed, 1);
+});
+
+test('room-map click placement calculates percentages and keeps changes unsaved', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=bin-a');
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = () => ({
+    x: 10, y: 20, left: 10, top: 20, width: 1000, height: 500, right: 1010, bottom: 520,
+    toJSON: () => ({}),
+  });
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 260, clientY: 270 })); });
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(writes.length, 0);
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+});
+
+test('location rename preserves existing floor plan and marker metadata', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common');
+  const row = [...host.querySelectorAll('.tree-node')].find((node) => node.querySelector('.tree-name')?.textContent?.startsWith('Table A'));
+  const edit = row?.querySelector<HTMLButtonElement>('button');
+  assert.ok(edit);
+  await click(edit);
+  const name = host.querySelector<HTMLInputElement>('.tree-edit > input');
+  assert.ok(name);
+  await type(name, 'Table A renamed');
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body.mapPosition, mapLocations[2]?.mapPosition);
+  assert.equal(writes[0]?.body.name, 'Table A renamed');
+});
+
+test('item detail highlights the assigned room and falls back to a mapped parent', async () => {
+  mockAppApi();
+  const respond = globalThis.fetch;
+  globalThis.fetch = (url, init) => url === '/api/catalog' ? Promise.resolve(jsonResponse(mappedCatalog)) : respond(url, init);
+  await render(createElement(App), '/?item=vise');
+  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(host.querySelector('.item-detail .map-marker.selected')?.getAttribute('title'), 'Table A');
+  assert.match(host.querySelector('.item-detail')?.textContent ?? '', /exact location is not marked/);
+  const pin = host.querySelector<HTMLAnchorElement>('.item-detail .map-marker.selected');
+  assert.ok(pin);
+  await click(pin);
+  assert.equal(currentUrl(), '/maps?room=common&location=table-a');
+});
+
+test('removing a marker is staged until Save and omits its coordinates', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=table-a');
+  await click(button('Remove marker'));
+  assert.equal(writes.length, 0);
+  assert.equal(host.querySelector('.map-marker.selected'), null);
+  await click(button('Save marker'));
+  assert.equal(writes[0]?.body.id, 'table-a');
+  assert.equal('mapPosition' in (writes[0]?.body ?? {}), false);
+});
+
+test('failed and invalid map saves keep the placement draft', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Could not save marker' }), { status: 500 });
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=table-a');
+  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
+  assert.ok(x);
+  await type(x, '120');
+  await click(button('Save marker'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /between 0 and 100/);
+  await type(x, '25');
+  await click(button('Save marker'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save marker/);
+  assert.equal(x.value, '25');
+  assert.equal(button('Save marker').disabled, false);
+});
+
+test('map zoom scales the plan and marker together without changing stored coordinates', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations, selectedLocationId: 'table-a' }));
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  const marker = host.querySelector<HTMLElement>('.map-marker.selected');
+  assert.ok(stage && marker);
+  assert.equal(button('Zoom out').disabled, true);
+  assert.equal(marker.style.left, '50%');
+  await click(button('Zoom in'));
+  assert.match(stage.style.transform, /scale\(1.25\)/);
+  assert.equal(stage.style.minWidth, '');
+  assert.equal(marker.style.left, '50%');
+  assert.match(marker.style.transform, /scale\(0.8\)/);
+  for (let count = 0; count < 7; count++) await click(button('Zoom in'));
+  assert.equal(button('Zoom in').disabled, true);
+  assert.match(stage.style.transform, /scale\(3\)/);
+  await click(button('Reset zoom'));
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
+  assert.equal(button('Zoom out').disabled, true);
+  assert.equal(writes.length, 0);
+});
+
+const mapViewport = (): HTMLDivElement => {
+  const viewport = host.querySelector<HTMLDivElement>('.room-map-viewport');
+  assert.ok(viewport);
+  viewport.getBoundingClientRect = () => ({
+    x: 0, y: 0, left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500,
+    toJSON: () => ({}),
+  });
+  const captured = new Set<number>();
+  viewport.setPointerCapture = (id: number) => { captured.add(id); };
+  viewport.hasPointerCapture = (id: number) => captured.has(id);
+  viewport.releasePointerCapture = (id: number) => { captured.delete(id); };
+  return viewport;
+};
+const pointer = async (
+  target: HTMLElement, eventType: string, x: number, y: number, pointerId = 1, pointerType = 'mouse',
+): Promise<void> => {
+  const event = new dom.window.MouseEvent(eventType, {
+    bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: pointerType },
+    isPrimary: { value: true },
+  });
+  await act(() => { target.dispatchEvent(event); });
+};
+
+test('compact map controls live inside the map and do not place markers', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  let placements = 0;
+  await render(createElement(RoomMap, {
+    room, locations: mapLocations, onPlace: () => { placements++; },
+  }));
+  const controls = host.querySelector('.room-map-canvas > .room-map-controls');
+  assert.ok(controls);
+  assert.equal(host.querySelector('.room-map-scroll'), null);
+  assert.equal(button('Zoom in').textContent, '+');
+  assert.equal(button('Zoom out').textContent, '-');
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(host.querySelector<HTMLElement>('.room-map-stage')?.style.minWidth, '');
+  await click(button('Zoom in'));
+  assert.equal(button('Reset zoom').textContent, '125%');
+  await click(button('Zoom out'));
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(placements, 0);
+});
+
+test('zoomed maps pan by dragging, clamp to their edges, and do not place a marker after dragging', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  let placements = 0;
+  await render(createElement(RoomMap, {
+    room, locations: mapLocations, onPlace: () => { placements++; },
+  }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = viewport.getBoundingClientRect;
+  await click(button('Zoom in'));
+  await pointer(viewport, 'pointerdown', 500, 250);
+  await pointer(viewport, 'pointermove', 400, 200);
+  assert.equal(viewport.classList.contains('dragging'), true);
+  assert.equal(viewport.hasPointerCapture(1), true);
+  assert.equal(stage.style.transform, 'translate(-22.5%, -22.5%) scale(1.25)');
+  await pointer(viewport, 'pointermove', -2000, -2000);
+  assert.equal(stage.style.transform, 'translate(-25%, -25%) scale(1.25)');
+  await pointer(viewport, 'pointerup', -2000, -2000);
+  assert.equal(viewport.classList.contains('dragging'), false);
+  assert.equal(viewport.hasPointerCapture(1), false);
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1, clientX: 400, clientY: 200,
+  })); });
+  assert.equal(placements, 0);
+  await pointer(viewport, 'pointerdown', 400, 200);
+  await pointer(viewport, 'pointerup', 400, 200);
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1, clientX: 400, clientY: 200,
+  })); });
+  assert.equal(placements, 1, 'A subsequent deliberate click can still place a marker');
+});
+
+test('touch panning cancels cleanly and fit-to-map does not drag the image', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  await pointer(viewport, 'pointerdown', 400, 200, 1, 'touch');
+  await pointer(viewport, 'pointermove', 300, 100, 1, 'touch');
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
+  await click(button('Zoom in'));
+  await pointer(viewport, 'pointerdown', 400, 200, 1, 'touch');
+  await pointer(viewport, 'pointermove', 450, 225, 1, 'touch');
+  assert.equal(stage.style.transform, 'translate(-7.5%, -7.5%) scale(1.25)');
+  await pointer(viewport, 'pointercancel', 450, 225, 1, 'touch');
+  assert.equal(viewport.classList.contains('dragging'), false);
+  assert.equal(viewport.hasPointerCapture(1), false);
+  const stopped = stage.style.transform;
+  await pointer(viewport, 'pointermove', 200, 100, 1, 'touch');
+  assert.equal(stage.style.transform, stopped);
+});
+
+test('map keyboard panning is bounded and Home restores the fitted view', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  await render(createElement(RoomMap, { room, locations: mapLocations }));
+  const viewport = mapViewport();
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  await click(button('Zoom in'));
+  const press = async (key: string): Promise<void> => {
+    await act(() => { viewport.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      key, bubbles: true, cancelable: true,
+    })); });
+  };
+  await press('ArrowRight');
+  await press('ArrowDown');
+  assert.equal(stage.style.transform, 'translate(-22.5%, -22.5%) scale(1.25)');
+  await press('ArrowRight');
+  await press('ArrowDown');
+  assert.equal(stage.style.transform, 'translate(-25%, -25%) scale(1.25)');
+  await press('Home');
+  assert.equal(stage.style.transform, 'translate(0%, 0%) scale(1)');
+  assert.equal(button('Reset zoom').textContent, '100%');
+});
+
+test('switching rooms resets zoom and pan without changing catalog coordinates', async () => {
+  const common = mapLocations[0], advanced = mapLocations[1];
+  assert.ok(common && advanced);
+  await render(createElement(RoomMap, { room: common, locations: mapLocations }));
+  await click(button('Zoom in'));
+  await render(createElement(RoomMap, { room: advanced, locations: mapLocations }));
+  assert.equal(host.querySelector<HTMLElement>('.room-map-stage')?.style.transform, 'translate(0%, 0%) scale(1)');
+  assert.equal(button('Reset zoom').textContent, '100%');
+  assert.equal(writes.length, 0);
+});
+
+test('dragging over a map marker does not select it; clicking it still works', async () => {
+  const room = mapLocations[0];
+  assert.ok(room);
+  const selected: string[] = [];
+  await render(createElement(RoomMap, { room, locations: mapLocations, onSelect: (id) => selected.push(id) }));
+  const viewport = mapViewport();
+  const marker = host.querySelector<HTMLButtonElement>('.map-marker');
+  assert.ok(marker);
+  await click(button('Zoom in'));
+  await pointer(marker, 'pointerdown', 500, 250);
+  await pointer(viewport, 'pointermove', 450, 225);
+  await pointer(viewport, 'pointerup', 450, 225);
+  await act(() => { marker.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, cancelable: true, detail: 1,
+  })); });
+  assert.deepEqual(selected, []);
+  await pointer(marker, 'pointerdown', 500, 250);
+  await pointer(marker, 'pointerup', 500, 250);
+  await click(marker);
+  assert.deepEqual(selected, ['table-a']);
+});
+
+test('marker placement stays normalized on a zoomed map', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=bin-a');
+  await click(button('Zoom in'));
+  const stage = host.querySelector<HTMLElement>('.room-map-stage');
+  assert.ok(stage);
+  stage.getBoundingClientRect = () => ({
+    x: 10, y: 20, left: 10, top: 20, width: 1250, height: 625, right: 1260, bottom: 645,
+    toJSON: () => ({}),
+  });
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 322.5, clientY: 332.5 })); });
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(writes.length, 0);
+});
