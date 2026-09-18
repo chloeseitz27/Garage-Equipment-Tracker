@@ -295,6 +295,62 @@ Notes on the template:
 
 Auth uses `DefaultAzureCredential` when `COSMOS_KEY` is empty — managed identity in Azure, your `az login` locally. Leave it empty.
 
+## Local caching
+
+The app uses two complementary catalog caches without changing the configured
+storage backend:
+
+| Layer | Behavior |
+|---|---|
+| Cosmos API repository | One process-wide snapshot of items, locations, and categories; **1-hour TTL** by default |
+| Browser | Versioned `localStorage` snapshot for fast repeat loads and cached browsing; marks data stale after **5 minutes** |
+| JSON local-development repository | Already holds its files in memory; no additional server cache |
+
+`CATALOG_CACHE_TTL_MS` configures the Cosmos cache in milliseconds. Zero disables
+reuse after a request completes; invalid or negative values fail explicitly.
+Concurrent reads share one fetch of each collection. Item create/edit,
+bulk operations (including retire/restore), and location/category
+create/edit/delete immediately invalidate the complete server snapshot.
+Failed writes also invalidate because storage may have committed before a
+response was lost. Flags are not cached. All routes and assistant retrieval use
+the same repository wrapper.
+
+The one-hour TTL assumes **one API server and catalog writes through it**.
+Changes made directly in Cosmos (including `seed:cosmos`) require a server
+restart or expiry before they become visible; browser **Refresh catalog** does
+not bypass the server cache. The cache does not add database transactions or
+cross-process invalidation. For JSON resets or direct file edits, restart the
+API to reload its in-memory data.
+
+The browser shows saved data immediately, then revalidates on page load, window
+focus, reconnect, and **Refresh catalog**. Successful staff catalog mutations
+invalidate the saved snapshot and refetch. Another tab's saved catalog is
+adopted without an echoing network request; cross-tab invalidation triggers a
+refresh. Incoming updates wait while staff have unsaved catalog forms, bulk
+drafts, or map edits.
+
+Failed refreshes keep the current view and display a warning and retry button
+instead of replacing the app with an error screen. Cached locations, status,
+and safety/training data are explicitly labelled as potentially outdated.
+Writes still require the API: there is no offline write queue or simulated
+success. The displayed timestamp is when the browser fetched the catalog,
+**not** when the database was last changed; a server response may already be up
+to the server TTL old.
+
+Both caches use `@garage/shared` validation and preserve `retiredAt`, all
+location kinds, map metadata, and verbatim safety text. The browser key is
+`garage-inventory:catalog:v2`; incompatible earlier drafts are not reused.
+Malformed saved data is reported and removed; blocked storage or quota failures
+are reported while network-backed use can continue in memory. Only public
+catalog data is persisted, not staff sessions, searches, flags, or assistant
+inputs/responses. Clearing this site's local storage clears its saved catalog.
+Clear it when switching the backend behind the same origin.
+
+This is data caching, not offline app installation: loading the HTML/JS still
+requires the web server, and there is no service worker. Kiosk idle reset remains
+unimplemented; when added, it should refresh the catalog while clearing visitor
+input, not the saved public catalog.
+
 ## Not built yet
 
 - Photos are URLs only — no upload

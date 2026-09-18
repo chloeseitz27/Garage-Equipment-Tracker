@@ -24,7 +24,10 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return (await response.json()) as T;
 };
 
-export const fetchCatalog = (): Promise<CatalogResponse> => request('/api/catalog');
+export const fetchCatalog = (): Promise<CatalogResponse> => request('/api/catalog', {
+  cache: 'no-store',
+  signal: AbortSignal.timeout(10_000),
+});
 
 export const createFlag = (input: CreateFlagInput): Promise<unknown> =>
   request('/api/flags', { method: 'POST', body: JSON.stringify(input) });

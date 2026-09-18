@@ -30,6 +30,7 @@ export const config = {
 
   /** `json` for local files, `cosmos` for Azure Cosmos DB (technical-spec.md §4). */
   storage: (process.env.STORAGE ?? 'json') as 'json' | 'cosmos',
+  catalogCacheTtlMs: Number(process.env.CATALOG_CACHE_TTL_MS ?? 3_600_000),
 
   cosmos: {
     endpoint: process.env.COSMOS_ENDPOINT ?? '',

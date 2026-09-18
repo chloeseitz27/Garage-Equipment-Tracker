@@ -2,10 +2,9 @@ import type { Category, CreateItemInput, Flag, Item, Location } from '@garage/sh
 
 /**
  * Everything above this interface — routes, search, the assistant's grounding
- * layer — goes through it. Nothing else touches the files (technical-spec.md §4).
+ * layer — goes through it. Storage access stays behind the interface.
  *
- * The interface is the point: swapping JSON for SQLite should be a contained
- * change here, not a rewrite.
+ * JSON supports local development; Cosmos and its cache use the same contract.
  */
 export interface CatalogRepository {
   getItems(): Promise<Item[]>;

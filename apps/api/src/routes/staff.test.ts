@@ -7,8 +7,10 @@ import express from 'express';
 import type { Category, CreateItemInput, Flag, Item, Location } from '@garage/shared';
 
 import type { CatalogRepository } from '../repository/catalog-repository.js';
+import { CachedCatalogRepository } from '../repository/cached-repository.js';
 import { authRoutes } from './auth.js';
 import { staffRoutes } from './staff.js';
+import { publicRoutes } from './public.js';
 
 /**
  * Route-level guards for referential integrity.
@@ -143,7 +145,9 @@ before(async () => {
   app.use(express.json());
   app.use(cookieParser());
   app.use('/api/auth', authRoutes());
-  app.use('/api', staffRoutes(makeRepository()));
+  const repository = new CachedCatalogRepository(makeRepository());
+  app.use('/api', publicRoutes(repository));
+  app.use('/api', staffRoutes(repository));
 
   server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -171,6 +175,21 @@ const call = (method: string, path: string, body?: unknown): Promise<Response> =
     headers: { 'content-type': 'application/json', cookie },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+
+test('the public catalog bypasses HTTP caching and sees writes through the shared repository cache', async () => {
+  const before = await call('GET', '/api/catalog');
+  assert.equal(before.headers.get('cache-control'), 'no-store');
+  const catalog = await before.json() as { categories: Category[] };
+  assert.ok(catalog.categories.some((category) => category.id === 'cat-used'));
+  const created = await call('POST', '/api/categories', { name: 'Cache integration category' });
+  assert.equal(created.status, 201);
+  const category = await created.json() as Category;
+  const after = await (await call('GET', '/api/catalog')).json() as { categories: Category[] };
+  assert.ok(after.categories.some((entry) => entry.id === category.id && entry.name === category.name));
+  assert.equal((await call('DELETE', `/api/categories/${category.id}`)).status, 204);
+  const deleted = await (await call('GET', '/api/catalog')).json() as { categories: Category[] };
+  assert.ok(!deleted.categories.some((entry) => entry.id === category.id));
+});
 
 test('staff routes reject an unauthenticated caller', async () => {
   const response = await fetch(`${baseUrl}/api/flags`);

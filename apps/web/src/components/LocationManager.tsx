@@ -14,6 +14,7 @@ import {
 import { createLocation, deleteLocation, updateLocation } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 import { LocationMapEditor } from './LocationMapEditor.js';
+import { useCatalogDraft } from '../catalog-draft.js';
 
 interface Props {
   locations: Location[];
@@ -39,6 +40,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
   const [newKind, setNewKind] = useState<LocationKind>('bin');
   const [newMapId, setNewMapId] = useState<RoomMapId | ''>('');
   const [error, setError] = useState<string | null>(null);
+  useCatalogDraft(editingId !== null || newName.trim().length > 0);
 
   const itemCounts = useMemo(() => {
     const counts = new Map<string, number>();
