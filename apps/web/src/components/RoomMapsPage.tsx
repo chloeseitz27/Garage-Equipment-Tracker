@@ -1,6 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { getDescendantLocationIds, liveItems, resolveLocationMap, type CatalogResponse } from '@garage/shared';
-import { LocationPicker } from './LocationPicker.js';
 import { RoomMap } from './RoomMap.js';
 
 export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Element {
@@ -30,13 +29,6 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
           </Link>
         ))}
       </nav>
-      <LocationPicker
-        label="Browse a location"
-        locations={catalog.locations}
-        excludedIds={catalog.locations.filter((location) => !descendants.includes(location.id)).map((location) => location.id)}
-        value={selected?.id ?? ''}
-        onSelect={select}
-      />
       <RoomMap room={room} locations={catalog.locations} selectedLocationId={selected?.id} onSelect={select} />
       <h3>{selected?.name ?? 'Location not found in this room'}</h3>
       {selected && selected.id !== room.id && !resolution?.marker ? <p className="muted">This location has no marker yet.</p> : null}

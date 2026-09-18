@@ -112,7 +112,7 @@ when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
 Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.
-Open **Room maps** to switch rooms and click a marker or search a location to
+Open **Room maps** to switch rooms and click a marker to
 see its active items (including sub-locations). Item details highlight their
 location on the same map, falling back to the nearest mapped ancestor, explicitly
 labeled as an approximate location.

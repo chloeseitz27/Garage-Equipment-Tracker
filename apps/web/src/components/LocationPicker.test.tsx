@@ -1509,6 +1509,8 @@ const mappedCatalog = {
 
 test('room maps use the correct images, include active descendant items, and navigate by URL', async () => {
   await render(createElement(RoomMapsPage, { catalog: mappedCatalog }), '/maps?room=common&location=bin-a');
+  assert.equal(host.querySelector('[role="combobox"]'), null);
+  assert.equal(host.textContent?.includes('Browse a location'), false);
   assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
   assert.match(host.textContent ?? '', /nearest mapped location: Table A/);
