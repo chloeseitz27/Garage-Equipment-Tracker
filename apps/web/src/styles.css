@@ -1157,6 +1157,7 @@ code {
 .item-detail > .icon-button,
 .tree-actions > .icon-button,
 .tree-edit > .icon-button,
+.catalog-status > .icon-button,
 .item-action-buttons > .icon-button {
   display: inline-flex;
   align-items: center;
@@ -1460,4 +1461,14 @@ code {
 }
 .catalog-status {
   padding: 0.75rem 0;
+}
+
+@keyframes catalog-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .catalog-status [aria-busy="true"] .action-icon-refresh {
+    animation: catalog-refresh-spin 1s linear infinite;
+  }
 }

@@ -36,6 +36,14 @@ the app is fully demoable with no API key and no network. Point
 `ASSISTANT_PROVIDER` at `azure-openai` or `github-models` in `.env` to use a
 hosted model.
 
+The combined dev command uses prefixed `[api]` and `[web]` logs. Keep
+`concurrently` out of `--raw` mode so the two dev servers do not share direct
+terminal control, which can garble line breaks and escape sequences on Windows.
+The API uses Node's watch mode with the `tsx` loader and preserves previous
+logs on restart; `tsx watch` can stall with piped input on Windows.
+Run `npm run dev:web` separately if you need Vite's interactive terminal
+shortcuts.
+
 ### Search and ask
 
 The home page has one shared input. **Search** (or Enter) finds inventory;
@@ -360,7 +368,8 @@ cross-process invalidation. For JSON resets or direct file edits, restart the
 API to reload its in-memory data.
 
 The browser shows saved data immediately, then revalidates on page load, window
-focus, reconnect, and **Refresh catalog**. Successful staff catalog mutations
+focus, reconnect, and **Refresh catalog** (the circular-arrow icon, which spins
+while refreshing unless reduced motion is preferred). Successful staff catalog mutations
 invalidate the saved snapshot and refetch. Another tab's saved catalog is
 adopted without an echoing network request; cross-tab invalidation triggers a
 refresh. Incoming updates wait while staff have unsaved catalog forms, bulk

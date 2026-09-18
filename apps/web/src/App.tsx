@@ -8,6 +8,7 @@ import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 import { RoomMapsPage } from './components/RoomMapsPage.js';
+import { ActionIcon } from './components/ActionIcon.js';
 
 function AssistantRedirect(): JSX.Element {
   const location = useLocation();
@@ -89,8 +90,16 @@ export function App(): JSX.Element {
             ) : null}
             {updatePending ? <p role="status">Catalog updates will appear after you save or discard your edits.</p> : null}
             {storageWarning ? <p role="status">{storageWarning}</p> : null}
-            <button type="button" disabled={refreshing} onClick={() => void refresh()}>
-              {refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+              title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+              aria-busy={refreshing}
+              disabled={refreshing}
+              onClick={() => void refresh()}
+            >
+              <ActionIcon name="refresh" />
             </button>
           </section>
           {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
