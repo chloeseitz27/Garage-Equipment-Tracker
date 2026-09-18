@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import type { CatalogRepository } from './catalog-repository.js';
 import { CosmosCatalogRepository } from './cosmos-repository.js';
 import { JsonCatalogRepository } from './json-repository.js';
+import { CachedCatalogRepository } from './cached-repository.js';
 
 /**
  * Chooses the storage backend (technical-spec.md §4). Everything above the
@@ -22,7 +23,7 @@ export async function createRepository(): Promise<CatalogRepository> {
     console.log(
       `[api] storage: cosmos (${database}/${container}, auth: ${key ? 'key' : 'managed identity'})`,
     );
-    return repository;
+    return new CachedCatalogRepository(repository, { ttlMs: config.catalogCacheTtlMs });
   }
 
   // Local JSON files. In a cloud deployment there's no `npm run seed` step, so

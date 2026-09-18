@@ -1,7 +1,7 @@
 # Technical Specification
 
 **Status:** Draft
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-18
 **Parent specs:** [`product-spec.md`](product-spec.md), [`chatbot-spec.md`](chatbot-spec.md)
 
 ---
@@ -22,7 +22,7 @@ explicitly so they're chosen rather than discovered later.
 | Language | TypeScript, end to end |
 | Frontend | React + Vite |
 | Backend | Node + Express |
-| Storage | JSON files on disk (§4) |
+| Storage | Cosmos DB for deployment; JSON files for local development (§4) |
 | Assistant | Hosted LLM behind a provider interface (§6) |
 | Runtime | Local only — runs on the kiosk machine (§9) |
 
@@ -184,7 +184,10 @@ table lettering; no drawer records are invented from the plans.
 
 ## 4. Storage
 
-**JSON files on disk, behind a repository interface.**
+**Cosmos DB or local JSON files, behind the same repository interface.**
+`STORAGE=cosmos` selects the implemented Cosmos backend; `STORAGE=json` remains
+the local-development default. `apps/api/src/repository/index.ts` selects and
+initializes one shared repository for the server.
 
 ```ts
 interface CatalogRepository {
@@ -199,16 +202,13 @@ interface CatalogRepository {
 ```
 
 Everything above the interface — API routes, search, the assistant's grounding
-layer — must go through it. Nothing else reads or writes the files directly.
-
-The interface is the point. JSON is the right call for a hackathon: no container
-to run, no schema migration, seed data is readable in a diff and editable by
-hand. But it will not survive contact with a real deployment, and the interface
-is what makes swapping in SQLite a contained change rather than a rewrite.
+layer — must go through it. The complete interface also covers bulk writes,
+location/category creation and deletion, and flag resolution. JSON keeps local
+development usable without Azure; Cosmos is the deployed source of truth.
 
 ### 4.1 Honest limitations
 
-These are acceptable for the demo and should not be worked around:
+These limitations apply to the JSON backend, not to Cosmos transactional batches:
 
 - **No concurrency control.** Two simultaneous writes can lose one. With one
   kiosk and one or two staff, this is a real but tolerable risk.
@@ -230,11 +230,39 @@ So:
 - On first run, if `data/runtime/` is empty, copy from `data/seed/`.
 - A `reset` script restores runtime from seed. This is also the "put the demo
   back to a known state" button, which matters immediately before presenting.
+  Restart the JSON-backed API after a reset: that repository loads files into
+  memory on startup rather than rereading them on every request.
 
 ### 4.3 Write safety
 
 Write to a temp file in the same directory, then atomically rename over the
 target. Cheap, and it removes the truncation failure mode.
+
+### 4.4 Cosmos storage and server caching
+
+Cosmos uses one container partitioned by `/type` (`item`, `location`, `category`,
+`flag`). Authentication uses `DefaultAzureCredential` unless a key is explicitly
+configured; see the README for provisioning and data-plane access. Bulk item
+writes use transactional batches within the `item` partition.
+
+`CachedCatalogRepository` wraps the Cosmos repository once at startup, shared
+by public routes, staff routes, and assistant retrieval. Items, locations, and
+categories share one validated snapshot with a default **1-hour TTL**.
+`CATALOG_CACHE_TTL_MS` overrides it; zero disables reuse across completed
+requests. Concurrent cache misses share one fetch per collection. Read errors
+propagate rather than silently serving an expired server snapshot.
+
+Every catalog create, update, bulk write, or delete invalidates the entire
+snapshot, including when the write fails. Older in-flight reads cannot
+repopulate it after invalidation. Flags bypass caching. Validation reuses
+`catalogSchema` and `findCatalogProblems` from `@garage/shared`, retaining
+retirement, floor-plan metadata, and the current location kinds.
+
+This assumes a single API server. Out-of-band Cosmos edits and imports become
+visible at the next read after TTL expiry, or after an API restart. Browser
+refreshes do not force a database read while the server snapshot is valid.
+There is no cross-process invalidation or extra write serialization. The JSON
+repository already holds its files in memory, so it is not additionally wrapped.
 
 ---
 
@@ -352,8 +380,8 @@ so changes are reviewable in a diff.
 
 ## 7. Search
 
-Search runs **client-side over the full catalog**, fetched once from
-`GET /api/catalog`.
+Search runs **client-side over the full catalog**, loaded from the browser cache
+and revalidated against `GET /api/catalog`.
 
 At Garage scale — hundreds to low thousands of items — the entire catalog is a
 small payload. Loading it once buys keystroke-latency search with no network
@@ -365,7 +393,36 @@ category, description, and location name, with name and tags weighted highest.
 Fuzzy matching covers the misspelling and plural tolerance required by product
 spec §6.1.
 
-Refetch the catalog on idle reset so a long-running kiosk picks up staff edits.
+Refetch the catalog on page load, window focus, reconnect, and manual refresh.
+Successful staff catalog changes invalidate the browser snapshot and refetch.
+Kiosk idle reset is still deferred; when implemented, it should also refresh.
+
+### 7.1 Browser persistence and refresh
+
+`BrowserCatalogCache` persists one validated, versioned catalog under
+`garage-inventory:catalog:v2`. The React `useCatalog` hook renders saved data
+while the network request runs. A snapshot is marked stale after **5 minutes**,
+not deleted, and remains available during API failures. The timestamp denotes
+browser retrieval, not the database's last modification (§4.4).
+
+Refresh failures show an explicit notice and retry action without discarding
+the current catalog or unsaved drafts. Saved safety/training, location, and
+availability information is never presented as verified current after a failed
+refresh. Staff writes continue to require the API; there is no offline queue.
+
+Updates to the rendered catalog wait while an item, location, category, bulk,
+or map draft is dirty.
+Relevant cross-tab storage changes reload the snapshot; invalidation refetches,
+whereas another tab's saved snapshot is adopted without a fetch/write loop.
+Unknown fields outside the public catalog contract are not persisted. Corrupt,
+incompatible, or future-dated saved data is reported and removed; storage access
+or quota failures are surfaced while in-memory/network operation can continue.
+
+Network catalog requests have a **10-second timeout**, use `cache: 'no-store'`,
+and receive `Cache-Control: no-store`, so the application owns freshness.
+Authentication, flags, searches, and assistant inputs/responses are not cached.
+This does not cache HTML, JavaScript, or images and does not enable offline
+cold startup.
 
 ---
 
@@ -401,8 +458,8 @@ npm run seed     # copy data/seed → data/runtime
 npm run dev      # api + web concurrently
 ```
 
-Kiosk mode is the browser in fullscreen against `localhost`. No deployment, no
-container, no cloud dependency except the assistant API.
+Kiosk mode is the browser in fullscreen against `localhost`. No container is required. With `STORAGE=json`, the assistant API is the only
+optional cloud dependency; `STORAGE=cosmos` also requires database connectivity.
 
 ### 9.1 Secrets
 
@@ -439,6 +496,10 @@ expensive:
 - **Seed data validity.** Schema-validate `data/seed/` in CI: every
   `locationId` and every entry in `categoryIds` resolves, no orphans, no duplicate IDs. Broken
   seed data breaks the demo, and it breaks it silently.
+- **Catalog caching.** Exact TTL boundaries, concurrent misses, every catalog
+  mutation and in-flight invalidation, preservation of retirement/map metadata,
+  failed refresh recovery, cross-tab storage, and unsaved UI drafts. Cache unit
+  tests, HTTP route tests, and React regressions run with `npm test`.
 
 Plus a small fixed set of project prompts with expected items, per chatbot spec
 §11, to sanity-check recommendation quality when prompts change.
@@ -451,7 +512,7 @@ Chosen for hackathon speed; each needs revisiting before real use.
 
 | Deferred | Consequence | Successor |
 |---|---|---|
-| JSON file storage | No concurrency, no transactions | SQLite via `CatalogRepository` |
+| JSON local-development storage | No concurrency, no transactions | Use the implemented Cosmos backend for deployment |
 | Shared passphrase auth | No individual accountability | Entra ID behind the same middleware |
 | Client-side search | Whole catalog to every client | Server-side search endpoint |
 | Local-only run | Single machine, manual start | Container + App Service |

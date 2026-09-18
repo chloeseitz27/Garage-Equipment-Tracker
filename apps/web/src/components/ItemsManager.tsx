@@ -21,6 +21,7 @@ import { LocationPicker } from './LocationPicker.js';
 import { MultiSelectFilter } from './MultiSelectFilter.js';
 import { CategoryPicker } from './CategoryPicker.js';
 import { ActionIcon } from './ActionIcon.js';
+import { useCatalogDraft } from '../catalog-draft.js';
 
 interface Props {
   catalog: CatalogResponse;
@@ -153,6 +154,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
   const ids = [...selected];
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selected.has(row.item.id));
   const hasChanges = changes.locationId !== undefined || changes.categoryIds !== undefined;
+  useCatalogDraft(hasChanges || busy);
   const hasFilters = Object.values(filters).some((value) => value.length > 0);
 
   useEffect(() => {

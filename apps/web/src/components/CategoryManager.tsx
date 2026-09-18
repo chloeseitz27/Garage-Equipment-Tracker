@@ -3,6 +3,7 @@ import type { Category, Item } from '@garage/shared';
 
 import { createCategory, deleteCategory, updateCategory } from '../api.js';
 import { ActionIcon } from './ActionIcon.js';
+import { useCatalogDraft } from '../catalog-draft.js';
 
 interface Props {
   categories: Category[];
@@ -16,6 +17,7 @@ export function CategoryManager({ categories, items, onChanged }: Props): JSX.El
   const [draftName, setDraftName] = useState('');
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  useCatalogDraft(editingId !== null || newName.trim().length > 0);
 
   const usage = useMemo(() => {
     const counts = new Map<string, number>();

@@ -64,6 +64,7 @@ let testRouter: ReturnType<typeof createMemoryRouter> | null;
 let writes: Array<{ url: string; body: Record<string, unknown> }>;
 
 beforeEach(() => {
+  dom.window.localStorage.clear();
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
