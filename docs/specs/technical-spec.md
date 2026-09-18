@@ -63,7 +63,7 @@ interface ItemBase {
   id: string;              // stable, never reused — the assistant grounds on this
   name: string;
   kind: ItemKind;
-  categoryId: string;
+  categoryIds: string[];   // at least one distinct, nonblank category id
   locationId: string;      // node at any depth in the location tree
   description?: string;
   photoUrl?: string;
@@ -134,6 +134,26 @@ assigned once and never reused, including after retirement.
 
 Retirement is a state, not a delete. Retired items leave search and assistant
 results but keep their record.
+
+Items belong to one or more categories. Every entry in `categoryIds` must
+reference an existing category; empty lists, blank IDs, and duplicates are
+invalid. This includes retired items, and a category cannot be deleted while
+any active or retired item references it in any position.
+
+Legacy stored records and write payloads with only `categoryId` are normalized
+to `categoryIds: [categoryId]` before validation. When both fields are present,
+the legacy ID must occur in the canonical list or the record is rejected.
+The canonical list is never overwritten by the legacy field; responses and
+subsequent item writes contain only `categoryIds`. JSON loading normalizes in
+memory without rewriting files until an ordinary item write; Cosmos list and
+single-item reads strip system fields, normalize, and validate through the
+same item schema.
+
+Bulk edits supplying `categoryIds` replace the entire assignment list on every
+selected item. Omitting it preserves existing assignments. All category and
+location references are validated for the whole batch before any write.
+Assistant retrieval matches names from all assigned categories while retaining
+one candidate per item.
 
 ### 3.3 Room maps
 
@@ -417,7 +437,7 @@ expensive:
   record's, byte for byte.
 - **Location path derivation.** Nested trees, items at every depth, root items.
 - **Seed data validity.** Schema-validate `data/seed/` in CI: every
-  `locationId` and `categoryId` resolves, no orphans, no duplicate IDs. Broken
+  `locationId` and every entry in `categoryIds` resolves, no orphans, no duplicate IDs. Broken
   seed data breaks the demo, and it breaks it silently.
 
 Plus a small fixed set of project prompts with expected items, per chatbot spec

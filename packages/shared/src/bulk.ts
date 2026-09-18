@@ -25,7 +25,7 @@ import { EQUIPMENT_STATUSES, STOCK_LEVELS, TRAINING_LEVELS } from './schema.js';
 
 export interface BulkDefaults {
   kind: ItemKind;
-  categoryId: string;
+  categoryIds: string[];
   locationId: string;
   status: EquipmentStatus;
   stockLevel: StockLevel;
@@ -86,7 +86,7 @@ export function parseBulkItems(text: string, defaults: BulkDefaults): BulkParseR
     const tags = parseTags(tagsCell);
     const base = {
       name,
-      categoryId: defaults.categoryId,
+      categoryIds: [...defaults.categoryIds],
       locationId: defaults.locationId,
       tags,
       goodFor: [],

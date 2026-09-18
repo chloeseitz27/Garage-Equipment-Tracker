@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Category, Item } from '@garage/shared';
 
 import { createCategory, deleteCategory, updateCategory } from '../api.js';
+import { ActionIcon } from './ActionIcon.js';
 
 interface Props {
   categories: Category[];
@@ -18,7 +19,9 @@ export function CategoryManager({ categories, items, onChanged }: Props): JSX.El
 
   const usage = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const item of items) counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
+    for (const item of items) {
+      for (const id of item.categoryIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
     return counts;
   }, [items]);
 
@@ -48,10 +51,13 @@ export function CategoryManager({ categories, items, onChanged }: Props): JSX.El
           return (
             <li key={category.id}>
               {editingId === category.id ? (
-                <>
-                  <input value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+                <div className="tree-edit category-edit">
+                  <input aria-label="Category name" value={draftName} onChange={(event) => setDraftName(event.target.value)} />
                   <button
                     type="button"
+                    className="icon-button"
+                    aria-label="Save"
+                    title="Save category name"
                     onClick={() =>
                       void run(async () => {
                         await updateCategory({ id: category.id, name: draftName.trim() });
@@ -59,12 +65,18 @@ export function CategoryManager({ categories, items, onChanged }: Props): JSX.El
                       })
                     }
                   >
-                    Save
+                    <ActionIcon name="save" />
                   </button>
-                  <button type="button" className="secondary" onClick={() => setEditingId(null)}>
-                    Cancel
+                  <button
+                    type="button"
+                    className="icon-button secondary"
+                    aria-label="Cancel"
+                    title="Cancel renaming"
+                    onClick={() => setEditingId(null)}
+                  >
+                    <ActionIcon name="cancel" />
                   </button>
-                </>
+                </div>
               ) : (
                 <>
                   <span className="tree-name">
@@ -74,22 +86,26 @@ export function CategoryManager({ categories, items, onChanged }: Props): JSX.El
                   <span className="tree-actions">
                     <button
                       type="button"
+                      className="icon-button"
+                      aria-label={`Rename ${category.name}`}
+                      title={`Rename ${category.name}`}
                       onClick={() => {
                         setEditingId(category.id);
                         setDraftName(category.name);
                         setError(null);
                       }}
                     >
-                      Rename
+                      <ActionIcon name="edit" />
                     </button>
                     <button
                       type="button"
-                      className="danger"
+                      className="icon-button danger"
+                      aria-label={`Delete ${category.name}`}
                       disabled={used > 0}
                       title={used > 0 ? 'Recategorize its items first' : 'Delete this category'}
                       onClick={() => void run(() => deleteCategory(category.id))}
                     >
-                      Delete
+                      <ActionIcon name="delete" />
                     </button>
                   </span>
                 </>

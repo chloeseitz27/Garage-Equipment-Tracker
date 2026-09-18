@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import { useSearchParams } from 'react-router-dom';
 import {
   EQUIPMENT_STATUSES,
+  ITEM_KINDS,
   STOCK_LEVELS,
   formatLocationPath,
   getLocationPath,
@@ -9,12 +10,16 @@ import {
   liveItems,
   retiredItems,
   type CatalogResponse,
+  type EquipmentStatus,
   type Item,
+  type ItemKind,
+  type StockLevel,
 } from '@garage/shared';
 
 import { bulkRetireItems, bulkUpdateItems, type BulkChanges } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 import { MultiSelectFilter } from './MultiSelectFilter.js';
+import { CategoryPicker } from './CategoryPicker.js';
 import { ActionIcon } from './ActionIcon.js';
 
 interface Props {
@@ -44,6 +49,18 @@ const FILTER_PARAMS: Record<keyof Filters, string> = {
 };
 const SORT_KEYS: SortKey[] = ['name', 'kind', 'category', 'path', 'state', 'deletedAt'];
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const KIND_LABELS: Record<ItemKind, string> = {
+  equipment: 'Equipment',
+  consumable: 'Consumable',
+};
+const STATE_LABELS: Record<EquipmentStatus | StockLevel, string> = {
+  available: 'Available',
+  'in-use': 'In use',
+  'out-for-repair': 'Out for repair',
+  'in-stock': 'In stock',
+  low: 'Low stock',
+  out: 'Out of stock',
+};
 
 /**
  * Multi-select item table shared by the catalog and the recycle bin
@@ -67,7 +84,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [changes, setChanges] = useState<Pick<BulkChanges, 'locationId' | 'categoryId'>>({});
+  const [changes, setChanges] = useState<Pick<BulkChanges, 'locationId' | 'categoryIds'>>({});
   const bulkEntryOpen = params.get('bulk') === '1';
   const bulkEntryId = useId();
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -96,7 +113,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
           item,
           name: item.name,
           kind: item.kind,
-          category: categoryNames.get(item.categoryId) ?? item.categoryId,
+          category: item.categoryIds.map((id) => categoryNames.get(id) ?? id).sort(collator.compare).join(', '),
           path: formatLocationPath(locationPath),
           locationIds: locationPath.map((location) => location.id),
           state: item.kind === 'equipment' ? item.status : item.stockLevel,
@@ -107,11 +124,13 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
         row.name.toLowerCase().includes(nameQuery) &&
         (!filters.locationIds.length || row.locationIds.some((id) => filters.locationIds.includes(id))) &&
         (!filters.kinds.length || filters.kinds.includes(row.kind)) &&
-        (!filters.categoryIds.length || filters.categoryIds.includes(row.item.categoryId)) &&
+        (!filters.categoryIds.length || row.item.categoryIds.some((id) => filters.categoryIds.includes(id))) &&
         (!filters.states.length || filters.states.includes(row.state)),
       )
       .sort((a, b) => {
-        const result = collator.compare(a[sortKey], b[sortKey]);
+        const result = sortKey === 'state'
+          ? collator.compare(STATE_LABELS[a.state], STATE_LABELS[b.state])
+          : collator.compare(a[sortKey], b[sortKey]);
         return (sortDirection === 'ascending' ? result : -result) ||
           collator.compare(a.name, b.name) || collator.compare(a.item.id, b.item.id);
       });
@@ -133,7 +152,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
 
   const ids = [...selected];
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selected.has(row.item.id));
-  const hasChanges = changes.locationId !== undefined || changes.categoryId !== undefined;
+  const hasChanges = changes.locationId !== undefined || changes.categoryIds !== undefined;
   const hasFilters = Object.values(filters).some((value) => value.length > 0);
 
   useEffect(() => {
@@ -289,7 +308,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
           </>
         ) : (
           <>
-            Select items, choose a location or category, then click Save to apply changes.
+            Select items, choose a location or replacement categories, then click Save to apply changes.
             Changing the selection discards unsaved changes. Delete sends items to the recycle bin,
             where they can be restored.
           </>
@@ -316,24 +335,17 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                 onSelect={(locationId) => setChanges((current) => ({ ...current, locationId }))}
               />
 
-              <label>
-                Category
-                <select
-                  value={changes.categoryId ?? ''}
-                  disabled={busy}
-                  onChange={(event) => {
-                    const categoryId = event.target.value || undefined;
-                    setChanges((current) => ({ ...current, categoryId }));
-                  }}
-                >
-                  <option value="">Choose a category…</option>
-                  {catalog.categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <CategoryPicker
+                label="Replace categories"
+                emptyLabel="Keep current categories"
+                hint="Replaces all categories on selected items. Leave blank to keep them unchanged."
+                categories={catalog.categories}
+                selected={changes.categoryIds ?? []}
+                disabled={busy}
+                onChange={(ids) => setChanges((current) => ({
+                  ...current, categoryIds: ids.length ? ids : undefined,
+                }))}
+              />
 
               <div className="bulk-actions">
                 <button
@@ -420,10 +432,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                 <MultiSelectFilter
                   label="kind"
                   emptyLabel="All kinds"
-                  options={[
-                    { value: 'equipment', label: 'Equipment' },
-                    { value: 'consumable', label: 'Consumable' },
-                  ]}
+                  options={ITEM_KINDS.map((kind) => ({ value: kind, label: KIND_LABELS[kind] }))}
                   selected={filters.kinds}
                   disabled={busy}
                   onChange={(values) => setFilter('kinds', values)}
@@ -455,7 +464,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                   label="status or stock"
                   emptyLabel="All states"
                   options={[...EQUIPMENT_STATUSES, ...STOCK_LEVELS].map((state) => ({
-                    value: state, label: state.replaceAll('-', ' '),
+                    value: state, label: STATE_LABELS[state],
                   }))}
                   selected={filters.states}
                   disabled={busy}
@@ -500,10 +509,10 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                   <span className="item-name">{item.name}</span>
                   {item.safetyNotes ? <span className="kind kind-safety">safety</span> : null}
                 </td>
-                <td>{item.kind}</td>
+                <td>{KIND_LABELS[item.kind]}</td>
                 <td>{category}</td>
                 <td className="item-location">{path}</td>
-                <td>{state.replaceAll('-', ' ')}</td>
+                <td>{STATE_LABELS[state]}</td>
                 {mode === 'bin' ? (
                   <td>
                     {item.retiredAt ? (

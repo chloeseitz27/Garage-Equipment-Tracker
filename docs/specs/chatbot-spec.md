@@ -28,10 +28,19 @@ This is a discovery feature. It complements search; it does not replace it.
 
 **One-shot, with refinement by re-asking.**
 
-1. User describes their project in free text.
-2. Assistant returns a structured recommendation in a single response.
+1. User describes their project in the main search box and chooses **Ask**.
+   **Search** (or Enter) uses the same text to find inventory instead.
+2. Assistant returns a structured recommendation below the shared input.
 3. User can ask again with more detail to refine. Each ask is treated as a fresh
    request — there is no requirement to maintain long conversational memory.
+
+Search, category browsing, and the assistant share the home page; there is no
+separate assistant tab, text area, or example prompts. Ask is disabled for blank
+input and while waiting for a response;
+Search remains available and cancels a pending request. Errors are shown inline
+without clearing the input so the user can retry. The legacy `/assistant` URL
+redirects to the shared page, preserving the query and selected item. Bookmarks
+and browser history never automatically send assistant requests.
 
 Rationale: this runs on a shared kiosk. A long conversational thread is the
 wrong shape for a walk-up surface where the next person arrives two minutes
@@ -42,8 +51,8 @@ Kiosk implications:
 - The assistant's input and output are cleared by the same idle reset that
   clears search (product spec §3). No one inherits the previous person's
   project.
-- Prompt with concrete examples on the empty state. "Describe your project" is a
-  blank-page problem; *"I want to build a wooden planter box"* is not.
+- Keep the empty state focused on the shared input and its Search and Ask
+  actions, without example prompts.
 
 ---
 

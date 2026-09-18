@@ -54,8 +54,10 @@ export function findCatalogProblems(data: CatalogData): string[] {
   }
 
   for (const item of items) {
-    if (!categoryIds.has(item.categoryId)) {
-      problems.push(`Item ${item.id} has unknown categoryId: ${item.categoryId}`);
+    for (const categoryId of item.categoryIds) {
+      if (!categoryIds.has(categoryId)) {
+        problems.push(`Item ${item.id} has unknown categoryId: ${categoryId}`);
+      }
     }
     if (!locationIndex.has(item.locationId)) {
       problems.push(`Item ${item.id} has unknown locationId: ${item.locationId}`);

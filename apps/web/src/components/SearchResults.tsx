@@ -15,11 +15,14 @@ export function SearchResults({ records, query, selectedId, onSelect }: Props): 
   if (records.length === 0) {
     return (
       <div className="empty">
-        <h2>Nothing matches “{query}”.</h2>
-        <p>
-          The Garage may simply not have it. Try a broader word, or browse a category above — the
-          Project Assistant can also suggest items when you don&apos;t know what to search for.
-        </p>
+        <h2>{query.trim() ? <>Nothing matches “{query}”.</> : 'No items to show.'}</h2>
+        {query.trim() ? <p>
+          The Garage may simply not have it. Try a broader word, browse a category above, or
+          describe your project in the same box and choose Ask for suggestions.
+        </p> : <p>
+          There are no active items in this view. Try another category, or ask a staff member
+          about adding inventory.
+        </p>}
       </div>
     );
   }

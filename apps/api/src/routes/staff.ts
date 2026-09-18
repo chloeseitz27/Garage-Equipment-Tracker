@@ -52,15 +52,17 @@ export function staffRoutes(repository: CatalogRepository): Router {
   /** Returns a message naming the unresolved reference, or null. */
   const checkAgainst = (
     sets: { categories: Set<string>; locations: Set<string> },
-    item: { categoryId: string; locationId: string },
+    item: { categoryIds: string[]; locationId: string },
   ): string | null => {
-    if (!sets.categories.has(item.categoryId)) return `Unknown categoryId: ${item.categoryId}`;
+    for (const categoryId of item.categoryIds) {
+      if (!sets.categories.has(categoryId)) return `Unknown categoryId: ${categoryId}`;
+    }
     if (!sets.locations.has(item.locationId)) return `Unknown locationId: ${item.locationId}`;
     return null;
   };
 
   const checkReferences = async (item: {
-    categoryId: string;
+    categoryIds: string[];
     locationId: string;
   }): Promise<string | null> => checkAgainst(await loadReferenceSets(), item);
 
@@ -152,7 +154,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
         const merged = {
           ...item,
           ...(changes.locationId !== undefined ? { locationId: changes.locationId } : {}),
-          ...(changes.categoryId !== undefined ? { categoryId: changes.categoryId } : {}),
+          ...(changes.categoryIds !== undefined ? { categoryIds: changes.categoryIds } : {}),
           ...(changes.status !== undefined ? { status: changes.status } : {}),
           ...(changes.stockLevel !== undefined ? { stockLevel: changes.stockLevel } : {}),
         };
@@ -391,7 +393,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
-      const used = items.filter((item) => item.categoryId === id);
+      const used = items.filter((item) => item.categoryIds.includes(id));
       if (used.length > 0) {
         res.status(409).json({
           error: `Still used by ${used.length} item(s). Recategorize them first.`,

@@ -29,10 +29,11 @@ export const fetchCatalog = (): Promise<CatalogResponse> => request('/api/catalo
 export const createFlag = (input: CreateFlagInput): Promise<unknown> =>
   request('/api/flags', { method: 'POST', body: JSON.stringify(input) });
 
-export const recommend = (projectDescription: string): Promise<RecommendResponse> =>
+export const recommend = (projectDescription: string, signal?: AbortSignal): Promise<RecommendResponse> =>
   request('/api/assistant/recommend', {
     method: 'POST',
     body: JSON.stringify({ projectDescription }),
+    signal,
   });
 
 export const getSession = (): Promise<{ staff: boolean }> => request('/api/auth/session');
@@ -61,7 +62,7 @@ export const createItemsBulk = (
 
 export interface BulkChanges {
   locationId?: string;
-  categoryId?: string;
+  categoryIds?: string[];
   status?: string;
   stockLevel?: string;
 }

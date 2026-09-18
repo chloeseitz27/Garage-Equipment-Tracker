@@ -1,0 +1,83 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { test, type TestContext } from 'node:test';
+
+import { JsonCatalogRepository } from './json-repository.js';
+
+const legacy = {
+  id: 'itm-saw', name: 'Saw', kind: 'equipment', categoryId: 'cat-tools',
+  locationId: 'loc-shop', tags: [], goodFor: [], status: 'available',
+  quantity: 1, trainingRequired: 'none',
+};
+const multi = {
+  id: 'itm-tape', name: 'Tape', kind: 'consumable', categoryIds: ['cat-tools', 'cat-wood'],
+  locationId: 'loc-shop', tags: [], goodFor: [], stockLevel: 'low',
+};
+
+async function fixture(t: TestContext, items: unknown[]) {
+  const dataDir = join(process.cwd(), `.json-repository-test-${randomUUID()}`);
+  await mkdir(dataDir);
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const files = {
+    'items.json': items,
+    'locations.json': [{ id: 'loc-shop', name: 'Shop', kind: 'room', parentId: null }],
+    'categories.json': [{ id: 'cat-tools', name: 'Tools' }, { id: 'cat-wood', name: 'Woodworking' }],
+    'flags.json': [],
+  };
+  await Promise.all(Object.entries(files).map(([name, data]) =>
+    writeFile(join(dataDir, name), JSON.stringify(data), 'utf8')));
+  return { repository: new JsonCatalogRepository(dataDir), dataDir };
+}
+
+test('JSON reads migrate legacy items without rewriting and ordinary writes persist canonical arrays', async (t) => {
+  const { repository, dataDir } = await fixture(t, [legacy, multi]);
+  const path = join(dataDir, 'items.json');
+  const original = await readFile(path, 'utf8');
+  await repository.load();
+  const items = await repository.getItems();
+  assert.deepEqual(items.map((item) => item.categoryIds), [['cat-tools'], ['cat-tools', 'cat-wood']]);
+  assert.deepEqual((await repository.getItem('itm-saw'))?.categoryIds, ['cat-tools']);
+  assert.deepEqual((await repository.getItem('itm-tape'))?.categoryIds, ['cat-tools', 'cat-wood']);
+  assert.ok(items.every((item) => !('categoryId' in item)));
+  assert.equal(await readFile(path, 'utf8'), original);
+
+  const tape = await repository.getItem('itm-tape');
+  assert.ok(tape && tape.kind === 'consumable');
+  await repository.saveItem({ ...tape, stockLevel: 'in-stock' });
+  const persisted = JSON.parse(await readFile(path, 'utf8'));
+  assert.ok(persisted.every((item: Record<string, unknown>) => !('categoryId' in item)));
+  assert.deepEqual(persisted.map((item: { categoryIds: string[] }) => item.categoryIds), [
+    ['cat-tools'], ['cat-tools', 'cat-wood'],
+  ]);
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual(await reloaded.getItems(), await repository.getItems());
+});
+
+test('JSON item creation and bulk saves preserve all category assignments', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const first = await repository.createItem({
+    name: 'Tape', kind: 'consumable', stockLevel: 'low', categoryIds: ['cat-tools', 'cat-wood'],
+    locationId: 'loc-shop', tags: [], goodFor: [],
+  });
+  const created = await repository.createItems([{
+    name: 'Saw', kind: 'equipment', status: 'available', quantity: 1, trainingRequired: 'none',
+    categoryIds: ['cat-tools', 'cat-wood'], locationId: 'loc-shop', tags: [], goodFor: [],
+  }]);
+  await repository.saveItems([first, ...created].map((item) => ({
+    ...item, categoryIds: ['cat-wood', 'cat-tools'],
+  })));
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual(await reloaded.getItems(), await repository.getItems());
+});
+
+test('JSON loading rejects unknown secondary references on retired items', async (t) => {
+  const { repository } = await fixture(t, [{
+    ...multi, categoryIds: ['cat-tools', 'cat-missing'], retiredAt: '2026-09-18T12:00:00.000Z',
+  }]);
+  await assert.rejects(repository.load(), /itm-tape has unknown categoryId: cat-missing/);
+});

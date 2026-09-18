@@ -30,10 +30,33 @@ export const flagTypeSchema = z.enum(FLAG_TYPES);
 
 const idSchema = z.string().min(1);
 
+const categoryIdsSchema = z
+  .array(idSchema.refine((id) => id.trim().length > 0, 'Category ids must not be blank'))
+  .min(1, 'At least one category is required')
+  .refine((ids) => new Set(ids).size === ids.length, 'Category ids must be unique');
+
+/** Read legacy records/payloads without dropping any canonical assignments. */
+const migrateCategoryIds = (input: unknown, ctx: z.RefinementCtx): unknown => {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input;
+  const record = input as Record<string, unknown>;
+  if (!Object.hasOwn(record, 'categoryId')) return input;
+  if (!Object.hasOwn(record, 'categoryIds')) {
+    return { ...record, categoryIds: [record.categoryId] };
+  }
+  if (!Array.isArray(record.categoryIds) || !record.categoryIds.includes(record.categoryId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['categoryIds'],
+      message: 'Legacy categoryId conflicts with categoryIds',
+    });
+  }
+  return input;
+};
+
 const itemBaseShape = {
   id: idSchema,
   name: z.string().min(1),
-  categoryId: idSchema,
+  categoryIds: categoryIdsSchema,
   locationId: idSchema,
   description: z.string().optional(),
   photoUrl: z.string().optional(),
@@ -68,7 +91,10 @@ export const consumableSchema = z.object({
   stockLevel: stockLevelSchema,
 });
 
-export const itemSchema = z.discriminatedUnion('kind', [equipmentSchema, consumableSchema]);
+export const itemSchema = z.preprocess(
+  migrateCategoryIds,
+  z.discriminatedUnion('kind', [equipmentSchema, consumableSchema]),
+);
 
 export const locationSchema = z.object({
   id: idSchema,
@@ -104,10 +130,13 @@ export const createFlagSchema = z.object({
 });
 
 /** Staff item writes. The server owns `id` on create (technical-spec.md §3.2). */
-export const createItemSchema = z.discriminatedUnion('kind', [
-  equipmentSchema.omit({ id: true }),
-  consumableSchema.omit({ id: true }),
-]);
+export const createItemSchema = z.preprocess(
+  migrateCategoryIds,
+  z.discriminatedUnion('kind', [
+    equipmentSchema.omit({ id: true }),
+    consumableSchema.omit({ id: true }),
+  ]),
+);
 
 export const updateItemSchema = itemSchema;
 
@@ -143,16 +172,19 @@ export const resolveFlagSchema = z.object({
  */
 export const bulkUpdateItemsSchema = z.object({
   ids: z.array(idSchema).min(1).max(100),
-  changes: z
-    .object({
-      locationId: idSchema.optional(),
-      categoryId: idSchema.optional(),
-      status: equipmentStatusSchema.optional(),
-      stockLevel: stockLevelSchema.optional(),
-    })
-    .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
-      message: 'At least one change is required',
-    }),
+  changes: z.preprocess(
+    migrateCategoryIds,
+    z
+      .object({
+        locationId: idSchema.optional(),
+        categoryIds: categoryIdsSchema.optional(),
+        status: equipmentStatusSchema.optional(),
+        stockLevel: stockLevelSchema.optional(),
+      })
+      .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
+        message: 'At least one change is required',
+      }),
+  ),
 });
 
 /** Moves items to or from the recycle bin. Never destroys anything. */

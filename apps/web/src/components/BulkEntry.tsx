@@ -11,6 +11,7 @@ import {
 
 import { createItemsBulk } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { CategoryPicker } from './CategoryPicker.js';
 
 interface Props {
   categories: Category[];
@@ -36,7 +37,7 @@ Blue Painters Tape, consumable, low, , tape; masking`;
 export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Element {
   const [text, setText] = useState('');
   const [kind, setKind] = useState<ItemKind>('equipment');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
+  const [categoryIds, setCategoryIds] = useState<string[]>(categories[0] ? [categories[0].id] : []);
   const [locationId, setLocationId] = useState(locations[0]?.id ?? '');
   const [status, setStatus] = useState<(typeof EQUIPMENT_STATUSES)[number]>('available');
   const [stockLevel, setStockLevel] = useState<(typeof STOCK_LEVELS)[number]>('in-stock');
@@ -50,17 +51,17 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
     () =>
       parseBulkItems(text, {
         kind,
-        categoryId,
+        categoryIds,
         locationId,
         status,
         stockLevel,
         trainingRequired,
       }),
-    [text, kind, categoryId, locationId, status, stockLevel, trainingRequired],
+    [text, kind, categoryIds, locationId, status, stockLevel, trainingRequired],
   );
 
   const canSubmit =
-    parsed.items.length > 0 && parsed.errorCount === 0 && !busy && categoryId && locationId;
+    parsed.items.length > 0 && parsed.errorCount === 0 && !busy && categoryIds.length > 0 && locationId;
 
   const submit = async (): Promise<void> => {
     setBusy(true);
@@ -96,16 +97,13 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
           </select>
         </label>
 
-        <label>
-          Default category
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CategoryPicker
+          label="Default categories"
+          categories={categories}
+          selected={categoryIds}
+          disabled={busy}
+          onChange={setCategoryIds}
+        />
 
         <LocationPicker
           label="Default location"
@@ -200,6 +198,10 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
                         ? `${row.item.status} · ${row.item.trainingRequired}`
                         : row.item?.stockLevel}
                       {row.item?.tags.length ? ` · ${row.item.tags.join(', ')}` : ''}
+                    </span>
+                    <span className="muted small">
+                      {categories.filter((category) => row.item?.categoryIds.includes(category.id))
+                        .map((category) => category.name).join(', ')}
                     </span>
                   </span>
                 )}
