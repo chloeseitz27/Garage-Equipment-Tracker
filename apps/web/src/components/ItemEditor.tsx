@@ -12,6 +12,7 @@ import {
 
 import { createItem, updateItem } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { CategoryPicker } from './CategoryPicker.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
 interface Props {
@@ -22,11 +23,11 @@ interface Props {
   onCancel: () => void;
 }
 
-/** Form state is all strings; it's converted to a typed item on submit. */
+/** Text fields are converted to a typed item on submit. */
 interface FormState {
   name: string;
   kind: ItemKind;
-  categoryId: string;
+  categoryIds: string[];
   locationId: string;
   description: string;
   photoUrl: string;
@@ -43,7 +44,7 @@ interface FormState {
 const toForm = (item: Item | null, categories: Category[], locations: Location[]): FormState => ({
   name: item?.name ?? '',
   kind: item?.kind ?? 'equipment',
-  categoryId: item?.categoryId ?? categories[0]?.id ?? '',
+  categoryIds: item ? [...item.categoryIds].sort() : categories[0] ? [categories[0].id] : [],
   locationId: item?.locationId ?? locations[0]?.id ?? '',
   description: item?.description ?? '',
   photoUrl: item?.photoUrl ?? '',
@@ -98,7 +99,7 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
   const buildInput = (): CreateItemInput | null => {
     const shared = {
       name: form.name.trim(),
-      categoryId: form.categoryId,
+      categoryIds: form.categoryIds,
       locationId: form.locationId,
       description: optional(form.description),
       photoUrl: optional(form.photoUrl),
@@ -112,8 +113,8 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
       setError('Name is required.');
       return null;
     }
-    if (!shared.categoryId || !shared.locationId) {
-      setError('Category and location are required.');
+    if (!shared.categoryIds.length || !shared.locationId) {
+      setError('At least one category and a location are required.');
       return null;
     }
 
@@ -192,19 +193,12 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
             {item ? <span className="hint">Kind can&apos;t change after creation.</span> : null}
           </label>
 
-          <label>
-            Category
-            <select
-              value={form.categoryId}
-              onChange={(event) => set('categoryId', event.target.value)}
-            >
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CategoryPicker
+            categories={categories}
+            selected={form.categoryIds}
+            disabled={busy}
+            onChange={(ids) => set('categoryIds', ids)}
+          />
         </div>
 
         <LocationPicker

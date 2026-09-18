@@ -107,7 +107,7 @@ Shared fields:
 |---|---|---|
 | Name | Yes | Common name people would actually search for |
 | Kind | Yes | `equipment` or `consumable` |
-| Category | Yes | e.g. 3D Printing, Electronics, Woodworking, Hand Tools |
+| Categories | Yes | One or more, e.g. Electronics and Hand Tools; no duplicate assignments |
 | Location | Yes | Reference to a location node (§5.2) |
 | Description | No | What it is, what it's for |
 | Photo | No | Strongly recommended — a picture disambiguates faster than words |
@@ -173,6 +173,9 @@ Drawers use numbers appended to the surface letter, such as C2.
 
 A flat, staff-managed list used for browsing and filtering. Categories are for
 discovery ("what woodworking tools are here?"); tags are for search recall.
+An item can belong to multiple categories and appears under each of them. Search
+and project matching use every assigned category. Category deletion is blocked
+while any active or retired item references it.
 
 ---
 
@@ -182,7 +185,13 @@ discovery ("what woodworking tools are here?"); tags are for search recall.
 
 - Single search box, focused on load, matching across name, aliases/tags,
   category, description, and location name.
-- Results appear as the user types; no submit button required.
+- Search and the Project Assistant share this input, with **Search** and **Ask**
+  actions. Enter searches; only Ask sends an assistant
+  request. Results appear as the user types while viewing inventory results.
+- Clearing the input, including whitespace-only text, leaves Ask mode, clears
+  category filters and item selection, and shows the whole active inventory
+  without a result cap. Submitting a blank Search also clears category filters;
+  users can still explicitly browse a category while the input is empty.
 - Tolerant of imprecision: partial words, plurals, and minor misspellings should
   still surface the right item. Someone typing "solder" must find both the
   soldering iron and the solder wire.
@@ -198,7 +207,7 @@ discovery ("what woodworking tools are here?"); tags are for search recall.
 
 ### 6.3 Item detail
 
-- Photo, name, category, kind, status or stock level, description, notes.
+- Photo, name, all categories, kind, status or stock level, description, notes.
 - Full location breadcrumb, prominent and legible from a step back.
 - Related items from the same location and the same category.
 
@@ -218,15 +227,20 @@ and it is the only write path available to anonymous users.
 - Add, edit, retire items. Retired items leave search but are not destroyed.
 - Move an item to a different location in a couple of clicks.
 - Manage the location tree and category list.
+- Select one or more categories in the item editor and bulk-entry defaults.
+  Bulk recategorization explicitly replaces the complete category set; leaving
+  the bulk category selection blank keeps existing assignments unchanged.
 - Work the flag queue: confirm, correct, or dismiss reports.
 - Bulk entry matters — cataloging a whole shelf one modal at a time is the
   fastest way to abandon this project.
 
 ### 6.6 Project Assistant
 
-A free-text surface where a user describes a project and receives a grounded
-list of Garage items to use, each with its location — plus a clearly separated
-note of useful things the Garage does not have.
+The **Ask** action on the main search box takes a project description and returns
+a grounded list of Garage items to use, each with its location — plus a clearly
+separated note of useful things the Garage does not have. There is no separate
+assistant input or navigation tab; Search returns to inventory results using the
+same text. Both actions open the same item detail surface.
 
 Specified in full in [`chatbot-spec.md`](chatbot-spec.md). Key constraints that
 bind the rest of this spec:

@@ -25,7 +25,7 @@ const { App } = await import('../App.js');
 const catalogFixture = (): CatalogResponse => ({
   items: [{
     id: 'camera', name: 'Inspection camera', kind: 'equipment', status: 'available',
-    categoryId: 'tools', locationId: 'bench', quantity: 1, trainingRequired: 'orientation',
+    categoryIds: ['tools', 'electronics'], locationId: 'bench', quantity: 1, trainingRequired: 'orientation',
     tags: [], goodFor: [], safetyNotes: 'Ask staff before use.',
   }],
   locations: [
@@ -33,7 +33,7 @@ const catalogFixture = (): CatalogResponse => ({
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room',
       mapPosition: { roomId: 'room', mapId: 'common', x: 0.4, y: 0.6 } },
   ],
-  categories: [{ id: 'tools', name: 'Tools' }],
+  categories: [{ id: 'tools', name: 'Tools' }, { id: 'electronics', name: 'Electronics' }],
 });
 
 const originalFetch = globalThis.fetch;
@@ -89,7 +89,8 @@ const saveSnapshot = (catalog: CatalogResponse, fetchedAt = Date.now()): string 
   return value;
 };
 const button = (text: string): HTMLButtonElement => {
-  const result = [...host.querySelectorAll('button')].find((node) => node.textContent?.trim() === text);
+  const result = [...host.querySelectorAll('button')]
+    .find((node) => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === text);
   assert.ok(result, `Missing button: ${text}`);
   return result;
 };
@@ -218,7 +219,7 @@ test('background refresh preserves a category rename until it is cancelled', asy
   await render('/manage/categories');
   const row = [...host.querySelectorAll('li')].find((node) => node.textContent?.includes('Empty category'));
   assert.ok(row);
-  const rename = [...row.querySelectorAll('button')].find((node) => node.textContent === 'Rename');
+  const rename = row.querySelector<HTMLButtonElement>('button[aria-label="Rename Empty category"]');
   assert.ok(rename);
   await click(rename);
   const input = row.querySelector('input');
@@ -238,19 +239,23 @@ test('bulk selections and pasted drafts both hold pending updates until cleared'
   const selected = host.querySelector<HTMLInputElement>('.item-table tbody input[type="checkbox"]');
   assert.ok(selected);
   await click(selected);
-  const category = host.querySelector<HTMLSelectElement>('.bulk-bar select');
+  const category = host.querySelector<HTMLButtonElement>('.bulk-bar button[aria-label="Replace categories"]');
   assert.ok(category);
-  await act(() => {
-    category.value = 'tools';
-    category.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  await click(category);
+  const panel = document.getElementById(category.getAttribute('aria-controls') ?? '');
+  assert.ok(panel);
+  const choices = [...panel.querySelectorAll<HTMLButtonElement>('.multi-filter-options button')];
+  for (const choice of choices) await click(choice);
+  const done = [...panel.querySelectorAll('button')].find((node) => node.textContent === 'Done');
+  assert.ok(done);
+  await click(done);
   const text = host.querySelector<HTMLTextAreaElement>('.bulk-entry-section textarea');
   assert.ok(text);
   await typeInput(text, 'New tool');
   remote.items[0]!.retiredAt = '2026-09-18T00:00:00Z';
   await event('focus');
   assert.equal(selected.checked, true);
-  assert.equal(category.value, 'tools');
+  assert.equal(category.title, 'Tools, Electronics');
   assert.equal(text.value, 'New tool');
   assert.match(host.textContent ?? '', /updates will appear after you save or discard/);
   await click(selected);
@@ -279,7 +284,7 @@ test('a retired consumable in saved data stays excluded from visitor results', a
   const catalog = catalogFixture();
   catalog.items = [{
     id: 'ties', name: 'Retired cable ties', kind: 'consumable', stockLevel: 'low',
-    categoryId: 'tools', locationId: 'bench', tags: [], goodFor: [],
+    categoryIds: ['tools'], locationId: 'bench', tags: [], goodFor: [],
     retiredAt: '2026-09-18T00:00:00Z',
   }];
   saveSnapshot(catalog);

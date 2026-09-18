@@ -19,7 +19,7 @@ import {
 
 export interface SearchRecord {
   item: Item;
-  categoryName: string;
+  categoryNames: string[];
   locationPath: Location[];
   locationText: string;
 }
@@ -34,7 +34,7 @@ export function buildRecords(catalog: CatalogResponse): SearchRecord[] {
       const locationPath = getLocationPath(locationIndex, item.locationId);
       return {
         item,
-        categoryName: categoryNames.get(item.categoryId) ?? '',
+        categoryNames: item.categoryIds.map((id) => categoryNames.get(id) ?? id),
         locationPath,
         locationText: formatLocationPath(locationPath),
       };
@@ -51,7 +51,7 @@ export function createSearchIndex(records: SearchRecord[]): Fuse<SearchRecord> {
       { name: 'item.name', weight: 5 },
       { name: 'item.tags', weight: 4 },
       { name: 'item.goodFor', weight: 2 },
-      { name: 'categoryName', weight: 2 },
+      { name: 'categoryNames', weight: 2 },
       { name: 'item.description', weight: 1 },
       { name: 'locationText', weight: 1 },
     ],

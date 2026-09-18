@@ -12,7 +12,7 @@ import {
 const catalogFixture = (): CatalogResponse => ({
   items: [{
     id: 'ties', name: 'Cable ties', kind: 'consumable', stockLevel: 'low',
-    categoryId: 'supplies', locationId: 'cabinet', tags: [], goodFor: [],
+    categoryIds: ['supplies', 'electronics'], locationId: 'cabinet', tags: [], goodFor: [],
     retiredAt: '2026-09-18T00:00:00Z', safetyNotes: 'Staff-authored text.\nPreserve exactly.',
   }],
   locations: [
@@ -22,7 +22,7 @@ const catalogFixture = (): CatalogResponse => ({
     { id: 'table', name: 'Table', kind: 'table', parentId: 'room' },
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
   ],
-  categories: [{ id: 'supplies', name: 'Supplies' }],
+  categories: [{ id: 'supplies', name: 'Supplies' }, { id: 'electronics', name: 'Electronics' }],
 });
 
 function setup() {
@@ -57,6 +57,24 @@ test('cold and warm loads preserve retirement, all location kinds, floor plans, 
   assert.equal(restarted.read()?.source, 'cache');
   assert.equal(restarted.read()?.fetchedAt, 1_000);
   assert.equal(isRetired(restarted.read()!.catalog.items[0]!), true);
+});
+
+test('legacy cached and network categories normalize without losing the saved catalog', async () => {
+  const { options, values, issues } = setup();
+  const original = catalogFixture();
+  const legacy = {
+    ...original,
+    items: original.items.map(({ categoryIds, ...item }) => ({ ...item, categoryId: categoryIds[0] })),
+  };
+  const expected = {
+    ...original, items: original.items.map((item) => ({ ...item, categoryIds: ['supplies'] })),
+  };
+  values.set(CATALOG_CACHE_KEY, JSON.stringify({ version: 2, fetchedAt: 1_000, catalog: legacy }));
+  const cache = new BrowserCatalogCache({ ...options, fetchCatalog: async () => legacy });
+  assert.deepEqual(cache.read()?.catalog, expected);
+  assert.deepEqual((await cache.refresh()).catalog, expected);
+  assert.deepEqual(JSON.parse(values.get(CATALOG_CACHE_KEY)!).catalog, expected);
+  assert.deepEqual(issues, []);
 });
 
 test('concurrent requests coalesce, and returned values cannot mutate the saved snapshot', async () => {

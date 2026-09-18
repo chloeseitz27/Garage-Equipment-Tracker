@@ -5,7 +5,7 @@ import { parseBulkItems, type BulkDefaults } from './index.js';
 
 const defaults: BulkDefaults = {
   kind: 'equipment',
-  categoryId: 'cat-hand-tools',
+  categoryIds: ['cat-hand-tools'],
   locationId: 'loc-tool-wall',
   status: 'available',
   stockLevel: 'in-stock',
@@ -18,7 +18,7 @@ test('a bare name uses every default', () => {
   assert.deepEqual(result.items, [
     {
       name: 'Bench Vise',
-      categoryId: 'cat-hand-tools',
+      categoryIds: ['cat-hand-tools'],
       locationId: 'loc-tool-wall',
       tags: [],
       goodFor: [],
@@ -35,7 +35,7 @@ test('per-row columns override the defaults', () => {
   assert.equal(result.errorCount, 0);
   assert.deepEqual(result.items[0], {
     name: 'Painters Tape',
-    categoryId: 'cat-hand-tools',
+    categoryIds: ['cat-hand-tools'],
     locationId: 'loc-tool-wall',
     tags: ['tape', 'masking'],
     goodFor: [],
@@ -50,6 +50,16 @@ test('tab-separated rows work, so a spreadsheet paste lands intact', () => {
   const item = result.items[0];
   assert.ok(item && item.kind === 'equipment');
   assert.equal(item.trainingRequired, 'supervised');
+});
+
+test('every row receives all category defaults without sharing mutable arrays', () => {
+  const categoryIds = ['cat-hand-tools', 'cat-wood'];
+  const result = parseBulkItems('Hammer\nTape, consumable', { ...defaults, categoryIds });
+  assert.equal(result.errorCount, 0);
+  for (const item of result.items) assert.deepEqual(item.categoryIds, categoryIds);
+  result.items[0]?.categoryIds.push('cat-other');
+  assert.deepEqual(categoryIds, ['cat-hand-tools', 'cat-wood']);
+  assert.deepEqual(result.items[1]?.categoryIds, categoryIds);
 });
 
 test('blank lines and comments are skipped rather than failing', () => {

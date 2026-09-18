@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { getSession } from './api.js';
 import { useCatalog } from './use-catalog.js';
 import { CatalogDraftContext } from './catalog-draft.js';
@@ -8,6 +8,13 @@ import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
 import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 import { RoomMapsPage } from './components/RoomMapsPage.js';
+
+function AssistantRedirect(): JSX.Element {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set('mode', 'ask');
+  return <Navigate to={{ pathname: '/', search: `?${params}`, hash: location.hash }} replace />;
+}
 
 export function App(): JSX.Element {
   const [staff, setStaff] = useState(false);
@@ -60,9 +67,8 @@ export function App(): JSX.Element {
               <p className="muted">Reston Garage — find it, then go get it.</p>
             </div>
             <nav className="tabs" aria-label="Main navigation">
-              <NavLink to="/" end>Search &amp; browse</NavLink>
+              <NavLink to="/" end>Search &amp; ask</NavLink>
               <NavLink to="/maps">Room maps</NavLink>
-              <NavLink to="/assistant">Project Assistant</NavLink>
               {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
             </nav>
             <StaffBar staff={staff} beforeSignOut={() =>
@@ -90,7 +96,7 @@ export function App(): JSX.Element {
           {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
           <Routes>
             <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
-            <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
+            <Route path="/assistant" element={<AssistantRedirect />} />
             <Route path="/maps" element={<RoomMapsPage catalog={catalog} />} />
             <Route path="/manage/*" element={
               sessionLoading ? <p role="status">Checking staff sign-in…</p> :

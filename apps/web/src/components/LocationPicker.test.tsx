@@ -3,9 +3,8 @@ import { after, afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
-import { formatLocationPath, getLocationPath, type Item, type Location } from '@garage/shared';
+import { EQUIPMENT_STATUSES, STOCK_LEVELS, formatLocationPath, getLocationPath, type Item, type Location, type RecommendResponse } from '@garage/shared';
 import { LocationPicker } from './LocationPicker.js';
-import { BulkEntry } from './BulkEntry.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -22,6 +21,7 @@ dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = tru
 dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
 const { createRoot } = await import('react-dom/client');
 // Portal components import react-dom too; initialize it only after the DOM exists.
+const { BulkEntry } = await import('./BulkEntry.js');
 const { ItemEditor } = await import('./ItemEditor.js');
 const { LocationManager } = await import('./LocationManager.js');
 const { RoomMapsPage } = await import('./RoomMapsPage.js');
@@ -29,6 +29,8 @@ const { RoomMap } = await import('./RoomMap.js');
 const { LocationMapEditor } = await import('./LocationMapEditor.js');
 const { ItemsManager } = await import('./ItemsManager.js');
 const { MultiSelectFilter } = await import('./MultiSelectFilter.js');
+const { CategoryManager } = await import('./CategoryManager.js');
+const { buildRecords, createSearchIndex } = await import('../search.js');
 const { StaffPanel } = await import('./StaffPanel.js');
 const { App } = await import('../App.js');
 const { createBrowserRouter, createMemoryRouter, RouterProvider, useLocation, useNavigate } = await import('react-router-dom');
@@ -49,7 +51,7 @@ const locations: Location[] = [
 ];
 const categories = [{ id: 'tools', name: 'Tools' }];
 const item: Item = {
-  id: 'vise', name: 'Vise', kind: 'equipment', categoryId: 'tools', locationId: 'bin-19',
+  id: 'vise', name: 'Vise', kind: 'equipment', categoryIds: ['tools'], locationId: 'bin-19',
   tags: [], goodFor: [], status: 'available', quantity: 1, trainingRequired: 'none',
 };
 const catalog = { locations, categories, items: [item] };
@@ -62,6 +64,7 @@ let testRouter: ReturnType<typeof createMemoryRouter> | null;
 let writes: Array<{ url: string; body: Record<string, unknown> }>;
 
 beforeEach(() => {
+  dom.window.localStorage.clear();
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -374,7 +377,7 @@ const multiCatalog = {
   items: [
     item,
     {
-      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'tools', locationId: 'bin-19',
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryIds: ['tools'], locationId: 'bin-19',
       tags: [], goodFor: [], stockLevel: 'in-stock',
     } satisfies Item,
   ],
@@ -388,14 +391,189 @@ const checkboxFor = (name: string): HTMLInputElement => {
   return checkbox;
 };
 
-const setCategory = async (value: string): Promise<void> => {
-  const select = host.querySelector<HTMLSelectElement>('.bulk-bar select');
-  assert.ok(select);
-  await act(() => {
-    select.value = value;
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+const setCategories = async (values: string[], label = 'Replace categories'): Promise<void> => {
+  const panel = await openFilter(label);
+  await click(panelButton(panel, 'Clear selection'));
+  for (const value of values) await click(optionButton(panel, value));
+  await click(panelButton(panel, 'Done'));
 };
+const setCategory = (value: string): Promise<void> => setCategories(value ? [value] : []);
+
+test('new items can save multiple categories and require at least one', async () => {
+  await render(createElement(ItemEditor, {
+    item: null, categories: multiCatalog.categories, locations, onSaved: () => {}, onCancel: () => {},
+  }));
+  const name = host.querySelector<HTMLInputElement>('.editor label input');
+  assert.ok(name);
+  await type(name, 'Multi-purpose tool');
+  await setCategories([], 'Categories');
+  await click(button('Create item'));
+  assert.equal(writes.length, 0);
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /At least one category/);
+  await setCategories(['tools', 'materials'], 'Categories');
+  assert.match(button('Categories').textContent ?? '', /Tools, Materials/);
+  await click(button('Create item'));
+  assert.equal(writes[0]?.url, '/api/items');
+  assert.deepEqual(writes[0]?.body.categoryIds, ['materials', 'tools']);
+  assert.equal('categoryId' in (writes[0]?.body ?? {}), false);
+});
+
+test('editing keeps every category and allows removing one without losing the others', async () => {
+  await render(createElement(ItemEditor, {
+    item: { ...item, categoryIds: ['tools', 'materials'] },
+    categories: multiCatalog.categories, locations, onSaved: () => {}, onCancel: () => {},
+  }));
+  assert.equal(button('Categories').title, 'Tools, Materials');
+  await choose(combobox('Location'));
+  await click(button('Save changes'));
+  assert.deepEqual(writes[0]?.body.categoryIds, ['materials', 'tools']);
+  const panel = await openFilter('Categories');
+  assert.equal(optionButton(panel, 'tools').getAttribute('aria-pressed'), 'true');
+  assert.equal(optionButton(panel, 'materials').getAttribute('aria-pressed'), 'true');
+  await click(optionButton(panel, 'tools'));
+  await click(panelButton(panel, 'Done'));
+  await click(button('Save changes'));
+  assert.deepEqual(writes[1]?.body.categoryIds, ['materials']);
+  assert.equal(writes[1]?.body.locationId, 'destination');
+});
+
+test('category selections participate in the unsaved guard but searching options and undoing do not', async () => {
+  await render(createElement(StaffPanel, { catalog: multiCatalog, onChanged: () => {} }),
+    '/manage/items/vise/edit');
+  const panel = await openFilter('Categories');
+  const search = panel.querySelector<HTMLInputElement>('input');
+  assert.ok(search);
+  await type(search, 'mat');
+  assert.equal(unloadIsBlocked(), false);
+  await click(optionButton(panel, 'materials'));
+  assert.equal(unloadIsBlocked(), true);
+  await click(optionButton(panel, 'materials'));
+  assert.equal(unloadIsBlocked(), false);
+  await click(optionButton(panel, 'materials'));
+  await click(panelButton(panel, 'Done'));
+  await click(link('Locations'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(button('Categories').title, 'Tools, Materials');
+});
+
+test('bulk-entry applies every default category to equipment and consumables', async () => {
+  await render(createElement(BulkEntry, {
+    locations, categories: multiCatalog.categories, onCreated: () => {},
+  }));
+  const rows = host.querySelector<HTMLTextAreaElement>('textarea');
+  assert.ok(rows);
+  await type(rows, 'Vise\nTape, consumable');
+  await setCategories([], 'Default categories');
+  assert.equal(button('Add 2 item(s)').disabled, true);
+  await setCategories(['tools', 'materials'], 'Default categories');
+  assert.match(host.querySelector('.preview')?.textContent ?? '', /Tools, Materials/);
+  await click(button('Add 2 item(s)'));
+  const saved = writes[0]?.body.items as Array<{ categoryIds: string[] }>;
+  assert.deepEqual(saved.map((row) => row.categoryIds), [
+    ['materials', 'tools'], ['materials', 'tools'],
+  ]);
+});
+
+test('bulk replacement saves the full category set and empty selection leaves categories unchanged', async () => {
+  await render(createElement(ItemsManager, { catalog: multiCatalog, mode: 'live', onChanged: () => {} }));
+  await click(checkboxFor('Vise'));
+  await click(checkboxFor('Solder'));
+  await setCategories(['tools', 'materials']);
+  assert.match(host.querySelector('.bulk-bar')?.textContent ?? '', /Replaces all categories/);
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body, {
+    ids: ['vise', 'solder'], changes: { categoryIds: ['materials', 'tools'] },
+  });
+  await click(checkboxFor('Vise'));
+  await setCategories(['tools', 'materials']);
+  await choose(combobox('Move to'));
+  await setCategories([]);
+  await click(button('Save'));
+  assert.deepEqual(writes[1]?.body, { ids: ['vise'], changes: { locationId: 'destination' } });
+});
+
+test('category usage includes secondary assignments and retired items', async () => {
+  await render(createElement(CategoryManager, {
+    categories: multiCatalog.categories,
+    items: [
+      { ...item, categoryIds: ['tools', 'materials'], retiredAt: '2026-09-18T00:00:00Z' },
+      { ...item, id: 'second', categoryIds: ['materials'] },
+    ],
+    onChanged: () => {},
+  }));
+  const rows = [...host.querySelectorAll('.flat-list li')];
+  assert.match(rows[0]?.textContent ?? '', /Tools1 item/);
+  assert.match(rows[1]?.textContent ?? '', /Materials2 item/);
+  assert.ok(rows.every((row) => row.querySelector<HTMLButtonElement>('button.danger')?.disabled));
+});
+
+test('category actions use labeled icons without changing rename, Save, or Cancel behavior', async () => {
+  let refreshes = 0;
+  await render(createElement(CategoryManager, {
+    categories, items: [item], onChanged: () => { refreshes++; },
+  }));
+  const rename = button('Rename Tools');
+  const remove = button('Delete Tools');
+  assert.equal(rename.title, 'Rename Tools');
+  assert.equal(rename.textContent?.trim(), '');
+  assert.ok(rename.querySelector('svg.action-icon-edit[aria-hidden="true"]'));
+  assert.equal(remove.textContent?.trim(), '');
+  assert.ok(remove.querySelector('svg.action-icon-delete[aria-hidden="true"]'));
+  assert.equal(remove.disabled, true);
+  assert.equal(remove.title, 'Recategorize its items first');
+  await click(rename);
+  const editor = host.querySelector('.category-edit');
+  assert.ok(editor?.classList.contains('tree-edit'));
+  assert.equal(button('Save').parentElement, editor);
+  assert.equal(button('Cancel').parentElement, editor);
+  assert.equal(button('Cancel').classList.contains('secondary'), true);
+  for (const [name, icon, title] of [
+    ['Save', 'save', 'Save category name'],
+    ['Cancel', 'cancel', 'Cancel renaming'],
+  ] as const) {
+    const action = button(name);
+    assert.equal(action.textContent?.trim(), '');
+    assert.equal(action.title, title);
+    assert.ok(action.querySelector(`svg.action-icon-${icon}[aria-hidden="true"]`));
+  }
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="Category name"]');
+  assert.ok(input);
+  await type(input, 'Discard this');
+  await click(button('Cancel'));
+  assert.equal(host.querySelector('.category-edit'), null);
+  assert.equal(writes.length, 0);
+  await click(button('Rename Tools'));
+  const reopened = host.querySelector<HTMLInputElement>('input[aria-label="Category name"]');
+  assert.ok(reopened);
+  assert.equal(reopened.value, 'Tools');
+  await type(reopened, '  Hand tools  ');
+  await click(button('Save'));
+  assert.deepEqual(writes[0], { url: '/api/categories/tools', body: { id: 'tools', name: 'Hand tools' } });
+  assert.equal(refreshes, 1);
+  assert.equal(host.querySelector('.category-edit'), null);
+});
+
+test('the category delete icon still deletes only an unused category', async () => {
+  let refreshes = 0;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(init?.method, 'DELETE');
+    assert.equal(String(url), '/api/categories/unused');
+    writes.push({ url: String(url), body: {} });
+    return new Response(null, { status: 204 });
+  };
+  await render(createElement(CategoryManager, {
+    categories: [{ id: 'unused', name: 'Unused' }], items: [],
+    onChanged: () => { refreshes++; },
+  }));
+  const remove = button('Delete Unused');
+  assert.equal(remove.disabled, false);
+  assert.equal(remove.title, 'Delete this category');
+  assert.ok(remove.querySelector('svg.action-icon-delete'));
+  await click(remove);
+  assert.equal(writes.length, 1);
+  assert.equal(refreshes, 1);
+});
 
 test('Save applies location and category to the full selection in one request', async () => {
   let refreshes = 0;
@@ -409,11 +587,11 @@ test('Save applies location and category to the full selection in one request', 
   assert.equal(writes.length, 0);
   assert.equal(refreshes, 0);
   assert.equal(combobox('Move to').value, path('destination'));
-  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  assert.equal(button('Replace categories').title, 'Materials');
   await click(button('Save'));
   assert.equal(writes.length, 1);
   assert.deepEqual(writes[0]?.body, {
-    ids: ['vise', 'solder'], changes: { locationId: 'destination', categoryId: 'materials' },
+    ids: ['vise', 'solder'], changes: { locationId: 'destination', categoryIds: ['materials'] },
   });
   assert.equal(refreshes, 1);
 });
@@ -428,7 +606,7 @@ test('category-only drafts can be undone and saved without a location change', a
   assert.equal(button('Save').disabled, true);
   await setCategory('materials');
   await click(button('Save'));
-  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { categoryId: 'materials' } });
+  assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { categoryIds: ['materials'] } });
 });
 
 test('unchecking items discards pending edits without a separate Deselect button', async () => {
@@ -444,7 +622,7 @@ test('unchecking items discards pending edits without a separate Deselect button
   assert.equal(host.querySelector('.bulk-bar'), null);
   await click(checkboxFor('Solder'));
   assert.equal(combobox('Move to').value, '');
-  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, '');
+  assert.equal(button('Replace categories').title, 'Keep current categories');
   assert.equal(button('Save').disabled, true);
 });
 
@@ -478,7 +656,7 @@ test('a failed Save preserves the draft and checked items for retry', async () =
   assert.equal(writes.length, 1);
   assert.equal(checkboxFor('Vise').checked, true);
   assert.equal(combobox('Move to').value, path('destination'));
-  assert.equal(host.querySelector<HTMLSelectElement>('.bulk-bar select')?.value, 'materials');
+  assert.equal(button('Replace categories').title, 'Materials');
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save this batch/);
   assert.equal(host.querySelector('[role="status"]'), null);
   assert.equal(button('Save').disabled, false);
@@ -554,13 +732,42 @@ const gridCatalog = {
     { ...item, id: 'tool10', name: 'Tool 10', locationId: 'bin-10', status: 'out-for-repair' } satisfies Item,
     { ...item, id: 'tool2', name: 'Tool 2', locationId: 'bin-2' },
     {
-      id: 'solder', name: 'Solder', kind: 'consumable', categoryId: 'materials', locationId: 'destination',
+      id: 'solder', name: 'Solder', kind: 'consumable', categoryIds: ['materials'], locationId: 'destination',
       tags: [], goodFor: [], stockLevel: 'low',
     } satisfies Item,
   ],
 };
 const gridNames = (): string[] => [...host.querySelectorAll('.item-table tbody .item-name')]
   .map((node) => node.textContent ?? '');
+
+test('multi-category items appear once when any selected category matches, including in the recycle bin', async () => {
+  const both = { ...item, categoryIds: ['tools', 'materials'] };
+  const categoryCatalog = {
+    ...multiCatalog,
+    items: [both, { ...item, id: 'retired', name: 'Retired tool', categoryIds: both.categoryIds, retiredAt: '2026-09-18T00:00:00Z' }],
+  };
+  await render(createElement(ItemsManager, { catalog: categoryCatalog, mode: 'live', onChanged: () => {} }));
+  assert.match(host.querySelector('.item-table tbody')?.textContent ?? '', /Materials, Tools/);
+  await filterBy('Filter by category', 'materials');
+  assert.deepEqual(gridNames(), ['Vise']);
+  await filterBy('Filter by category', ['tools', 'materials']);
+  assert.deepEqual(gridNames(), ['Vise']);
+  await render(createElement(ItemsManager, { catalog: categoryCatalog, mode: 'bin', onChanged: () => {} }));
+  assert.deepEqual(gridNames(), ['Retired tool']);
+  await filterBy('Filter by category', 'materials');
+  assert.deepEqual(gridNames(), ['Retired tool']);
+});
+
+test('search indexes each category name without duplicating multi-category items', () => {
+  const records = buildRecords({
+    ...multiCatalog,
+    items: [{ ...item, categoryIds: ['tools', 'materials'] }],
+  });
+  assert.deepEqual(records[0]?.categoryNames, ['Tools', 'Materials']);
+  const search = createSearchIndex(records);
+  assert.deepEqual(search.search('Materials').map((hit) => hit.item.item.id), ['vise']);
+  assert.deepEqual(search.search('Tools').map((hit) => hit.item.item.id), ['vise']);
+});
 const sortBy = async (label: string): Promise<void> => {
   const header = host.querySelector<HTMLButtonElement>(`button[aria-label="Sort by ${label}"]`);
   assert.ok(header, `Missing sortable header ${label}`);
@@ -609,12 +816,54 @@ test('item information is separated into headed columns with visible category, s
   const cells = row.querySelectorAll('td');
   assert.equal(cells.length, 7);
   assert.equal(cells[1]?.textContent, 'Solder');
-  assert.equal(cells[2]?.textContent, 'consumable');
+  assert.equal(cells[2]?.textContent, 'Consumable');
   assert.equal(cells[3]?.textContent, 'Materials');
   assert.equal(cells[4]?.textContent, path('destination'));
-  assert.equal(cells[5]?.textContent, 'low');
+  assert.equal(cells[5]?.textContent, 'Low stock');
   assert.equal(writes.length, 0);
 });
+
+for (const mode of ['live', 'bin'] as const) {
+  test(`${mode} tables and filters use readable kind and stock labels without changing stored values`, async () => {
+    const states: Item[] = [
+      ...EQUIPMENT_STATUSES.map((status): Item => ({ ...item, id: status, name: status, status })),
+      ...STOCK_LEVELS.map((stockLevel): Item => ({
+        id: stockLevel, name: stockLevel, kind: 'consumable', stockLevel,
+        categoryIds: ['tools'], locationId: 'bin-19', tags: [], goodFor: [],
+      })),
+    ];
+    const stateCatalog = {
+      ...catalog, items: mode === 'bin' ? states.map((entry) => ({
+        ...entry, retiredAt: '2026-09-18T00:00:00Z',
+      })) : states,
+    };
+    await render(createElement(ItemsManager, { catalog: stateCatalog, mode, onChanged: () => {} }));
+    const expected: Record<string, [string, string]> = {
+      available: ['Equipment', 'Available'],
+      'in-use': ['Equipment', 'In use'],
+      'out-for-repair': ['Equipment', 'Out for repair'],
+      'in-stock': ['Consumable', 'In stock'],
+      low: ['Consumable', 'Low stock'],
+      out: ['Consumable', 'Out of stock'],
+    };
+    for (const row of host.querySelectorAll('.item-table tbody tr')) {
+      const cells = row.querySelectorAll('td');
+      assert.deepEqual([cells[2]?.textContent, cells[5]?.textContent],
+        expected[cells[1]?.textContent ?? '']);
+    }
+    const panel = await openFilter('Filter by status or stock');
+    for (const [value, [, label]] of Object.entries(expected)) {
+      assert.equal(optionButton(panel, value).textContent, label);
+    }
+    await click(panelButton(panel, 'Done'));
+    await sortBy('Status / stock');
+    assert.deepEqual(gridNames(), ['available', 'in-stock', 'in-use', 'low', 'out-for-repair', 'out']);
+    await filterBy('Filter by status or stock', 'out');
+    assert.deepEqual(gridNames(), ['out']);
+    assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.get('state'), 'out');
+    assert.equal(writes.length, 0);
+  });
+}
 
 test('headers toggle sorting in either direction across every item column', async () => {
   await render(createElement(ItemsManager, { catalog: gridCatalog, mode: 'live', onChanged: () => {} }));
@@ -1052,8 +1301,8 @@ test('public item details and search are bookmarkable, and closing details parti
   assert.equal(host.querySelector('.item-detail'), null);
   await click(button('History back'));
   assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
-  await click(link('Project Assistant'));
-  assert.equal(currentUrl(), '/assistant');
+  await click(link('Room maps'));
+  assert.equal(currentUrl(), '/maps');
   await click(button('History back'));
   assert.equal(currentUrl(), '/?q=Tool&item=tool2');
   assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
@@ -1061,17 +1310,304 @@ test('public item details and search are bookmarkable, and closing details parti
 
 test('typing search replaces the current entry rather than creating one entry per keystroke', async () => {
   mockAppApi();
-  await render(createElement(App), '/assistant');
-  await click(link('Search & browse'));
+  await render(createElement(App), '/maps');
+  await click(link('Search & ask'));
   const input = host.querySelector<HTMLInputElement>('.search');
   assert.ok(input);
   await type(input, 'T');
   await type(input, 'Tool');
   assert.equal(currentUrl(), '/?q=Tool');
   await click(button('History back'));
-  assert.equal(currentUrl(), '/assistant');
+  assert.equal(currentUrl(), '/maps');
   await click(button('History forward'));
   assert.equal(host.querySelector<HTMLInputElement>('.search')?.value, 'Tool');
+});
+
+const recommendation: RecommendResponse = {
+  understoodAs: 'A project using tools and solder',
+  garageItems: [
+    { id: 'tool2', name: 'Tool 2', kind: 'equipment', reason: 'For the assembly', locationPath: getLocationPath(locations, 'bin-2') },
+    { id: 'solder', name: 'Solder', kind: 'consumable', reason: 'For the connections', locationPath: getLocationPath(locations, 'destination') },
+  ],
+  notInGarage: [{ name: 'Project enclosure', reason: 'To house the project' }],
+};
+const mockAssistantApi = (respond: (init?: RequestInit) => Promise<Response> = async () => jsonResponse(recommendation)): void => {
+  mockAppApi(false);
+  const appFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (url !== '/api/assistant/recommend') return appFetch(url, init);
+    assert.equal(init?.method, 'POST');
+    assert.equal(typeof init.body, 'string');
+    writes.push({ url: String(url), body: JSON.parse(String(init.body)) });
+    return respond(init);
+  };
+};
+const discoveryInput = (): HTMLInputElement => {
+  const input = host.querySelector<HTMLInputElement>('.discovery input');
+  assert.ok(input);
+  return input;
+};
+const publicNames = (): string[] => [...host.querySelectorAll('.results .result-name')]
+  .map((node) => node.firstChild?.textContent?.trim() ?? '');
+
+test('public browsing and item details show every category assignment', async () => {
+  mockAppApi(false);
+  const appFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => url === '/api/catalog' ? jsonResponse({
+    ...multiCatalog, items: [{ ...item, categoryIds: ['tools', 'materials'] }],
+  }) : appFetch(url, init);
+  await render(createElement(App), '/?category=materials');
+  assert.deepEqual(publicNames(), ['Vise']);
+  await click(button('Tools'));
+  assert.deepEqual(publicNames(), ['Vise']);
+  await click(button('All'));
+  assert.deepEqual(publicNames(), ['Vise']);
+  const result = host.querySelector<HTMLButtonElement>('.result');
+  assert.ok(result);
+  await click(result);
+  assert.match(host.querySelector('.item-detail')?.textContent ?? '', /Tools, Materials/);
+  await type(discoveryInput(), 'Materials');
+  assert.deepEqual(publicNames(), ['Vise']);
+});
+
+test('discovery has one focused input, two actions, live search, and category browsing', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/');
+  const input = discoveryInput();
+  assert.equal(document.activeElement, input);
+  assert.equal(host.querySelectorAll('.discovery input, .discovery textarea').length, 1);
+  assert.equal(host.querySelector('.examples'), null);
+  assert.doesNotMatch(host.textContent ?? '', /Try a project|wooden planter|weather station|team offsite/);
+  assert.deepEqual([...host.querySelectorAll('nav[aria-label="Main navigation"] a')]
+    .map((node) => node.textContent), ['Search & ask', 'Room maps']);
+  assert.equal(button('Ask').disabled, true);
+  assert.equal(button('Search').type, 'submit');
+  assert.equal(button('Ask').type, 'button');
+  assert.equal(host.querySelector('.detail'), null);
+  await type(input, '  ');
+  assert.equal(button('Ask').disabled, true);
+  await type(input, 'Tool');
+  assert.deepEqual(publicNames(), ['Tool 10', 'Tool 2']);
+  await click(button('Search'));
+  assert.deepEqual(publicNames(), ['Tool 10', 'Tool 2']);
+  await type(input, '');
+  await click(button('Materials'));
+  assert.deepEqual(publicNames(), ['Solder']);
+  await click(button('All'));
+  assert.equal(publicNames().length, 3);
+  assert.equal(writes.length, 0, 'Typing, browsing, and Search never call the assistant');
+});
+
+test('Ask uses the shared input; recommendations keep tiers, item details, and refinement', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/?item=tool2');
+  const input = discoveryInput();
+  await type(input, '  Build a project  ');
+  await click(button('Ask'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.body.projectDescription, 'Build a project');
+  assert.equal(new URL(currentUrl(), 'http://localhost').searchParams.get('mode'), 'ask');
+  assert.equal(host.querySelector('.item-detail'), null, 'A new ask clears unrelated item details');
+  assert.equal(discoveryInput(), input);
+  assert.equal(input.value, '  Build a project  ');
+  assert.equal(host.querySelectorAll('.discovery input, .discovery textarea').length, 1);
+  assert.equal(button('Ask').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual([...host.querySelectorAll('.tier h3')].map((node) => node.textContent),
+    ['Equipment in the Garage', 'Materials in the Garage', 'Not available here']);
+  assert.equal(host.querySelector('.in-garage .path')?.textContent, path('bin-2'));
+  assert.equal(host.querySelector('.not-in-garage button'), null);
+  const recommendedItem = host.querySelector<HTMLButtonElement>('.in-garage button');
+  assert.ok(recommendedItem);
+  await click(recommendedItem);
+  assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
+  await click(button('Close'));
+  assert.ok(host.querySelector('.recommendation'));
+  await type(input, 'Build a smaller project');
+  await click(button('Ask'));
+  assert.equal(writes[1]?.body.projectDescription, 'Build a smaller project');
+});
+
+test('an empty or whitespace search shows the whole active inventory beyond 60 results', async () => {
+  mockAssistantApi();
+  const appFetch = globalThis.fetch;
+  const inventory = Array.from({ length: 75 }, (_, index) => ({
+    ...item, id: `inventory-${index}`, name: `Inventory item ${index}`,
+    categoryIds: [index % 2 === 0 ? 'tools' : 'materials'],
+  }));
+  globalThis.fetch = async (url, init) => url === '/api/catalog'
+    ? jsonResponse({ ...gridCatalog, items: [...inventory, { ...item, retiredAt: '2026-09-18T00:00:00Z' }] })
+    : appFetch(url, init);
+  await render(createElement(App), '/?mode=ask&q=%20%20');
+  assert.equal(publicNames().length, 75);
+  assert.equal(host.querySelector('.assistant'), null);
+  assert.equal(button('Ask').disabled, true);
+  await type(discoveryInput(), '');
+  assert.deepEqual(publicNames(), inventory.map((entry) => entry.name));
+  await click(button('Tools'));
+  assert.equal(publicNames().length, 38, 'Explicit category browsing remains available');
+  await click(button('Search'));
+  assert.equal(publicNames().length, 75, 'Submitting an empty search clears category filters');
+  assert.equal(button('All').classList.contains('active'), true);
+  assert.equal(writes.length, 0);
+});
+
+test('clearing the shared input resets filters and details and leaves Ask mode', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/?category=tools&q=Tool&item=tool2');
+  await type(discoveryInput(), '');
+  assert.equal(currentUrl(), '/');
+  assert.equal(publicNames().length, 3);
+  assert.equal(host.querySelector('.detail'), null);
+  await click(button('Tools'));
+  await type(discoveryInput(), 'Build a project');
+  await click(button('Ask'));
+  assert.ok(host.querySelector('.recommendation'));
+  await type(discoveryInput(), '   ');
+  assert.equal(publicNames().length, 3);
+  assert.equal(host.querySelector('.assistant'), null);
+  assert.equal(button('All').classList.contains('active'), true);
+  assert.equal(button('Ask').disabled, true);
+  assert.equal(writes.length, 1);
+});
+
+test('clearing the shared input cancels a pending ask and keeps the inventory visible', async () => {
+  let finish = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  let signal: RequestInit['signal'];
+  mockAssistantApi(async (init) => {
+    signal = init?.signal;
+    return pending;
+  });
+  await render(createElement(App), '/?q=Build+a+project');
+  await click(button('Ask'));
+  await type(discoveryInput(), '');
+  assert.equal(signal?.aborted, true);
+  assert.equal(publicNames().length, 3);
+  await act(async () => { finish(jsonResponse(recommendation)); await pending; });
+  assert.equal(publicNames().length, 3);
+  assert.equal(host.querySelector('.assistant'), null);
+  assert.equal(host.querySelector('[role="alert"]'), null);
+});
+
+test('an empty catalog explains that no items exist rather than claiming a blank query did not match', async () => {
+  mockAssistantApi();
+  const appFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => url === '/api/catalog'
+    ? jsonResponse({ ...gridCatalog, items: [] }) : appFetch(url, init);
+  await render(createElement(App), '/');
+  assert.equal(host.querySelector('.empty h2')?.textContent, 'No items to show.');
+  assert.match(host.querySelector('.empty p')?.textContent ?? '', /no active items/);
+});
+
+test('Search returns from Ask using the same text and category without another assistant request', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/?category=materials');
+  const input = discoveryInput();
+  await type(input, 'Build a project');
+  await click(button('Ask'));
+  await type(input, 'Solder');
+  const form = host.querySelector<HTMLFormElement>('.discovery-form');
+  assert.ok(form);
+  await act(() => form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
+  assert.equal(host.querySelector('.assistant'), null);
+  assert.equal(discoveryInput(), input);
+  assert.deepEqual(publicNames(), ['Solder']);
+  assert.equal(button('Materials').classList.contains('active'), true);
+  assert.equal(button('Search').getAttribute('aria-pressed'), 'true');
+  assert.equal(writes.length, 1);
+  await click(button('History back'));
+  assert.ok(host.querySelector('.assistant'));
+  await click(button('History forward'));
+  assert.deepEqual(publicNames(), ['Solder']);
+  assert.equal(writes.length, 1, 'History never resubmits an assistant request');
+});
+
+test('Search cancels a pending ask and late responses cannot replace a newer answer', async () => {
+  let finish = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  let signal: RequestInit['signal'];
+  mockAssistantApi(async (init) => {
+    if (writes.length === 1) {
+      signal = init?.signal;
+      return pending;
+    }
+    return jsonResponse({ ...recommendation, understoodAs: 'The newer project' });
+  });
+  await render(createElement(App), '/');
+  await type(discoveryInput(), 'The original project');
+  await click(button('Ask'));
+  assert.equal(button('Thinking...').disabled, true);
+  assert.match(host.querySelector('[role="status"]')?.textContent ?? '', /Finding tools and materials/);
+  await click(button('Thinking...'));
+  assert.equal(writes.length, 1);
+  await click(button('Search'));
+  assert.equal(signal?.aborted, true);
+  assert.equal(button('Ask').disabled, false);
+  await type(discoveryInput(), 'A newer project');
+  await click(button('Ask'));
+  assert.equal(host.querySelector('.understood')?.textContent, 'The newer project');
+  await act(async () => { finish(jsonResponse(recommendation)); await pending; });
+  assert.equal(host.querySelector('.understood')?.textContent, 'The newer project');
+  assert.equal(host.querySelector('[role="alert"]'), null);
+});
+
+test('assistant failures keep the shared input editable and retry clears the error', async () => {
+  mockAssistantApi(async () => writes.length === 1
+    ? new Response(JSON.stringify({ error: 'Assistant is unavailable. Try again.' }), { status: 503 })
+    : jsonResponse({ understoodAs: 'A small project', garageItems: [], notInGarage: [] }));
+  await render(createElement(App), '/?q=Build+a+project');
+  await click(button('Ask'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Assistant is unavailable/);
+  assert.equal(discoveryInput().value, 'Build a project');
+  assert.equal(button('Ask').disabled, false);
+  await type(discoveryInput(), 'A small project');
+  await click(button('Ask'));
+  assert.equal(host.querySelector('[role="alert"]'), null);
+  assert.match(host.querySelector('.recommendation')?.textContent ?? '', /doesn't appear to have much/);
+  assert.equal(writes.length, 2);
+});
+
+test('leaving discovery cancels the pending request', async () => {
+  let finish = (_response: Response): void => { throw new Error('Uninitialized'); };
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  let signal: RequestInit['signal'];
+  mockAssistantApi(async (init) => {
+    signal = init?.signal;
+    return pending;
+  });
+  await render(createElement(App), '/?q=Build+a+project');
+  await click(button('Ask'));
+  await click(link('Room maps'));
+  assert.equal(signal?.aborted, true);
+  await act(async () => { finish(jsonResponse(recommendation)); await pending; });
+  assert.equal(currentUrl(), '/maps');
+  assert.equal(host.querySelector('.assistant'), null);
+});
+
+test('legacy assistant bookmarks redirect with query and item intact without submitting', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/assistant?q=Build+a+project&item=tool2&category=tools');
+  const url = new URL(currentUrl(), 'http://localhost');
+  assert.equal(url.pathname, '/');
+  assert.equal(url.searchParams.get('mode'), 'ask');
+  assert.equal(url.searchParams.get('category'), 'tools');
+  assert.equal(discoveryInput().value, 'Build a project');
+  assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
+  assert.equal(button('Ask').getAttribute('aria-pressed'), 'true');
+  assert.equal(host.querySelector('[aria-current="page"]')?.textContent, 'Search & ask');
+  assert.equal(writes.length, 0);
+});
+
+test('missing item recovery preserves the unified query and action', async () => {
+  mockAssistantApi();
+  await render(createElement(App), '/?mode=ask&q=Build+a+project&item=missing');
+  assert.match(host.textContent ?? '', /Item not found/);
+  const recovery = link('Return to search & ask');
+  assert.equal(new URL(recovery.href).searchParams.has('item'), false);
+  await click(recovery);
+  assert.equal(discoveryInput().value, 'Build a project');
+  assert.equal(button('Ask').getAttribute('aria-pressed'), 'true');
+  assert.equal(host.querySelector('.detail'), null);
 });
 
 test('a protected bookmark waits for sign-in and opens the requested page after login', async () => {

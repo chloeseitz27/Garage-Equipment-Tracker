@@ -36,6 +36,24 @@ the app is fully demoable with no API key and no network. Point
 `ASSISTANT_PROVIDER` at `azure-openai` or `github-models` in `.env` to use a
 hosted model.
 
+### Search and ask
+
+The home page has one shared input. **Search** (or Enter) finds inventory;
+results also update as you type while searching. Category chips remain available
+for browsing. **Ask** sends the same text to the Project Assistant for tools and
+materials suited to a project. Edit the text and ask again to refine, or choose
+Search to return to inventory results. Both result types open the same item
+details; no example prompts are shown.
+
+Clearing the box (including whitespace-only text) leaves Ask mode, clears the
+category filter and selected item, and shows the entire active inventory without
+the 60-result search limit. Category chips can then narrow that list. Search or
+Enter with an empty box shows all active items again; retired items stay hidden.
+
+Ask is disabled for blank input and while a request is running. Search remains
+available and cancels a pending ask. Opening a bookmark never sends an assistant
+request automatically.
+
 ### Scripts
 
 | Command | Does |
@@ -140,11 +158,24 @@ Its sections share one navigation bar with slim separators:
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
 
+Each item belongs to **one or more categories**. In the item editor, open
+**Categories** and toggle every applicable category; all selected names remain
+visible. An item appears under each assigned category, while search and the
+Project Assistant match every category name. Item details and the staff grid
+display all assignments. A category cannot be deleted while any item uses it,
+including an item in the recycle bin.
+
+Existing single-category records remain readable: legacy `categoryId` values
+are converted to a one-entry `categoryIds` array when loaded. Normal saves write
+the new format; no inventory reset or reseeding is needed.
+
 Items and the recycle bin share one multi-select table. Tick any number of rows
-and the action bar offers **Move to**, **Category**, **Save**, and **Delete**
+and the action bar offers **Move to**, **Replace categories**, **Save**, and **Delete**
 (or **Restore** in the bin). Location and category
 choices are drafts until **Save** applies them together in one transactional
-write. Use the row checkboxes or select-all checkbox to change the selection;
+write. **Replace categories** replaces the entire category set on every selected
+item; leaving it blank keeps existing categories unchanged. Use the row
+checkboxes or select-all checkbox to change the selection;
 changing the selection clears its draft. If a save fails, the choices and selection
 remain available to correct or retry. **Delete** sends items to the recycle bin;
 it does not apply any unsaved location or category changes.
@@ -152,10 +183,13 @@ it does not apply any unsaved location or category changes.
 plus, and the bulk **Save** control uses a save icon. Each active item row also has a
 delete icon beside **Edit**, which moves only that item to the recycle bin,
 regardless of other checked rows. Icon buttons include tooltips and accessible
-labels.
+labels. Category **Rename**, **Delete**, **Save**, and **Cancel** use the same
+paintbrush, trash, save, and X icon style.
 
 The table keeps names, kinds, categories, location paths, and status/stock levels
-in left-aligned columns. Click a column header to toggle ascending/descending
+in left-aligned columns. Kind and status/stock cells and filters use readable
+labels such as **Equipment**, **In use**, and **Out of stock**, while stored values
+and filter URLs stay unchanged. Click a column header to toggle ascending/descending
 sorting, and combine the filters beneath the headers to narrow the list.
 Kind, category, location, and status/stock filters accept multiple choices using
 searchable option lists. Click an option to toggle its lighter selected
@@ -197,6 +231,8 @@ It takes one item per line — `name, kind, status/stock, training, tags`
 — where only the name is required and everything else falls back to defaults
 picked in the form. A live preview shows exactly what will be created, and the
 batch is committed in a single write or not at all.
+**Default categories** accepts multiple selections and applies the complete set
+to every new row.
 
 ### Navigation and bookmarks
 
@@ -204,9 +240,10 @@ Navigation uses real URLs and browser history:
 
 | URL | View |
 |---|---|
-| `/` | Search and browse |
+| `/` | Shared Search & ask interface, with category browsing |
 | `/?q=solder&item=itm-solder` | A search with an item detail open |
-| `/assistant` | Project Assistant |
+| `/?mode=ask&q=Build+a+planter` | Shared input ready to Ask about a project |
+| `/assistant` | Legacy link; redirects to the shared interface in Ask mode, preserving query parameters |
 | `/maps?room=loc-common-makerspace` | Common Makerspace floor plan |
 | `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table V selected (stable location ID) |
 | `/manage/items` | Items grid |

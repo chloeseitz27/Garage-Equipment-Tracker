@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { after, before, test } from 'node:test';
+import { after, before, beforeEach, test } from 'node:test';
 
 import cookieParser from 'cookie-parser';
 import express from 'express';
@@ -29,6 +29,7 @@ const locations: Location[] = [
 
 const categories: Category[] = [
   { id: 'cat-used', name: 'Electronics' },
+  { id: 'cat-secondary', name: 'Prototyping' },
   { id: 'cat-unused', name: 'Spare' },
 ];
 
@@ -37,7 +38,7 @@ const items: Item[] = [
     id: 'itm-meter',
     name: 'Multimeter',
     kind: 'equipment',
-    categoryId: 'cat-used',
+    categoryIds: ['cat-used', 'cat-secondary'],
     locationId: 'loc-bin',
     tags: [],
     goodFor: [],
@@ -49,7 +50,7 @@ const items: Item[] = [
     id: 'itm-solder',
     name: 'Solder',
     kind: 'consumable',
-    categoryId: 'cat-used',
+    categoryIds: ['cat-used'],
     locationId: 'loc-bin',
     tags: [],
     goodFor: [],
@@ -139,15 +140,15 @@ const makeRepository = (): CatalogRepository => {
 let server: Server;
 let baseUrl: string;
 let cookie: string;
+let repository: CatalogRepository;
 
 before(async () => {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
   app.use('/api/auth', authRoutes());
-  const repository = new CachedCatalogRepository(makeRepository());
-  app.use('/api', publicRoutes(repository));
-  app.use('/api', staffRoutes(repository));
+  app.use('/api', (req, res, next) => publicRoutes(repository)(req, res, next));
+  app.use('/api', (req, res, next) => staffRoutes(repository)(req, res, next));
 
   server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -165,6 +166,10 @@ before(async () => {
   cookie = response.headers.getSetCookie().join('; ');
 });
 
+beforeEach(() => {
+  repository = makeRepository();
+});
+
 after(() => {
   server.close();
 });
@@ -177,6 +182,7 @@ const call = (method: string, path: string, body?: unknown): Promise<Response> =
   });
 
 test('the public catalog bypasses HTTP caching and sees writes through the shared repository cache', async () => {
+  repository = new CachedCatalogRepository(repository);
   const before = await call('GET', '/api/catalog');
   assert.equal(before.headers.get('cache-control'), 'no-store');
   const catalog = await before.json() as { categories: Category[] };
@@ -200,7 +206,7 @@ test('an item pointing at an unknown location is rejected', async () => {
   const response = await call('POST', '/api/items', {
     name: 'Ghost',
     kind: 'consumable',
-    categoryId: 'cat-used',
+    categoryIds: ['cat-used'],
     locationId: 'loc-nope',
     tags: [],
     goodFor: [],
@@ -215,7 +221,7 @@ test('an item pointing at an unknown category is rejected', async () => {
   const response = await call('POST', '/api/items', {
     name: 'Ghost',
     kind: 'consumable',
-    categoryId: 'cat-nope',
+    categoryIds: ['cat-nope'],
     locationId: 'loc-bin',
     tags: [],
     goodFor: [],
@@ -227,12 +233,13 @@ test('an item pointing at an unknown category is rejected', async () => {
 });
 
 test('a bulk batch is rejected whole when any row has a bad reference', async () => {
+  const before = structuredClone(await repository.getItems());
   const response = await call('POST', '/api/items/bulk', {
     items: [
       {
         name: 'Fine',
         kind: 'consumable',
-        categoryId: 'cat-used',
+        categoryIds: ['cat-used'],
         locationId: 'loc-bin',
         tags: [],
         goodFor: [],
@@ -241,7 +248,7 @@ test('a bulk batch is rejected whole when any row has a bad reference', async ()
       {
         name: 'Broken',
         kind: 'consumable',
-        categoryId: 'cat-used',
+        categoryIds: ['cat-used'],
         locationId: 'loc-nope',
         tags: [],
         goodFor: [],
@@ -254,8 +261,7 @@ test('a bulk batch is rejected whole when any row has a bad reference', async ()
   assert.match((await response.json()).error, /Row 2/);
 
   // The valid first row must not have landed.
-  const listed = await (await call('GET', '/api/flags')).json();
-  assert.ok(Array.isArray(listed));
+  assert.deepEqual(await repository.getItems(), before);
 });
 
 test('a valid bulk batch is created', async () => {
@@ -264,7 +270,7 @@ test('a valid bulk batch is created', async () => {
       {
         name: 'Batch A',
         kind: 'consumable',
-        categoryId: 'cat-used',
+        categoryIds: ['cat-used'],
         locationId: 'loc-bin',
         tags: [],
         goodFor: [],
@@ -273,7 +279,7 @@ test('a valid bulk batch is created', async () => {
       {
         name: 'Batch B',
         kind: 'equipment',
-        categoryId: 'cat-used',
+        categoryIds: ['cat-used'],
         locationId: 'loc-bin',
         tags: [],
         goodFor: [],
@@ -333,11 +339,119 @@ test('deleting an unused category succeeds', async () => {
   assert.equal(response.status, 204);
 });
 
+test('deleting a secondary category is blocked for active and retired references', async () => {
+  for (const retired of [false, true]) {
+    if (retired) {
+      const response = await call('POST', '/api/items/bulk-retire', { ids: ['itm-meter'], retired });
+      assert.equal(response.status, 200);
+    }
+    const response = await call('DELETE', '/api/categories/cat-secondary');
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /Still used by 1 item/);
+    assert.ok((await repository.getCategories()).some((category) => category.id === 'cat-secondary'));
+  }
+});
+
+test('create and update persist all categories for both item kinds', async () => {
+  for (const item of items) {
+    const categoryIds = ['cat-used', 'cat-secondary'];
+    const created = await call('POST', '/api/items', { ...item, categoryIds });
+    assert.equal(created.status, 201);
+    const body = await created.json();
+    assert.deepEqual(body.categoryIds, categoryIds);
+    assert.ok(!('categoryId' in body));
+    assert.deepEqual((await repository.getItem(body.id))?.categoryIds, categoryIds);
+
+    const updated = await call('PUT', `/api/items/${item.id}`, {
+      ...item, categoryIds: ['cat-secondary', 'cat-unused'],
+    });
+    assert.equal(updated.status, 200);
+    assert.deepEqual((await updated.json()).categoryIds, ['cat-secondary', 'cat-unused']);
+    assert.deepEqual((await repository.getItem(item.id))?.categoryIds, ['cat-secondary', 'cat-unused']);
+  }
+});
+
+test('legacy create, update, and bulk category payloads return only canonical arrays', async () => {
+  const { categoryIds: _categoryIds, ...legacy } = items[0]!;
+  const created = await call('POST', '/api/items', { ...legacy, categoryId: 'cat-used' });
+  assert.equal(created.status, 201);
+  const body = await created.json();
+  assert.deepEqual(body.categoryIds, ['cat-used']);
+  assert.ok(!('categoryId' in body));
+
+  const updated = await call('PUT', '/api/items/itm-meter', { ...legacy, categoryId: 'cat-secondary' });
+  assert.equal(updated.status, 200);
+  assert.deepEqual((await updated.json()).categoryIds, ['cat-secondary']);
+  const bulk = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'], changes: { categoryId: 'cat-unused' },
+  });
+  assert.equal(bulk.status, 200);
+  for (const item of (await bulk.json()).items) {
+    assert.deepEqual(item.categoryIds, ['cat-unused']);
+    assert.ok(!('categoryId' in item));
+  }
+});
+
+test('invalid category lists fail create, update, bulk create, and bulk update without any writes', async () => {
+  const before = structuredClone(await repository.getItems());
+  const invalidAssignments = [
+    [],
+    [''],
+    ['   '],
+    ['cat-used', 'cat-used'],
+    ['cat-used', 'cat-nope'],
+  ];
+  for (const categoryIds of invalidAssignments) {
+    const invalid = { ...items[0], categoryIds };
+    const requests: Array<[string, string, unknown]> = [
+      ['POST', '/api/items', invalid],
+      ['PUT', '/api/items/itm-meter', invalid],
+      ['POST', '/api/items/bulk', { items: [items[1], invalid] }],
+      ['POST', '/api/items/bulk-update', {
+        ids: ['itm-meter', 'itm-solder'], changes: { categoryIds, locationId: 'loc-empty' },
+      }],
+    ];
+    for (const [method, path, body] of requests) {
+      const response = await call(method, path, body);
+      assert.equal(response.status, 400, `${method} ${path}: ${JSON.stringify(categoryIds)}`);
+      assert.deepEqual(await repository.getItems(), before, `${method} ${path} must not partly write`);
+    }
+  }
+});
+
+test('conflicting legacy and canonical assignments are rejected rather than losing categories', async () => {
+  const before = structuredClone(await repository.getItems());
+  const assignments = { categoryId: 'cat-secondary', categoryIds: ['cat-used'] };
+  for (const [method, path, body] of [
+    ['POST', '/api/items', { ...items[0], ...assignments }],
+    ['PUT', '/api/items/itm-meter', { ...items[0], ...assignments }],
+    ['POST', '/api/items/bulk', { items: [items[1], { ...items[0], ...assignments }] }],
+    ['POST', '/api/items/bulk-update', { ids: ['itm-meter', 'itm-solder'], changes: assignments }],
+  ] as const) {
+    const response = await call(method, path, body);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await repository.getItems(), before);
+  }
+});
+
+test('valid bulk creation preserves multiple category assignments on every row', async () => {
+  const response = await call('POST', '/api/items/bulk', {
+    items: items.map((item) => ({ ...item, categoryIds: ['cat-used', 'cat-secondary'] })),
+  });
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.created, 2);
+  for (const item of body.items) {
+    assert.deepEqual(item.categoryIds, ['cat-used', 'cat-secondary']);
+    assert.deepEqual((await repository.getItem(item.id))?.categoryIds, item.categoryIds);
+  }
+});
+
 test('editing a missing item is a 404, not a silent create', async () => {
   const response = await call('PUT', '/api/items/itm-nope', {
     name: 'Nope',
     kind: 'consumable',
-    categoryId: 'cat-used',
+    categoryIds: ['cat-used'],
     locationId: 'loc-bin',
     tags: [],
     goodFor: [],
@@ -359,6 +473,38 @@ test('a bulk move applies to every selected item', async () => {
   const body = await response.json();
   assert.equal(body.updated, 2);
   assert.ok(body.items.every((item: Item) => item.locationId === 'loc-empty'));
+  assert.deepEqual((await repository.getItem('itm-meter'))?.categoryIds, ['cat-used', 'cat-secondary']);
+  assert.deepEqual((await repository.getItem('itm-solder'))?.categoryIds, ['cat-used']);
+});
+
+test('bulk category edits replace rather than append assignments, including retired items', async () => {
+  const retirement = await call('POST', '/api/items/bulk-retire', { ids: ['itm-solder'], retired: true });
+  assert.equal(retirement.status, 200);
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'], changes: { categoryIds: ['cat-secondary', 'cat-unused'] },
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.updated, 2);
+  for (const item of await repository.getItems()) {
+    assert.deepEqual(item.categoryIds, ['cat-secondary', 'cat-unused']);
+  }
+  assert.ok((await repository.getItem('itm-solder'))?.retiredAt);
+});
+
+test('bulk updates check secondary references on every selected item before saving', async () => {
+  const solder = await repository.getItem('itm-solder');
+  assert.ok(solder);
+  await repository.saveItem({
+    ...solder, categoryIds: ['cat-used', 'cat-nope'], retiredAt: '2026-09-18T12:00:00.000Z',
+  });
+  const before = structuredClone(await repository.getItems());
+  const response = await call('POST', '/api/items/bulk-update', {
+    ids: ['itm-meter', 'itm-solder'], changes: { locationId: 'loc-empty' },
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /cat-nope/);
+  assert.deepEqual(await repository.getItems(), before);
 });
 
 test('a bulk move to an unknown location is rejected', async () => {
@@ -396,7 +542,7 @@ test('stock level cannot be applied to a selection containing equipment', async 
 test('a bulk update naming an unknown id changes nothing', async () => {
   const response = await call('POST', '/api/items/bulk-update', {
     ids: ['itm-meter', 'itm-ghost'],
-    changes: { categoryId: 'cat-unused' },
+    changes: { categoryIds: ['cat-unused'] },
   });
 
   assert.equal(response.status, 404);

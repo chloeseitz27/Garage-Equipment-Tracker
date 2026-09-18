@@ -1,15 +1,9 @@
-import { useState } from 'react';
 import { formatLocationPath, type RecommendResponse } from '@garage/shared';
 
-import { recommend } from '../api.js';
-
-const EXAMPLES = [
-  'I want to build a wooden planter box for a balcony',
-  'A weather station that logs temperature and humidity to a laptop',
-  'Custom t-shirts for our team offsite',
-];
-
 interface Props {
+  response: RecommendResponse | null;
+  busy: boolean;
+  error: string | null;
   onSelectItem: (id: string) => void;
 }
 
@@ -18,63 +12,19 @@ interface Props {
  * visually distinct — an item in "In the Garage" always resolves to a real
  * record with a real location (§3.2).
  */
-export function AssistantPanel({ onSelectItem }: Props): JSX.Element {
-  const [description, setDescription] = useState('');
-  const [response, setResponse] = useState<RecommendResponse | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const ask = async (text: string): Promise<void> => {
-    if (!text.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setResponse(await recommend(text));
-    } catch (cause) {
-      setError((cause as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
+export function AssistantPanel({ response, busy, error, onSelectItem }: Props): JSX.Element {
   const equipment = response?.garageItems.filter((entry) => entry.kind === 'equipment') ?? [];
   const consumables = response?.garageItems.filter((entry) => entry.kind === 'consumable') ?? [];
 
   return (
     <div className="assistant">
-      <h2>Describe your project</h2>
-      <textarea
-        value={description}
-        rows={3}
-        placeholder="What are you trying to build?"
-        onChange={(event) => setDescription(event.target.value)}
-      />
-      <div className="assistant-actions">
-        <button type="button" disabled={busy} onClick={() => void ask(description)}>
-          {busy ? 'Thinking…' : response ? 'Ask again' : 'Find what I need'}
-        </button>
-      </div>
-
-      {!response && !busy ? (
-        <div className="examples">
-          <p className="muted">For example:</p>
-          {EXAMPLES.map((example) => (
-            <button
-              key={example}
-              type="button"
-              className="chip"
-              onClick={() => {
-                setDescription(example);
-                void ask(example);
-              }}
-            >
-              {example}
-            </button>
-          ))}
-        </div>
+      <h2>Project suggestions</h2>
+      {busy ? <p role="status">Finding tools and materials for your project...</p> : null}
+      {!response && !busy && !error ? (
+        <p className="muted">Describe your project in the box above, then choose Ask.</p>
       ) : null}
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="error" role="alert">{error}</p> : null}
 
       {response ? (
         <div className="recommendation">

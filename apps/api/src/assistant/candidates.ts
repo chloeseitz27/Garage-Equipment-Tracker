@@ -59,7 +59,14 @@ export function retrieveCandidates(
   const live = liveItems(items);
 
   const scored = live
-    .map((item) => ({ item, score: scoreItem(item, queryTokens, categoryNames.get(item.categoryId) ?? '') }))
+    .map((item) => ({
+      item,
+      score: scoreItem(
+        item,
+        queryTokens,
+        item.categoryIds.map((id) => categoryNames.get(id) ?? '').join(' '),
+      ),
+    }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
 

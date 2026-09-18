@@ -14,10 +14,11 @@ interface Props {
   onChange: (values: string[]) => void;
   disabled?: boolean;
   hint?: string;
+  purpose?: 'filter' | 'selection';
 }
 
 export function MultiSelectFilter({
-  label, emptyLabel, options, selected, onChange, disabled = false, hint,
+  label, emptyLabel, options, selected, onChange, disabled = false, hint, purpose = 'filter',
 }: Props): JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -34,7 +35,9 @@ export function MultiSelectFilter({
       return tokens.every((token) => words.some((word) => word.startsWith(token)));
     });
   }, [options, query]);
-  const summary = selected.length === 0 ? emptyLabel :
+  const accessibleLabel = purpose === 'filter' ? `Filter by ${label}` : label;
+  const summary = selected.length === 0 ? emptyLabel : purpose === 'selection' ?
+    options.filter((option) => selected.includes(option.value)).map((option) => option.label).join(', ') :
     selected.length === 1 ? options.find((option) => option.value === selected[0])?.label ?? '1 selected' :
       `${selected.length} selected`;
 
@@ -103,7 +106,7 @@ export function MultiSelectFilter({
         ref={buttonRef}
         type="button"
         className="multi-filter-trigger"
-        aria-label={`Filter by ${label}`}
+        aria-label={accessibleLabel}
         aria-haspopup="dialog"
         aria-expanded={expanded}
         aria-controls={expanded ? panelId : undefined}
@@ -122,7 +125,7 @@ export function MultiSelectFilter({
           id={panelId}
           ref={panelRef}
           role="dialog"
-          aria-label={`Filter by ${label}`}
+          aria-label={accessibleLabel}
           className="multi-filter-panel"
           style={position}
           onKeyDown={(event) => {
@@ -159,7 +162,9 @@ export function MultiSelectFilter({
           </div>
           <div className="multi-filter-actions">
             <span>{selected.length} selected</span>
-            <button type="button" disabled={selected.length === 0} onClick={() => onChange([])}>Clear filter</button>
+            <button type="button" disabled={selected.length === 0} onClick={() => onChange([])}>
+              {purpose === 'filter' ? 'Clear filter' : 'Clear selection'}
+            </button>
             <button type="button" onClick={close}>Done</button>
           </div>
         </div>, document.body,

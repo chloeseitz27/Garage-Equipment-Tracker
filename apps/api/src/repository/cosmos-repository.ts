@@ -11,6 +11,7 @@ import {
 import { DefaultAzureCredential } from '@azure/identity';
 import {
   findCatalogProblems,
+  itemSchema,
   type Category,
   type CreateItemInput,
   type Flag,
@@ -127,13 +128,13 @@ export class CosmosCatalogRepository implements CatalogRepository {
   }
 
   async getItems(): Promise<Item[]> {
-    return this.readPartition<Item>('item');
+    return (await this.readPartition<unknown>('item')).map((item) => itemSchema.parse(item));
   }
 
   async getItem(id: string): Promise<Item | null> {
     try {
       const { resource } = await this.container.item(id, 'item').read<StoredDoc>();
-      return resource ? toDomain<Item>(resource) : null;
+      return resource ? itemSchema.parse(toDomain<unknown>(resource)) : null;
     } catch (error) {
       if ((error as { code?: number }).code === 404) return null;
       throw error;

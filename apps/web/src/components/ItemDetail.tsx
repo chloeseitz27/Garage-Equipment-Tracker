@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function ItemDetail({ record, onClose, onEdit, locations = record.locationPath }: Props): JSX.Element {
-  const { item, categoryName, locationPath } = record;
+  const { item, categoryNames, locationPath } = record;
   const [flagged, setFlagged] = useState<string | null>(null);
   const mapped = resolveLocationMap(locations, item.locationId);
 
@@ -47,7 +47,7 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
 
       <h2>{item.name}</h2>
       <p className="muted">
-        {categoryName} · {item.kind}
+        {categoryNames.join(', ')} · {item.kind}
         {item.kind === 'equipment'
           ? ` · ${item.status}${item.quantity > 1 ? ` · ${item.quantity} available` : ''}`
           : ` · ${item.stockLevel}`}

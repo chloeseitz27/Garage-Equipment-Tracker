@@ -7,7 +7,7 @@ import type { CatalogRepository } from './catalog-repository.js';
 const catalogFixture = (): CatalogResponse => ({
   items: [{
     id: 'camera', name: 'Inspection camera', kind: 'equipment',
-    locationId: 'bench', categoryId: 'tools', tags: ['scope'], goodFor: ['inspection'],
+    locationId: 'bench', categoryIds: ['tools', 'electronics'], tags: ['scope'], goodFor: ['inspection'],
     quantity: 1, status: 'available', trainingRequired: 'orientation',
     safetyNotes: 'Ask staff before use.\nKeep the case dry.',
     retiredAt: '2026-09-17T00:00:00Z',
@@ -17,7 +17,7 @@ const catalogFixture = (): CatalogResponse => ({
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room',
       mapPosition: { roomId: 'room', mapId: 'common', x: 0.4, y: 0.6 } },
   ],
-  categories: [{ id: 'tools', name: 'Tools' }],
+  categories: [{ id: 'tools', name: 'Tools' }, { id: 'electronics', name: 'Electronics' }],
 });
 
 function setup() {
@@ -96,7 +96,7 @@ test('the default TTL is exactly one hour, and direct database changes appear af
 
 const input: CreateItemInput = {
   name: 'New item', kind: 'consumable', locationId: 'bench',
-  categoryId: 'tools', tags: [], goodFor: [], stockLevel: 'low',
+  categoryIds: ['tools', 'electronics'], tags: [], goodFor: [], stockLevel: 'low',
 };
 const mutations: Array<{ name: string; run: (cache: CatalogRepository) => Promise<unknown> }> = [
   { name: 'createItem', run: (cache) => cache.createItem(input) },
