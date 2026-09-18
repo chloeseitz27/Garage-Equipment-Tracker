@@ -305,8 +305,11 @@ To provision and load it:
 # validate without changing anything
 .\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id> -WhatIf
 
-# deploy (idempotent — safe to re-run)
+# first deployment: choose a region with Cosmos capacity
 .\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id> -CosmosLocation eastus2
+
+# subsequent deployments reuse the existing account's region
+.\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id>
 
 # add the printed COSMOS_* values to .env, then
 npm run seed:cosmos
@@ -321,6 +324,20 @@ infra/
 ```
 
 The deploy script refuses to run against the Microsoft corporate tenant, registers the resource providers a new subscription lacks, and passes your object id in for the Cosmos data-plane role assignment. That role is not optional: **Cosmos data-plane RBAC is separate from Azure RBAC**, so subscription Owner grants no data access at all.
+
+On retries (including `-WhatIf`), the script looks up the account named in the
+resource group's `cosmos` module deployment and preserves its actual location,
+even if the earlier deployment failed after account creation. An explicit
+`-CosmosLocation` that conflicts with that account is rejected before deployment;
+the script does not move, delete, rename, or replace the account. If there is no
+existing account recorded by that deployment, Cosmos defaults to `-Location`
+(`eastus`) unless `-CosmosLocation` is supplied.
+
+For `InvalidResourceLocation` reporting an existing account in `eastus2`, rerun
+with `-CosmosLocation eastus2`, keeping `-Location` at the resource group's
+original region. Also supply the existing account's region when using Bicep
+directly or if deployment history has been removed. Upgrading Bicep does not
+resolve a resource location conflict.
 
 Notes on the template:
 
