@@ -11,6 +11,7 @@ import {
 
 import { createItemsBulk } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
+import { useCatalogDraft } from '../catalog-draft.js';
 
 interface Props {
   categories: Category[];
@@ -45,6 +46,7 @@ export function BulkEntry({ categories, locations, onCreated }: Props): JSX.Elem
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  useCatalogDraft(text.trim().length > 0 || busy);
 
   const parsed = useMemo(
     () =>

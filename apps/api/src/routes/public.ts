@@ -18,7 +18,7 @@ export function publicRoutes(repository: CatalogRepository): Router {
         repository.getLocations(),
         repository.getCategories(),
       ]);
-      res.json({ items, locations, categories });
+      res.set('Cache-Control', 'no-store').json({ items, locations, categories });
     }),
   );
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
-import type { CatalogResponse } from '@garage/shared';
-
-import { fetchCatalog, getSession } from './api.js';
+import { getSession } from './api.js';
+import { useCatalog } from './use-catalog.js';
+import { CatalogDraftContext } from './catalog-draft.js';
 import { DiscoveryView } from './components/DiscoveryView.js';
 import { StaffBar } from './components/StaffBar.js';
 import { StaffPanel } from './components/StaffPanel.js';
@@ -10,81 +10,107 @@ import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 import { RoomMapsPage } from './components/RoomMapsPage.js';
 
 export function App(): JSX.Element {
-  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [staff, setStaff] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [dirtyItem, setDirtyItem] = useState(false);
+  const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
+  const reportDraft = useCallback((id: string, dirty: boolean) => {
+    setDirtyForms((current) => {
+      if (current.has(id) === dirty) return current;
+      const next = new Set(current);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
-  const loadCatalog = useCallback(
-    () => fetchCatalog().then(setCatalog).catch((cause: Error) => setError(cause.message)),
-    [],
-  );
+  const {
+    catalog, fetchedAt, stale, error, storageWarning, refreshing, verified, updatePending, refresh,
+  } = useCatalog(dirtyItem || dirtyForms.size > 0);
 
   useEffect(() => {
-    void loadCatalog();
     getSession()
       .then((session) => setStaff(session.staff))
       .catch((cause: Error) => setSessionError(`Could not check staff sign-in: ${cause.message}`))
       .finally(() => setSessionLoading(false));
-  }, [loadCatalog]);
+  }, []);
 
-  if (error) {
+  if (error && !catalog) {
     return (
       <main className="state">
         <h1>Can&apos;t reach the catalog</h1>
         <p>{error}</p>
-        <p className="muted">Is the API running? Try `npm run seed` then `npm run dev`.</p>
+        <p className="muted">No saved catalog is available. Check the API connection and try again.</p>
+        <button type="button" disabled={refreshing} onClick={() => void refresh()}>
+          {refreshing ? 'Refreshing catalog...' : 'Retry catalog'}
+        </button>
       </main>
     );
   }
   if (!catalog) return <main className="state">Loading the catalog…</main>;
 
   return (
-    <ItemDraftContext.Provider value={setDirtyItem}>
-      <div className="app">
-        <header>
-          <div className="brand">
-            <h1>Garage Inventory</h1>
-            <p className="muted">Reston Garage — find it, then go get it.</p>
-          </div>
-          <nav className="tabs" aria-label="Main navigation">
-            <NavLink to="/" end>Search &amp; browse</NavLink>
-            <NavLink to="/maps">Room maps</NavLink>
-            <NavLink to="/assistant">Project Assistant</NavLink>
-            {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
-          </nav>
-          <StaffBar staff={staff} beforeSignOut={() =>
-            !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
-          } onChange={(signedIn) => {
-            setStaff(signedIn);
-            setSessionError(null);
-          }} />
-        </header>
-        {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
-        <Routes>
-          <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
-          <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
-          <Route path="/maps" element={<RoomMapsPage catalog={catalog} />} />
-          <Route path="/manage/*" element={
-            sessionLoading ? <p role="status">Checking staff sign-in…</p> :
-              staff ? <StaffPanel catalog={catalog} onChanged={() => void loadCatalog()} /> : (
-                <section className="manager">
-                  <h2>Staff sign-in required</h2>
-                  <p>Sign in above to open this catalog page.</p>
-                  <Link to="/">Return to search</Link>
-                </section>
-              )
-          } />
-          <Route path="*" element={
-            <main className="state">
-              <h2>Page not found</h2>
-              <Link to="/">Return to search</Link>
-            </main>
-          } />
-        </Routes>
-      </div>
-    </ItemDraftContext.Provider>
+    <CatalogDraftContext.Provider value={reportDraft}>
+      <ItemDraftContext.Provider value={setDirtyItem}>
+        <div className="app">
+          <header>
+            <div className="brand">
+              <h1>Garage Inventory</h1>
+              <p className="muted">Reston Garage — find it, then go get it.</p>
+            </div>
+            <nav className="tabs" aria-label="Main navigation">
+              <NavLink to="/" end>Search &amp; browse</NavLink>
+              <NavLink to="/maps">Room maps</NavLink>
+              <NavLink to="/assistant">Project Assistant</NavLink>
+              {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
+            </nav>
+            <StaffBar staff={staff} beforeSignOut={() =>
+              !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
+            } onChange={(signedIn) => {
+              setStaff(signedIn);
+              setSessionError(null);
+            }} />
+          </header>
+          <section className="catalog-status" aria-label="Catalog connection">
+            {error ? <p className="error" role="alert">Catalog refresh failed: {error}</p> : null}
+            {!verified || stale ? (
+              <p role="status">
+                Showing saved catalog data{fetchedAt !== null ? ` fetched ${new Date(fetchedAt).toLocaleString()}` : ''}.
+                {' '}Locations, availability, and safety/training information may be out of date.
+                {!verified ? ' Changes still require an API connection; nothing is queued offline.' : ''}
+              </p>
+            ) : null}
+            {updatePending ? <p role="status">Catalog updates will appear after you save or discard your edits.</p> : null}
+            {storageWarning ? <p role="status">{storageWarning}</p> : null}
+            <button type="button" disabled={refreshing} onClick={() => void refresh()}>
+              {refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+            </button>
+          </section>
+          {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
+          <Routes>
+            <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
+            <Route path="/assistant" element={<DiscoveryView catalog={catalog} staff={staff} assistant />} />
+            <Route path="/maps" element={<RoomMapsPage catalog={catalog} />} />
+            <Route path="/manage/*" element={
+              sessionLoading ? <p role="status">Checking staff sign-in…</p> :
+                staff ? <StaffPanel catalog={catalog} onChanged={() => void refresh(true)} /> : (
+                  <section className="manager">
+                    <h2>Staff sign-in required</h2>
+                    <p>Sign in above to open this catalog page.</p>
+                    <Link to="/">Return to search</Link>
+                  </section>
+                )
+            } />
+            <Route path="*" element={
+              <main className="state">
+                <h2>Page not found</h2>
+                <Link to="/">Return to search</Link>
+              </main>
+            } />
+          </Routes>
+        </div>
+      </ItemDraftContext.Provider>
+    </CatalogDraftContext.Provider>
   );
 }
