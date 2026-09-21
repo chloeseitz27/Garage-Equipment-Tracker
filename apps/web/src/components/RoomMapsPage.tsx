@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom';
-import { getDescendantLocationIds, liveItems, resolveLocationMap, type CatalogResponse } from '@garage/shared';
+import { getDescendantLocationIds, liveItems, type CatalogResponse } from '@garage/shared';
 import { RoomMap } from './RoomMap.js';
 
 export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Element {
@@ -15,7 +15,6 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
   const selected = catalog.locations.find((location) => location.id === locationId && descendants.includes(location.id));
   const included = selected ? new Set(getDescendantLocationIds(catalog.locations, selected.id)) : new Set<string>();
   const items = liveItems(catalog.items).filter((item) => included.has(item.locationId));
-  const resolution = selected ? resolveLocationMap(catalog.locations, selected.id) : null;
   const select = (id: string): void => {
     setParams({ room: room.id, location: id });
   };
@@ -31,10 +30,6 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
       </nav>
       <RoomMap room={room} locations={catalog.locations} selectedLocationId={selected?.id} onSelect={select} />
       <h3>{selected?.name ?? 'Location not found in this room'}</h3>
-      {selected && selected.id !== room.id && !resolution?.marker ? <p className="muted">This location has no marker yet.</p> : null}
-      {resolution?.marker && resolution.marker.location.id !== selected?.id ? (
-        <p className="muted">Showing the nearest mapped location: {resolution.marker.location.name}.</p>
-      ) : null}
       {items.length ? (
         <ul className="map-item-list">
           {items.map((item) => <li key={item.id}><Link to={`/?${new URLSearchParams({ item: item.id })}`}>{item.name}</Link></li>)}

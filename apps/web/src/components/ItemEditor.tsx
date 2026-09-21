@@ -348,15 +348,8 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
               locations={locations}
               selectedLocationId={form.locationId}
               onSelect={selectLocation}
-              caption="Click a marker to change the location. Changes are saved with the item."
+              caption="Click a shape or marker to change the location. Changes are saved with the item."
             />
-            {mapped?.room.id === room.id && mapped.marker?.location.id !== form.locationId ? (
-              <p className="hint">
-                {mapped.marker
-                  ? `Approximate location: shown at ${mapped.marker.location.name}; the selected sub-location is not marked.`
-                  : 'Room shown; this location has no marker yet.'}
-              </p>
-            ) : null}
             {mapped?.room.id !== room.id ? (
               <p className="hint">
                 {mapped

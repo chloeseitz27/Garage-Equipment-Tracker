@@ -5,6 +5,8 @@ import { act, createElement } from 'react';
 import type { Root } from 'react-dom/client';
 import { publicCatalog, type CatalogResponse } from '@garage/shared';
 import { CATALOG_CACHE_KEY } from '../catalog-cache.js';
+import { RoomMapSourcesContext } from '../room-map-source.js';
+import { pointMapSources } from './map-test-sources.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -82,7 +84,8 @@ after(() => dom.window.close());
 
 const render = async (path = '/', development = true): Promise<void> => {
   router = createMemoryRouter([{ path: '*', element: createElement(App, { development }) }], { initialEntries: [path] });
-  await act(() => root.render(createElement(RouterProvider, { router })));
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+    createElement(RouterProvider, { router }))));
 };
 const saveSnapshot = (catalog: CatalogResponse, fetchedAt = Date.now()): string => {
   const value = JSON.stringify({ version: 3, fetchedAt, catalog: publicCatalog(catalog) });

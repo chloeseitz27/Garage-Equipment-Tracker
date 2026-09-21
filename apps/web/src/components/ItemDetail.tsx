@@ -58,9 +58,6 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
       {mapped ? (
         <>
           <RoomMap room={mapped.room} locations={locations} selectedLocationId={item.locationId} />
-          {mapped.marker?.location.id !== item.locationId ? (
-            <p className="muted small">{mapped.marker ? `Shown at ${mapped.marker.location.name}; this item's exact location is not marked.` : 'Room shown; this location has no marker yet.'}</p>
-          ) : null}
         </>
       ) : null}
 

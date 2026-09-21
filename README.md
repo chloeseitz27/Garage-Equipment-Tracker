@@ -130,9 +130,40 @@ actual counts and positions.
 The app uses clean SVG schematics in `apps/web/public/maps`, with horizontal,
 high-contrast labels and no dimension clutter. The original PNGs remain there
 as source references. Both redraws retain the original coordinate system, and
-seed markers follow the edited surface geometry, including SVG transforms.
-These are schematics, not scale drawings. Existing staff-positioned markers are
-not overwritten by the additive location update. To explicitly realign the live
+**SVG geometry is now the source of truth for drawn locations**. Clicking a
+table selects its whole surface, and selection highlights the full outline
+rather than a dot. Rectangles, paths, polygons, circles, ellipses, and nested
+SVG transforms stay aligned while zooming or panning. Locations not drawn in
+the SVG keep their point markers. Unplaced descendants can highlight their
+nearest mapped ancestor, explicitly marked as approximate.
+
+Each drawn location is linked by `data-location-id="<database location id>"`.
+Keep that attribute when moving, resizing, rotating, or reshaping a table in
+Inkscape. The app reads the updated SVG on map load and when the tab regains
+focus or reconnects; development asset changes also reload through Vite.
+**No database coordinate update or marker Save is needed for SVG-linked shapes.**
+The background image and hit areas come from the same fetched SVG version.
+Renaming SVG text does not rename database records, and adding SVG groups does
+not create inventory locations automatically.
+
+Use `.surface`, `.station`, or `.cabinet` on the location geometry, or mark
+specific pieces with `data-location-shape="true"` for multipart shapes. Without
+these, the first supported shape in the location group is used. Keep geometry
+in SVG attributes; expand linked clones, clipping/masks, and CSS transforms
+into ordinary shapes and SVG transform attributes. Invalid XML, duplicate
+location IDs, or unsupported region geometry produces a visible map error
+instead of silently using misaligned hit targets.
+
+SVG-linked locations are read-only in the point-marker editor: edit the SVG to
+change their geometry. Existing database coordinates are retained for
+compatibility but ignored while a matching SVG shape exists. If the SVG link
+is removed, a valid stored point can be used as a fallback; no catalog record
+is deleted by editing an SVG.
+
+These are schematics, not scale drawings. Existing staff-positioned points are
+not overwritten by the additive location update. The legacy coordinate/name
+synchronizer remains available, but is not needed for SVG geometry changes.
+To explicitly realign the live
 Cosmos catalog with these drawings, preview `npm run sync:maps:cosmos`, then run
 `npm run sync:maps:cosmos -- --apply --backup <absolute-path>`. This backs up the
 catalog, uses one ETag-guarded transaction to change mapped surface names and
@@ -153,12 +184,13 @@ when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
 Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.
-Open **Room maps** to switch rooms and click a marker to
+Open **Room maps** to switch rooms and click a shape or point marker to
 see its active items (including sub-locations). Item details highlight their
 location on the same map, falling back to the nearest mapped ancestor, explicitly
 labeled as an approximate location.
 
-In **Manage catalog → Locations**, click a marker to select its location, click
+In **Manage catalog → Locations**, point-only locations can still be moved:
+click a marker to select its location, click
 its spot on the map, then switch to another location in the same room to
 continue placing markers. Every move and **Remove marker** stays in the preview
 until **Save all markers** saves the entire batch together. The unsaved count
@@ -166,7 +198,7 @@ tracks the current draft batch. **Undo marker change** resets the selected
 marker; **Discard all marker changes** resets the whole batch.
 The map section starts with room tabs and the map, without a separate location
 picker or instructions. Use a location's edit form in the tree to place an
-existing location that has no marker.
+existing location that has neither a marker nor a linked SVG shape.
 These actions use trash, undo, save, and X icons with tooltips and accessible
 labels. Remove/undo stay on the left below the map; save/discard and the unsaved
 count sit on the right.
@@ -231,8 +263,10 @@ Editing retains the saved type and includes the parent picker, except for
 top-level rooms, whose parent and room type stay fixed.
 
 In a mapped room, create/edit forms include a placement map and **Save** remains
-disabled until the location has its own valid marker. Click the map (or an
-existing marker's spot) to place it. An inherited ancestor highlight does not
+disabled until the location has its own valid point marker or linked SVG shape.
+For a point-only location, click the map or a spot on a drawn surface to place
+it. SVG-linked locations follow the drawing without requiring a pin.
+An inherited ancestor highlight does not
 count. Moving a location to another mapped room clears its old placement and
 requires a new one. Top-level rooms and children of unmapped rooms, including
 staff-only storage, do not require a marker. Metadata and placement are saved

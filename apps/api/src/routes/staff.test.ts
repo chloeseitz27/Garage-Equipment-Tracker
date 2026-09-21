@@ -90,8 +90,8 @@ const makeRepository = (): CatalogRepository => {
       state.items = state.items.map((existing) => byId.get(existing.id) ?? existing);
     },
     getLocations: async () => state.locations,
-    createLocation: async (input) => {
-      const location = { ...input, id: `loc-${state.locations.length}` };
+    createLocation: async (input, migrationId) => {
+      const location = { ...input, id: migrationId ?? `loc-${state.locations.length}` };
       state.locations.push(location);
       return location;
     },
@@ -662,6 +662,23 @@ test('creating or editing a child in a mapped room requires its own marker', asy
   assert.deepEqual((await created.json()).mapPosition, mapPosition);
   const moved = await call('PUT', '/api/locations/loc-bin', { ...input, mapPosition });
   assert.equal(moved.status, 200);
+});
+
+test('SVG-linked locations can save metadata without a pin, but cannot be moved by point-marker batches', async () => {
+  const shape = await repository.createLocation({
+    name: 'Table A', parentId: 'loc-room', kind: 'table',
+  }, 'loc-common-table-14');
+  const response = await call('PUT', `/api/locations/${shape.id}`, { ...shape, name: 'Table A renamed' });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mapPosition, undefined);
+  const original = structuredClone(await repository.getLocations());
+  const batch = await call('POST', '/api/locations/markers', { markers: [
+    { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.2, y: 0.4 } },
+    { id: shape.id, roomId: 'loc-room', mapId: 'common', position: { x: 0.7, y: 0.8 } },
+  ] });
+  assert.equal(batch.status, 409);
+  assert.match((await batch.json()).error, /SVG shape/);
+  assert.deepEqual(await repository.getLocations(), original);
 });
 
 test('top-level rooms and children of unmapped rooms do not require a marker', async () => {

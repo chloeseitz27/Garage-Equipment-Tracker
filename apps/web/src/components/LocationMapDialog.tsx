@@ -65,8 +65,8 @@ export function LocationMapDialog({
         <button ref={closeRef} type="button" onClick={() => finish(onClose)}>Close map</button>
       </div>
       <p id={helpId} className="hint">
-        {multiple ? 'Click markers to toggle locations in the filter.' : 'Click a marker to choose that location.'}
-        {' '}For drawers, bins, or other locations without markers, use search instead.
+        {multiple ? 'Click shapes or markers to toggle locations in the filter.' : 'Click a shape or marker to choose that location.'}
+        {' '}For locations not shown on the map, use search instead.
       </p>
       <p className="location-map-selection" aria-live="polite">
         Selected: {selection || (rootSelected ? 'Top level (no parent)' : 'None')}
@@ -92,15 +92,8 @@ export function LocationMapDialog({
             selectedLocationIds={multiple ? selectedIds : undefined}
             excludedIds={excludedIds}
             onSelect={choose}
-            caption={multiple ? 'Click a marker to toggle its location.' : 'Click a marker to choose its location.'}
+            caption={multiple ? 'Click a shape or marker to toggle its location.' : 'Click a shape or marker to choose its location.'}
           />
-          {!multiple && selected?.room.id === room.id && selected.marker &&
-            selected.marker.location.id !== selectedIds[0] ? (
-              <p className="hint">Approximate location: highlighting {selected.marker.location.name}, not the selected sub-location.</p>
-            ) : null}
-          {!multiple && selectedIds[0] && !selected?.marker ? (
-            <p className="hint">The selected location has no map marker.</p>
-          ) : null}
         </>
       ) : <p className="muted">No floor plans are available for these locations. Use search to choose a location.</p>}
       <div className="location-map-actions">

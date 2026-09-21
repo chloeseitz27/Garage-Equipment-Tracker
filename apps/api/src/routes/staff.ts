@@ -18,10 +18,12 @@ import {
   wouldCreateCycle,
   type Item,
   type Location,
+  type RoomMapId,
 } from '@garage/shared';
 
 import { requireStaff } from '../auth.js';
 import { asyncHandler } from '../middleware.js';
+import { svgLocationIds } from '../room-map-source.js';
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 
 /**
@@ -286,6 +288,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
       }
       const locations = await repository.getLocations();
       const updated: Location[] = [];
+      const svgMaps = new Map<RoomMapId, Promise<Set<string>>>();
       for (const marker of parsed.data.markers) {
         const location = locations.find((candidate) => candidate.id === marker.id);
         if (!location) {
@@ -295,6 +298,12 @@ export function staffRoutes(repository: CatalogRepository): Router {
         const mapped = resolveLocationMap(locations, location.id);
         if (!mapped || mapped.room.id === location.id || mapped.room.id !== marker.roomId || mapped.room.mapId !== marker.mapId) {
           res.status(409).json({ error: `${location.name}: the room or floor plan changed. Discard this marker draft and place it again.` });
+          return;
+        }
+        let shapes = svgMaps.get(marker.mapId);
+        if (!shapes) { shapes = svgLocationIds(marker.mapId); svgMaps.set(marker.mapId, shapes); }
+        if ((await shapes).has(location.id)) {
+          res.status(409).json({ error: `${location.name} is linked to an SVG shape. Edit the floor plan SVG to move or resize it.` });
           return;
         }
         // Merge only marker data so a batch cannot overwrite a rename or hierarchy edit.
@@ -337,8 +346,10 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
+      const room = parsed.data.parentId ? resolveLocationMap(locations, parsed.data.parentId)?.room : undefined;
+      const shapes = room?.mapId ? await svgLocationIds(room.mapId) : new Set<string>();
       const mapProblem = locationMapProblem(parsed.data, locations, locations.find((location) => location.id === id)) ??
-        locationPlacementProblem(parsed.data, locations);
+        locationPlacementProblem(parsed.data, locations, shapes);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   LOCATION_KINDS, ROOM_MAP_IDS, ROOM_MAPS, formatLocationPath, getDescendantLocationIds,
   getLocationPath, isStaffOnlyLocation, locationPlacementProblem, resolveLocationMap,
@@ -8,6 +8,7 @@ import { createLocation, updateLocation } from '../api.js';
 import { ActionIcon } from './ActionIcon.js';
 import { LocationPicker } from './LocationPicker.js';
 import { RoomMap } from './RoomMap.js';
+import { useSvgMap } from '../room-map-source.js';
 
 interface Props {
   locations: Location[];
@@ -56,10 +57,14 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   };
   const preview = [...locations.filter((entry) => entry.id !== candidate.id), candidate];
   const mapped = resolveLocationMap(preview, candidate.id);
-  const placementProblem = locationPlacementProblem(candidate, locations);
+  const source = useSvgMap(mapped?.room.mapId);
+  const svgIds = useMemo(() => new Set(source.map?.regions.map((region) => region.locationId) ?? []), [source.map]);
+  const svgLinked = svgIds.has(candidate.id);
+  const placementProblem = locationPlacementProblem(candidate, locations, svgIds);
   const inherited = draft.parentId !== null && isStaffOnlyLocation(locations, draft.parentId);
   const parentExists = draft.parentId === null || locations.some((entry) => entry.id === draft.parentId);
-  const canSave = draft.name.trim() !== '' && draft.kind !== '' && parentExists && !placementProblem && !busy;
+  const canSave = draft.name.trim() !== '' && draft.kind !== '' && parentExists && !placementProblem && !busy &&
+    (rootRoom || !mapped || Boolean(source.map));
   const placementId = `${id}-placement`;
 
   const setParent = (nextParent: string | null): void => {
@@ -72,7 +77,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
     setError(null);
   };
   const place = ({ x, y }: { x: number; y: number }): void => {
-    if (busy || !mapped?.room.mapId) return;
+    if (busy || svgLinked || !mapped?.room.mapId) return;
     const mapPosition: MapPosition = {
       roomId: mapped.room.id, mapId: mapped.room.mapId, x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000,
     };
@@ -167,17 +172,18 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       {mapped && !rootRoom ? (
         <div className="location-placement">
           <p id={placementId} className="hint" role="status">
-            {placementProblem ?? 'Location placed. Click the map to adjust it before saving.'}
+            {svgLinked ? 'This location follows its SVG shape. Edit the SVG to move or resize it; no pin repositioning is needed.' :
+              placementProblem ?? 'Location placed. Click the map to adjust it before saving.'}
           </p>
           <RoomMap
             key={mapped.room.id} room={mapped.room} locations={preview}
             selectedLocationId={placementProblem ? undefined : candidate.id}
-            onPlace={busy ? undefined : place}
-            onSelect={(selectedId) => {
-              const pin = preview.find((entry) => entry.id === selectedId)?.mapPosition;
-              if (pin) place(pin);
+            onPlace={busy || svgLinked ? undefined : place}
+            onSelect={(_selectedId, point) => {
+              if (point) place(point);
+              else if (!busy && !svgLinked) setError('Click a spot on the map to place this location.');
             }}
-            caption="Click to place this location. Its name, parent, and marker are saved together."
+            caption={svgLinked ? 'SVG-linked location' : 'Click to place this location. Its name, parent, and marker are saved together.'}
           />
         </div>
       ) : !rootRoom ? <p className="hint">This room has no floor plan. A map marker is not required.</p> : null}

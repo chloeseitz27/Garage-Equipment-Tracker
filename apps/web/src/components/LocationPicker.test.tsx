@@ -4,6 +4,8 @@ import { JSDOM } from 'jsdom';
 import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
 import { EQUIPMENT_STATUSES, STOCK_LEVELS, formatLocationPath, getLocationPath, type BulkUpdateMarkersInput, type Item, type Location, type RecommendResponse } from '@garage/shared';
+import { RoomMapSourcesContext } from '../room-map-source.js';
+import { pointMapSources } from './map-test-sources.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -126,8 +128,8 @@ const render = async (element: ReactElement, initialPath = '/manage/items'): Pro
     }], { initialEntries: [initialPath] });
   }
   const router = testRouter;
-  await act(() => root.render(createElement(TestElementContext.Provider, { value: element },
-    createElement(RouterProvider, { router }),
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+    createElement(TestElementContext.Provider, { value: element }, createElement(RouterProvider, { router })),
   )));
 };
 const currentUrl = (): string => host.querySelector('[data-test-url]')?.textContent ?? '';
@@ -1885,7 +1887,8 @@ test('the browser router follows real popstate events for browser Back and Forwa
   window.history.replaceState(null, '', '/manage/categories');
   const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
   testRouter = browserRouter;
-  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+    createElement(RouterProvider, { router: browserRouter }))));
   assert.equal(host.querySelector('.manager h3')?.textContent, 'Categories');
   await click(link('Locations'));
   assert.equal(window.location.pathname, '/manage/locations');
@@ -2203,7 +2206,8 @@ test('real browser Back restores the edit URL while the warning is pending', { t
   window.history.replaceState(null, '', '/manage/items');
   const browserRouter = createBrowserRouter([{ path: '*', element: createElement(App) }]);
   testRouter = browserRouter;
-  await act(() => root.render(createElement(RouterProvider, { router: browserRouter })));
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+    createElement(RouterProvider, { router: browserRouter }))));
   await click(button('Edit Tool 2'));
   const editUrl = window.location.pathname;
   await type(editorName(), 'Browser draft');
@@ -2306,11 +2310,11 @@ test('the item editor location panel follows draft locations and highlights appr
   assert.ok(panel);
   assert.ok(panel.contains(combobox('Location')));
   assert.equal(panel.querySelector('.location-map-trigger'), null);
-  assert.equal(panel.querySelector('img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(panel.querySelector('img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   assert.equal(panel.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
-  assert.match(panel.textContent ?? '', /Approximate location: shown at Table A/);
+  assert.match(panel.textContent ?? '', /Approximate location:.*Table A/);
   await choose(combobox('Location'), 'table 3');
-  assert.equal(panel.querySelector('img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
+  assert.equal(panel.querySelector('img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
   assert.equal(panel.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table 3');
   assert.equal(panel.textContent?.includes('Approximate location'), false);
   assert.equal(panel.querySelector('a'), null);
@@ -2344,7 +2348,7 @@ test('item room tabs switch maps without moving the item until a marker is chose
   await click(button('Advanced Makerspace'));
   assert.equal(button('Advanced Makerspace').getAttribute('aria-pressed'), 'true');
   assert.equal(button('Common Makerspace').getAttribute('aria-pressed'), 'false');
-  assert.equal(panel.querySelector('img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
+  assert.equal(panel.querySelector('img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
   assert.equal(panel.querySelector('.map-marker.selected'), null);
   assert.equal(combobox('Location').value, initial);
   assert.equal(unloadIsBlocked(), false);
@@ -2395,7 +2399,7 @@ test('new and unmapped items keep the location panel usable without implying a p
   await render(createElement(ItemEditor, { ...props, item: null, locations: mapLocations }));
   assert.ok(host.querySelector('.editor-location img'));
   assert.equal(host.querySelector('.editor-location .map-marker.selected'), null);
-  assert.match(host.querySelector('.editor-location')?.textContent ?? '', /Room shown; this location has no marker yet/);
+  assert.match(host.querySelector('.editor-location')?.textContent ?? '', /Room shown; this location has no marker or linked SVG shape yet/);
   await render(createElement(ItemEditor, { ...props, item, locations }));
   assert.equal(host.querySelector('.editor-location img'), null);
   assert.match(host.querySelector('.editor-location')?.textContent ?? '', /No floor plan is available/);
@@ -2419,7 +2423,7 @@ test('the right-hand location panel cannot change the snapshot while saving', as
   assert.equal(button('Cancel').disabled, true);
   assert.equal(button('Advanced Makerspace').disabled, true);
   await click(button('Advanced Makerspace'));
-  assert.equal(panel?.querySelector('img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(panel?.querySelector('img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   const marker = panel?.querySelector<HTMLButtonElement>('.map-marker');
   assert.ok(marker);
   await click(marker);
@@ -2440,9 +2444,9 @@ test('map selection opens at the current room and chooses a marker without submi
   await click(trigger);
   assert.equal(trigger.getAttribute('aria-haspopup'), 'dialog');
   assert.equal(trigger.getAttribute('aria-expanded'), 'true');
-  assert.equal(mapDialog().querySelector('img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(mapDialog().querySelector('img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   assert.equal(pickerMarker('Table A').getAttribute('aria-pressed'), 'true');
-  assert.match(mapDialog().textContent ?? '', /Approximate location: highlighting Table A/);
+  assert.match(mapDialog().textContent ?? '', /Approximate location:.*Table A/);
   await click(panelButton(mapDialog(), 'Advanced Makerspace'));
   assert.match(combobox('Location').value, /Bin A$/);
   await click(pickerMarker('Table 3'));
@@ -2454,7 +2458,7 @@ test('map selection opens at the current room and chooses a marker without submi
   assert.equal(submits, 0);
   assert.equal(writes.length, 0);
   await click(trigger);
-  assert.equal(mapDialog().querySelector('img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
+  assert.equal(mapDialog().querySelector('img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
   assert.equal(pickerMarker('Table 3').getAttribute('aria-pressed'), 'true');
 });
 
@@ -2838,14 +2842,14 @@ test('room maps use the correct images, include active descendant items, and nav
   await render(createElement(RoomMapsPage, { catalog: mappedCatalog }), '/maps?room=common&location=bin-a');
   assert.equal(host.querySelector('[role="combobox"]'), null);
   assert.equal(host.textContent?.includes('Browse a location'), false);
-  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Table A');
   assert.match(host.textContent ?? '', /nearest mapped location: Table A/);
   assert.equal(link('Vise').getAttribute('href'), '/?item=vise');
   assert.equal([...host.querySelectorAll('a')].some((a) => a.textContent === 'Retired vise'), false);
   await click(link('Advanced Makerspace'));
   assert.equal(currentUrl(), '/maps?room=advanced');
-  assert.equal(host.querySelector('.room-map img')?.getAttribute('src'), '/maps/advanced-makerspace.svg');
+  assert.equal(host.querySelector('.room-map img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
   const marker = host.querySelector<HTMLButtonElement>('.map-marker');
   assert.ok(marker);
   await click(marker);
@@ -2972,9 +2976,9 @@ test('item detail highlights the assigned room and falls back to a mapped parent
   const respond = globalThis.fetch;
   globalThis.fetch = (url, init) => url === '/api/catalog' ? Promise.resolve(jsonResponse(mappedCatalog)) : respond(url, init);
   await render(createElement(App), '/?item=vise');
-  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('src'), '/maps/common-makerspace.svg');
+  assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.item-detail .map-marker.selected')?.getAttribute('title'), 'Table A');
-  assert.match(host.querySelector('.item-detail')?.textContent ?? '', /exact location is not marked/);
+  assert.match(host.querySelector('.item-detail')?.textContent ?? '', /selected sub-location is not marked/);
   const pin = host.querySelector<HTMLAnchorElement>('.item-detail .map-marker.selected');
   assert.ok(pin);
   await click(pin);

@@ -52,13 +52,34 @@ export function locationMapProblem(
 
 /** A location's own marker is required when its containing room has a floor plan. */
 export function locationPlacementProblem(
-  location: Pick<Location, 'parentId' | 'mapPosition'>,
+  location: Pick<Location, 'parentId' | 'mapPosition'> & { id?: string },
   locations: Location[],
+  svgLocationIds: ReadonlySet<string> = new Set(),
 ): string | null {
   const room = location.parentId ? getLocationPath(locations, location.parentId)[0] : undefined;
   if (!room || room.parentId !== null || room.kind !== 'room' || !room.mapId) return null;
+  if (location.id && svgLocationIds.has(location.id)) return null;
   if (!location.mapPosition || location.mapPosition.roomId !== room.id || location.mapPosition.mapId !== room.mapId) {
     return `Place this location on the ${room.name} map before saving.`;
+  }
+
+  return null;
+}
+
+export interface MapTarget {
+  location: Location;
+  kind: 'shape' | 'point';
+  position?: MapPosition;
+}
+
+export function resolveMapTarget(locations: Location[], locationId: string, svgLocationIds: ReadonlySet<string>): MapTarget | null {
+  const path = getLocationPath(locations, locationId);
+  const room = path[0];
+  if (!room?.mapId || room.kind !== 'room' || room.parentId !== null) return null;
+  for (const location of [...path].reverse()) {
+    if (svgLocationIds.has(location.id)) return { location, kind: 'shape' };
+    const position = location.mapPosition;
+    if (position?.roomId === room.id && position.mapId === room.mapId) return { location, kind: 'point', position };
   }
   return null;
 }

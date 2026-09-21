@@ -872,6 +872,49 @@ header h1 {
   height: 100%;
 }
 
+.room-map-regions {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.map-region {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.map-region-surface {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2;
+}
+
+.map-region:hover .map-region-surface {
+  fill: #4da3ff26;
+  stroke: #174478;
+}
+
+.map-region.selected .map-region-surface {
+  fill: #f4be4240;
+  stroke: #805800;
+  stroke-width: 3;
+}
+
+.map-region:focus-visible,
+.room-map-regions a:focus-visible {
+  outline: none;
+}
+
+.map-region:focus-visible .map-region-surface,
+.room-map-regions a:focus-visible .map-region-surface {
+  stroke: #07121f;
+  stroke-width: 4;
+  stroke-dasharray: 6 3;
+}
+
 .room-map-stage .map-marker {
   position: absolute;
   transform: translate(-50%, -50%);

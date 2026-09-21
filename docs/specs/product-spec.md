@@ -158,11 +158,13 @@ Rules:
 - Locations are browsable in their own right: "show me everything in Cabinet B."
 
 Room maps use the supplied Common Makerspace and Advanced Makerspace plans.
-Locations can carry map markers; items inherit them through their location path.
-Selecting a map marker lists active items at or beneath that location. Item
+Drawn locations link directly to SVG shapes by stable location ID. Selecting a
+table highlights its full shape, and SVG moves, rotations, and resizing update
+the mapping without pin repositioning. Other locations can keep point markers.
+Selecting a map shape or marker lists active items at or beneath that location. Item
 details highlight the closest mapped location, stating when it is a parent
-rather than the exact bin. Staff can position or remove markers with an explicit
-save. Floor plans do not imply any tool availability or unverified item placement.
+rather than the exact bin. Staff can position or remove point markers with an
+explicit save; SVG-linked shapes are edited in the drawing. Floor plans do not imply any tool availability or unverified item placement.
 
 Table/bench letters are unique across rooms. Common runs A-M clockwise from the
 top-right table. Advanced runs S-Z clockwise from the top-left workbench,

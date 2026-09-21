@@ -8,6 +8,7 @@ import { updateLocationMarkers } from '../api.js';
 import { ActionIcon } from './ActionIcon.js';
 import { RoomMap } from './RoomMap.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
+import { useSvgMap } from '../room-map-source.js';
 
 interface Props {
   locations: Location[];
@@ -70,8 +71,10 @@ export function LocationMapEditor({
   useEffect(() => { setSavedLocations(locations); }, [locations]);
 
   const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
+  const source = useSvgMap(room?.mapId);
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
   const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
+  const svgLinked = Boolean(selected && source.map?.regions.some((region) => region.locationId === selected.id));
   const draft = selected ? drafts.get(selected.id) : undefined;
   const preview = savedLocations.map((location) => {
     const change = drafts.get(location.id);
@@ -85,7 +88,7 @@ export function LocationMapEditor({
   };
 
   const updateDraft = (point: Point, remove = false): void => {
-    if (!selected || !room?.mapId || busy || disabled) return;
+    if (!selected || !room?.mapId || busy || disabled || svgLinked || !source.map) return;
     const current = drafts.get(selected.id);
     const next: MarkerDraft = {
       roomId: room.id, mapId: room.mapId, baseline: initialPoint(selected, room),
@@ -109,6 +112,7 @@ export function LocationMapEditor({
 
   const save = async (): Promise<void> => {
     if (!dirty || busy || disabled) return;
+    if (!source.map) { setError('Wait for the floor plan to load before saving marker changes.'); return; }
     setError(null);
     setNotice(null);
     const markers: BulkUpdateMarkersInput['markers'] = [];
@@ -117,6 +121,10 @@ export function LocationMapEditor({
       const mapped = resolveLocationMap(savedLocations, id);
       if (!location || mapped?.room.id !== change.roomId || mapped.room.mapId !== change.mapId) {
         setError(`${location?.name ?? id}: the location, room, or floor plan changed. Discard this draft and place it again.`);
+        return;
+      }
+      if (source.map?.regions.some((region) => region.locationId === id)) {
+        setError(`${location.name} now has an SVG shape. Discard its old point-marker draft.`);
         return;
       }
       const position = draftPosition(change);
@@ -181,7 +189,8 @@ export function LocationMapEditor({
             locations={preview}
             selectedLocationId={selected?.id}
             onSelect={choose}
-            onPlace={selected && !busy && !disabled ? ({ x, y }) => updateDraft({ x: (x * 100).toFixed(1), y: (y * 100).toFixed(1) }) : undefined}
+            onPlace={selected && source.map && !busy && !disabled && !svgLinked ? ({ x, y }) => updateDraft({ x: (x * 100).toFixed(1), y: (y * 100).toFixed(1) }) : undefined}
+            caption={svgLinked ? 'SVG-linked shape: edit the floor plan SVG to move, resize, or reshape this location.' : undefined}
           />
         </>
       ) : <p className="muted">Assign a floor plan to a room to place location markers.</p>}
@@ -189,8 +198,8 @@ export function LocationMapEditor({
         {selected ? (
           <>
             <button
-              type="button" className="icon-button" aria-label="Remove marker" title="Remove marker"
-              disabled={busy || disabled || Boolean(draft?.remove) || (!selected.mapPosition && !draft)}
+              type="button" className="icon-button" aria-label="Remove marker" title={svgLinked ? 'This location is defined by its SVG shape' : 'Remove marker'}
+              disabled={busy || disabled || svgLinked || !source.map || Boolean(draft?.remove) || (!selected.mapPosition && !draft)}
               onClick={() => updateDraft({ x: '', y: '' }, true)}
             ><ActionIcon name="delete" /></button>
             <button
@@ -205,7 +214,7 @@ export function LocationMapEditor({
             type="button" className="icon-button"
             aria-label={busy ? 'Saving markers...' : 'Save all markers'}
             title={busy ? 'Saving markers...' : 'Save all markers'}
-            aria-busy={busy} disabled={busy || disabled || !dirty} onClick={() => void save()}
+            aria-busy={busy} disabled={busy || disabled || !source.map || !dirty} onClick={() => void save()}
           ><ActionIcon name="save" /></button>
           <button
             type="button" className="icon-button" aria-label="Discard all marker changes" title="Discard all marker changes"

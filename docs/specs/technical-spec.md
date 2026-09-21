@@ -161,13 +161,36 @@ one candidate per item.
 The Common Makerspace (larger plan) and Advanced Makerspace (smaller plan) use
 clean SVG redraws of the supplied images, versioned in `apps/web/public/maps`.
 The redraws preserve the source coordinate systems; original PNGs remain as
-references. Zoom changes only display size, not stored marker positions. A marker belongs to a
-location, not an item. `resolveLocationMap` derives the room from the hierarchy
-and picks the nearest mapped ancestor. `roomId` and `mapId` in the coordinates
+references. `parseSvgMap` extracts selectable geometry from groups carrying
+`data-location-id`, including nested SVG transforms. The browser displays the
+original SVG as an inert image and renders only allowlisted geometry as a React
+SVG overlay; it never injects source scripts, event handlers, styles, or HTML
+into the document. A selected location highlights its entire SVG surface.
+Unknown, excluded, or out-of-room location IDs do not become interactive.
+
+`resolveMapTarget` walks from the selected location to its ancestors, preferring
+an SVG shape to a point at the same node. Point-only locations keep their
+normalized coordinates. `resolveLocationMap` still derives the containing room.
+`roomId` and `mapId` in point coordinates
 must both match the current room; stale positions from cross-room moves or plan
 changes are ignored, never shown on the wrong floor plan.
 
-Staff stage marker positions by clicking the map, without numeric coordinate fields, and save via
+SVG geometry changes apply on the next map fetch without database writes. SVG
+requests use `cache: 'no-store'`, coalesce by map, and refresh on window focus
+and reconnection; background and overlay use the same source snapshot. Original
+map coordinates remain backward-compatible fallback data, not the source of
+truth for a currently linked SVG shape. Label changes and new catalog records
+remain explicit operations. Supported regions use rect/path/polygon/circle/
+ellipse geometry; explicit `data-location-shape="true"` pieces override the
+usual surface/station/cabinet classes. Duplicate IDs, malformed XML, DTDs,
+clones, clips/masks, and CSS transforms fail explicitly.
+
+The API reads the source SVGs when validating shape-linked edits. Shared builds
+copy the SVG assets into `@garage/shared/dist/maps` as a deployment fallback, so
+the same shape IDs remain available when source folders are not shipped.
+Development reads the current source files, not a stale generated list.
+
+Staff stage point-marker positions by clicking the map, without numeric coordinate fields, and save via
 the authenticated `POST /api/locations/markers` API. The editor keeps one draft
 per location across pin URL changes within the same room, with a single
 **Save all markers** action. Room changes, including Back/Forward, are blocked
@@ -177,7 +200,8 @@ leaving the location editor also retains unsaved-change protection.
 The batch accepts up to 100 distinct `{ id, roomId, mapId, position }` records,
 where `position` is normalized `{ x, y }` or `null` to remove a marker.
 All references and room/plan identities are validated before writing, and only
-marker data is merged into existing records. The repository saves the batch in
+marker data is merged into existing records. SVG-linked locations reject point
+batch edits with an instruction to edit the SVG instead. The repository saves the batch in
 one JSON file replacement (updating memory only after persistence succeeds) or
 one Cosmos transaction of replacements in the `location` partition. Successful
 saves invalidate the catalog cache; failed saves retain the client drafts.
@@ -188,7 +212,9 @@ placement preview without issuing a create request. Top-level room edits omit
 the parent picker; other edits retain it and exclude self/descendants.
 `locationPlacementProblem` gates the form and authenticated location
 create/update routes: a child in a mapped room needs its own `mapPosition`
-matching that room and map version. Ancestor markers do not satisfy this rule.
+matching that room and map version, or its own linked SVG shape. Ancestor
+markers/shapes do not satisfy this rule. Shape-linked metadata edits need no
+point, and their geometry cannot be repositioned through the location form.
 Root locations and children of unmapped rooms are exempt. Cross-room edits
 require remapping; failed saves retain the form. Location forms and standalone
 marker batches are mutually exclusive editing modes and share one navigation
