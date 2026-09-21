@@ -202,7 +202,8 @@ export class CosmosCatalogRepository implements CatalogRepository {
     return this.readPartition<Location>('location');
   }
 
-  async createLocation(input: Omit<Location, 'id'>): Promise<Location> {
+  async createLocation(input: Omit<Location, 'id'>, migrationId?: string): Promise<Location> {
+    if (migrationId) return this.create('location', { ...input, id: migrationId });
     const existing = await this.existingIds('location');
     return this.create('location', { ...input, id: nextId('loc', input.name, existing) });
   }

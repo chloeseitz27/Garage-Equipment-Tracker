@@ -151,6 +151,12 @@ test('Cosmos missing item reads still return null', async () => {
   assert.equal(await repository.getItem('missing'), null);
 });
 
+test('Cosmos location migrations preserve the supplied stable ID rather than deriving it from a renamed label', async () => {
+  const { repository, documents } = makeRepository([]);
+  const location = await repository.createLocation({ name: 'Table X', kind: 'table', parentId: 'room' }, 'loc-table-u');
+  assert.equal(location.id, 'loc-table-u');
+  assert.deepEqual(documents.get('loc-table-u'), { ...location, type: 'location' });
+});
 test('Cosmos saves marker batches in one location-partition replacement transaction', async () => {
   const locations: Location[] = [
     { id: 'a', name: 'A', parentId: 'room', kind: 'table', mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.3 } },

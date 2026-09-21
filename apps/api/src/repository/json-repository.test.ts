@@ -120,7 +120,7 @@ test('JSON batch validation and disk failures leave all in-memory and persisted 
   }
 });
 
-test('location upgrades add staff storage and Table U once without resetting inventory or custom markers', async (t) => {
+test('location upgrades use permanent seed IDs despite relabeling, without resetting inventory or custom markers', async (t) => {
   const seed = locationsFileSchema.parse(JSON.parse(await readFile(
     new URL('../../../../data/seed/locations.json', import.meta.url), 'utf8',
   )));
@@ -138,12 +138,20 @@ test('location upgrades add staff storage and Table U once without resetting inv
   await updateLocationCatalog(repository, seed, true);
   const updated = await repository.getLocations();
   const table = updated.find((location) => location.id === 'loc-advanced-table-20')!;
-  assert.equal(table.name, 'Table T');
+  assert.equal(table.name, 'Table Y');
   assert.deepEqual(table.mapPosition, { roomId: 'loc-advanced-makerspace', mapId: 'advanced', x: 0.1, y: 0.2 });
   assert.equal(updated.find((location) => location.id === 'custom-closet')?.staffOnly, true);
   assert.equal(updated.filter((location) => location.name === 'Storage Closet').length, 1);
   assert.equal(updated.find((location) => location.id === 'loc-basement-storage')?.staffOnly, true);
-  assert.ok(updated.some((location) => location.id === 'loc-table-u'));
+  assert.equal(updated.find((location) => location.id === 'loc-table-u')?.name, 'Table X');
   assert.deepEqual(await updateLocationCatalog(repository, seed, true), []);
   assert.deepEqual(await repository.getItems(), []);
+});
+
+test('migration location IDs cannot overwrite existing JSON records', async (t) => {
+  const { repository } = await fixture(t, []);
+  await repository.load();
+  const original = await repository.getLocations();
+  await assert.rejects(repository.createLocation({ name: 'Duplicate', kind: 'room', parentId: null }, 'loc-shop'), /already exists/);
+  assert.deepEqual(await repository.getLocations(), original);
 });

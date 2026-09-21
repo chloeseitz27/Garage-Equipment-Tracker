@@ -167,10 +167,13 @@ and picks the nearest mapped ancestor. `roomId` and `mapId` in the coordinates
 must both match the current room; stale positions from cross-room moves or plan
 changes are ignored, never shown on the wrong floor plan.
 
-Staff stage marker positions using clicks or numeric percentages and save via
+Staff stage marker positions by clicking the map, without numeric coordinate fields, and save via
 the authenticated `POST /api/locations/markers` API. The editor keeps one draft
-per location across room/pin URL changes, with a single **Save all markers**
-action; leaving the location editor still requires discarding unsaved changes.
+per location across pin URL changes within the same room, with a single
+**Save all markers** action. Room changes, including Back/Forward, are blocked
+until the user saves or explicitly discards the draft batch. Discarding before
+a room switch clears in-memory drafts even though the editor remains mounted;
+leaving the location editor also retains unsaved-change protection.
 The batch accepts up to 100 distinct `{ id, roomId, mapId, position }` records,
 where `position` is normalized `{ x, y }` or `null` to remove a marker.
 All references and room/plan identities are validated before writing, and only
@@ -178,21 +181,44 @@ marker data is merged into existing records. The repository saves the batch in
 one JSON file replacement (updating memory only after persistence succeeds) or
 one Cosmos transaction of replacements in the `location` partition. Successful
 saves invalidate the catalog cache; failed saves retain the client drafts.
+
+Location creation starts from a row's **+** (fixed parent) or the bottom **+**
+(top-level room). One inline `LocationEditor` holds metadata and a temporary
+placement preview without issuing a create request. Top-level room edits omit
+the parent picker; other edits retain it and exclude self/descendants.
+`locationPlacementProblem` gates the form and authenticated location
+create/update routes: a child in a mapped room needs its own `mapPosition`
+matching that room and map version. Ancestor markers do not satisfy this rule.
+Root locations and children of unmapped rooms are exempt. Cross-room edits
+require remapping; failed saves retain the form. Location forms and standalone
+marker batches are mutually exclusive editing modes and share one navigation
+guard. Marker-removal batches remain supported separately.
+
 Visitor map URLs preserve the
 selected room and location. Seed data contains two mapped rooms, their labeled
 locations, two staff-only storage rooms, starter categories, and empty item/report arrays.
 
-Storage surfaces are lettered uniquely across rooms: Common A-M from the
-upper-left desk down the left perimeter; Advanced S-Z follows the edited plan
-with Table S at left-center, T/U at bottom-left, V in the center, W on the right,
-and X/Y/Workbench Z across the top. Existing IDs are retained when display labels change;
-the new Table U uses `loc-table-u`.
+Storage surfaces are lettered uniquely across rooms: Common A-M clockwise from
+the top-right table, and Advanced S-Z clockwise from the top-left workbench.
+Advanced has Workbench S and Tables T/U across the top, V on the right, W in the
+center, X/Y along the bottom-left, and Z at left-center.
+Existing IDs are retained when display labels change; the added surface now
+called Table X retains `loc-table-u`.
 The six central Common work tables are drawing-only features, not catalog
 locations, so they have no markers and are absent from storage pickers. The
 current seed contains 31 locations: four rooms (two staff-only), 21 lettered surfaces, and six
 named stations/cabinets. SVG tests parse XML and apply transforms rather than
-depending on Inkscape's attribute ordering or whitespace. Drawer numbering (for example C2) is separate from
+depending on Inkscape's attribute ordering or whitespace. Drawer numbering (for example D2) is separate from
 table lettering; no drawer records are invented from the plans.
+
+`npm run sync:maps:cosmos` previews name/position synchronization from the seed
+for only the locations drawn in the SVGs. Applying requires an absolute backup
+path and saves all changes in one Cosmos transaction: ETag-guarded patches for
+existing records and creates for missing drawn surfaces. Only lettered surface
+names and mapped positions change; station/cabinet names, other fields, stable
+IDs, and item assignments are preserved and checked against a fresh read.
+Unmapped records are excluded. This is an explicit remapping operation, unlike
+the additive `update:locations` migration, which preserves saved coordinates.
 
 ### 3.4 Staff-only locations
 
@@ -310,6 +336,8 @@ REST, JSON, served by Express under `/api`.
 | `POST` | `/api/assistant/recommend` | none | Project Assistant (§6) |
 | `POST` | `/api/items` | staff | Create |
 | `PUT` | `/api/items/:id` | staff | Update |
+| `POST` | `/api/locations` | staff | Create metadata and required map placement together |
+| `PUT` | `/api/locations/:id` | staff | Update metadata; mapped children require a valid direct marker |
 | `POST` | `/api/locations/markers` | staff | Atomically update/remove up to 100 location markers |
 | `POST` | `/api/auth/login` | none | Staff sign-in (§8) |
 | `POST` | `/api/auth/logout` | staff | |

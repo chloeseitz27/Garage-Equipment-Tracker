@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { findCatalogProblems, locationMapProblem, locationSchema, locationsFileSchema, resolveLocationMap, ROOM_MAPS, roomMapMarkers, searchLocations, type Location } from './index.js';
+import { findCatalogProblems, locationMapProblem, locationPlacementProblem, locationSchema, locationsFileSchema, resolveLocationMap, ROOM_MAPS, roomMapMarkers, searchLocations, type Location } from './index.js';
 
 const locations: Location[] = [
   { id: 'common', name: 'Common Makerspace', kind: 'room', parentId: null, mapId: 'common' },
@@ -110,6 +110,20 @@ test('new markers must belong to the current mapped room, including inherited lo
   assert.equal(findCatalogProblems({ items: [], categories: [], locations }).length, 0);
 });
 
+test('saving a mapped child requires its own valid marker, not an ancestor marker', () => {
+  const bin = locations.find((location) => location.id === 'bin')!;
+  assert.match(locationPlacementProblem(bin, locations) ?? '', /Place this location.*Common Makerspace/);
+  assert.equal(locationPlacementProblem({
+    ...bin, mapPosition: { roomId: 'common', mapId: 'common', x: 0.2, y: 0.3 },
+  }, locations), null);
+  assert.match(locationPlacementProblem({
+    ...bin, mapPosition: { roomId: 'advanced', mapId: 'advanced', x: 0.2, y: 0.3 },
+  }, locations) ?? '', /before saving/);
+  assert.equal(locationPlacementProblem(locations[0]!, locations), null);
+  const storage: Location = { id: 'storage', name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true };
+  assert.equal(locationPlacementProblem({ parentId: storage.id }, [...locations, storage]), null);
+});
+
 test('redrawn maps preserve source coordinate systems and include all seeded map locations', async () => {
   const seed = locationsFileSchema.parse(JSON.parse(await readFile(new URL('../../../data/seed/locations.json', import.meta.url), 'utf8')));
   for (const [mapId, asset] of Object.entries(ROOM_MAPS)) {
@@ -146,19 +160,19 @@ test('the Toolbox keeps its ID but belongs to Advanced Makerspace at the old coa
   assert.equal(roomMapMarkers(seed, 'loc-common-makerspace').some((location) => location.id === toolbox.id), false);
 });
 
-test('storage letters match the edited drawing and are unique across both rooms', async () => {
+test('storage letters run clockwise from Common top-right and Advanced top-left', async () => {
   const seed = locationsFileSchema.parse(JSON.parse(await readFile(new URL('../../../data/seed/locations.json', import.meta.url), 'utf8')));
   const sequences = [
     {
       room: 'common',
       letters: 'ABCDEFGHIJKLM',
-      ids: ['desk-1', 'table-9', 'table-8', 'table-7', 'table-6-5', 'table-6', 'table-5',
-        'table-10', 'table-4', 'workbench-2', 'workbench-17', 'table-14', 'table-13'],
+      ids: ['table-14', 'workbench-17', 'workbench-2', 'table-4', 'table-10', 'table-5',
+        'table-6', 'table-6-5', 'table-7', 'table-8', 'table-9', 'desk-1', 'table-13'],
     },
     {
       room: 'advanced',
       letters: 'STUVWXYZ',
-      ids: ['table-21', 'table-20', 'new-table-u', 'table-11', 'table-18', 'table-3', 'table-19', 'workbench-16'],
+      ids: ['workbench-16', 'table-19', 'table-3', 'table-18', 'table-11', 'new-table-u', 'table-20', 'table-21'],
     },
   ];
   const allLetters: string[] = [];
@@ -166,11 +180,24 @@ test('storage letters match the edited drawing and are unique across both rooms'
     const svg = await readSvg(room);
     const surfaces = seed.filter((l) => l.parentId === `loc-${room}-makerspace` && ['table', 'workbench'].includes(l.kind));
     assert.equal(surfaces.length, ids.length);
+    let startAngle = 0;
+    let previousAngle = -1;
     for (const [index, oldId] of ids.entries()) {
       const id = oldId === 'new-table-u' ? 'loc-table-u' : `loc-${room}-${oldId}`;
       const location = surfaces.find((l) => l.id === id);
       const letter = letters[index];
       assert.ok(location && letter);
+      const pin = location.mapPosition;
+      assert.ok(pin);
+      const angle = Math.atan2(pin.y - 0.5, pin.x - 0.5);
+      if (index === 0) {
+        assert.ok(pin.y < 0.25 && (room === 'common' ? pin.x > 0.5 : pin.x < 0.5),
+          'First surface is at the designated top corner');
+        startAngle = angle;
+      }
+      const clockwise = (angle - startAngle + Math.PI * 2) % (Math.PI * 2);
+      assert.ok(clockwise > previousAngle, `${location.name} must follow the previous surface clockwise`);
+      previousAngle = clockwise;
       assert.match(location.name, new RegExp(` ${letter}$`));
       assert.equal(/\d/.test(location.name), false, 'Numbers are reserved for drawers');
       const group = svg.querySelector(`[data-location-id="${id}"]`);

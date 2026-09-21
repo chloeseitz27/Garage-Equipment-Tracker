@@ -164,12 +164,12 @@ details highlight the closest mapped location, stating when it is a parent
 rather than the exact bin. Staff can position or remove markers with an explicit
 save. Floor plans do not imply any tool availability or unverified item placement.
 
-Table/bench letters are unique across rooms. Common starts with A at the
-upper-left desk and proceeds down the left wall around the perimeter. Advanced
-starts with Z at the lower-left table and proceeds up the left wall, decreasing
-through the alphabet. The six central Common tables are shared work surfaces,
+Table/bench letters are unique across rooms. Common runs A-M clockwise from the
+top-right table. Advanced runs S-Z clockwise from the top-left workbench,
+continuing left to right across the top, down the right side, and back around
+the lower and left portions of the room. The six central Common tables are shared work surfaces,
 not storage destinations; draw them without individual labels or map markers.
-Drawers use numbers appended to the surface letter, such as C2.
+Drawers use numbers appended to the surface letter, such as D2.
 
 ### 5.3 Category
 

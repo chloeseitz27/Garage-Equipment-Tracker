@@ -36,7 +36,7 @@
   <title
      id="title">Advanced Makerspace</title>
   <desc
-     id="description">Advanced Makerspace storage surfaces run S through Z: Table S is at the left-center, Tables T and U are along the bottom-left, Table V is at the center, Table W is on the right, and Table X, Table Y, and Workbench Z run across the top from right to left. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
+     id="description">Advanced Makerspace storage surfaces run S through Z clockwise from the top-left workbench. Workbench S, Table T, and Table U run across the top from left to right. Table V is on the right, W is at the center, X and Y are along the bottom-left, and Z is at the left-center. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
   <style
      id="style1">
     text { font-family: &quot;Segoe UI&quot;, Arial, sans-serif; fill: #20384b; text-anchor: middle; }
@@ -55,7 +55,7 @@
      height="507"
      fill="#fff"
      id="rect1" />
-  <!-- Same source-image coordinates as the original plan, so existing catalog pins still align. -->
+  <!-- Preserve the source coordinate system; catalog markers follow the transformed surface geometry. -->
   <path
      class="floor"
      d="M 163.08861,22 H 1245.0886 v 93 h 70 v 292 h -94 v 79 H 23.088608 V 134 H 163.08861 Z"
@@ -174,7 +174,7 @@
   </g>
   <g
      data-location-id="loc-advanced-workbench-16"
-     data-storage-letter="Z"
+     data-storage-letter="S"
      id="g11">
     <rect
        class="surface"
@@ -188,11 +188,11 @@
        class="label"
        x="546"
        y="49"
-       id="text11">Workbench Z</text>
+       id="text11">Workbench S</text>
   </g>
   <g
      data-location-id="loc-advanced-table-19"
-     data-storage-letter="Y"
+     data-storage-letter="T"
      id="g12"
      transform="matrix(0.96003356,0,0,1.0004389,28.316235,-0.03050662)">
     <rect
@@ -207,11 +207,11 @@
        class="label"
        x="851"
        y="49"
-       id="text12">Table Y</text>
+       id="text12">Table T</text>
   </g>
   <g
      data-location-id="loc-advanced-table-3"
-     data-storage-letter="X"
+     data-storage-letter="U"
      id="g13"
      transform="translate(-9.7974684)">
     <rect
@@ -226,11 +226,11 @@
        class="label"
        x="1119"
        y="49"
-       id="text13">Table X</text>
+       id="text13">Table U</text>
   </g>
   <g
      data-location-id="loc-advanced-table-18"
-     data-storage-letter="W"
+     data-storage-letter="V"
      id="g15">
     <rect
        class="surface"
@@ -249,11 +249,11 @@
        class="letter"
        x="1267"
        y="193"
-       id="text15">W</text>
+       id="text15">V</text>
   </g>
   <g
      data-location-id="loc-advanced-table-21"
-     data-storage-letter="S"
+     data-storage-letter="Z"
      id="g17"
      transform="translate(70.759494,74.56962)">
     <rect
@@ -274,11 +274,11 @@
        class="letter"
        x="223.34375"
        y="226"
-       id="text17">S</text>
+       id="text17">Z</text>
   </g>
   <g
      data-location-id="loc-advanced-table-20"
-     data-storage-letter="T"
+     data-storage-letter="Y"
      id="g19">
     <rect
        class="surface"
@@ -294,7 +294,7 @@
        x="113.66653"
        y="447.6673"
        id="text17-1"
-       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">T</text>
+       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">Y</text>
     <text
        x="113.96634"
        y="420.75949"
@@ -304,7 +304,7 @@
   </g>
   <g
      data-location-id="loc-table-u"
-     data-storage-letter="U"
+     data-storage-letter="X"
      id="g19-8"
      transform="translate(183.32256,-0.42426392)">
     <rect
@@ -322,7 +322,7 @@
        x="128.36273"
        y="447.00296"
        id="text17-1-5"
-       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">U</text>
+       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">X</text>
     <text
        x="128.66254"
        y="420.75949"
@@ -333,7 +333,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-11"
-     data-storage-letter="V"
+     data-storage-letter="W"
      id="g20"
      transform="matrix(0.86853954,0,0,0.90974585,362.94334,20.025244)">
     <rect
@@ -351,7 +351,7 @@
        y="384.95316"
        id="text17-1-1"
        style="font-weight:700;font-size:35.9994px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b;stroke-width:1.12498"
-       transform="scale(1.0234467,0.97709045)">V</text>
+       transform="scale(1.0234467,0.97709045)">W</text>
     <text
        x="412.70163"
        y="354.95883"

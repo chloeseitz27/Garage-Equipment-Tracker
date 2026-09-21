@@ -145,6 +145,15 @@ test('a rejected write invalidates potentially committed data and propagates the
   assert.equal((await cache.getItem('camera'))?.name, 'Partial write');
 });
 
+test('location creation forwards explicit migration IDs through the cache', async () => {
+  const { repository } = setup();
+  repository.createLocation = async (input, id) => {
+    assert.equal(id, 'permanent-id');
+    return { ...input, id };
+  };
+  const cache = new CachedCatalogRepository(repository);
+  assert.equal((await cache.createLocation({ name: 'Table X', kind: 'table', parentId: 'room' }, 'permanent-id')).id, 'permanent-id');
+});
 test('a write fences an older in-flight query while concurrent new readers share a replacement', async () => {
   const { repository, state } = setup();
   const old = deferred<Item[]>();

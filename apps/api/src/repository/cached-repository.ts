@@ -95,8 +95,8 @@ export class CachedCatalogRepository implements CatalogRepository {
     return this.write(() => this.repository.saveItems(items));
   }
 
-  createLocation(location: Omit<Location, 'id'>): Promise<Location> {
-    return this.write(() => this.repository.createLocation(location));
+  createLocation(location: Omit<Location, 'id'>, migrationId?: string): Promise<Location> {
+    return this.write(() => this.repository.createLocation(location, migrationId));
   }
 
   saveLocation(location: Location): Promise<void> {

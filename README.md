@@ -1,4 +1,6 @@
-# Garage Inventory
+# GET IT
+
+**Garage Equipment Tracker & Inventory Tool**
 
 Inventory organization and tracking tool for the Microsoft Garage in Reston.
 
@@ -70,6 +72,7 @@ request automatically.
 | `npm run seed` | Copy `data/seed` to `data/runtime` if runtime is empty |
 | `npm run seed:cosmos` | Import `data/seed` into Cosmos (validates first, upserts by id) |
 | `npm run update:locations` | Preview additive location updates; pass `-- --apply` to apply to the configured backend |
+| `npm run sync:maps:cosmos` | Preview drawn location names/markers; apply with `-- --apply --backup <absolute-path>` |
 | `npm run reset` | Overwrite `data/runtime` from seed — the "put the demo back" button |
 | `npm test` | Grounding, safety, and location-path tests, plus seed validation |
 | `npm run validate:seed` | Schema + referential integrity check on `data/seed` |
@@ -107,13 +110,13 @@ that any particular tool or material is available.
 ## Room maps
 
 - **Common Makerspace:** 13 lettered tables/desks/workbenches, **A–M**, starting
-  at the upper-left desk and going down the left wall, across the bottom, up the
-  right wall, then along the top. The six center work tables stay visible but
+  at the **top-right table**, then clockwise down the right wall, across the bottom
+  from right to left, up the left wall, and along the top. The six center work tables stay visible but
   have no individual labels or storage locations: keep them clear.
-- **Advanced Makerspace:** eight lettered tables/workbenches, **S–Z**, matching
-  the edited plan. Table S sits left-center; T and the new U sit bottom-left;
-  V is in the center; W is on the right; X, Y, and Workbench Z run across the top
-  from right to left. The Toolbox remains in the former coat-rack area.
+- **Advanced Makerspace:** eight lettered tables/workbenches, **S–Z**, starting
+  at the **top-left workbench** and continuing clockwise: Workbench S, Tables T/U
+  across the top, V on the right, W at the center, X/Y along the bottom-left, and
+  Z at left-center. The Toolbox remains in the former coat-rack area.
 
 Letters are unique across rooms. **N–R** are unused, leaving room to expand.
 Cabinets, the Toolbox, and named stations retain descriptive names outside the
@@ -121,7 +124,7 @@ table/bench sequence. Storage-location IDs are not renamed, so existing links
 and item assignments follow the new display names. The center work tables are
 not in location pickers or map markers and cannot receive item assignments.
 Drawer labels use the table letter followed by the drawer number (for example,
-**C2** means Table C, Drawer 2); drawers are not pre-populated without their
+**D2** means Table D, Drawer 2); drawers are not pre-populated without their
 actual counts and positions.
 
 The app uses clean SVG schematics in `apps/web/public/maps`, with horizontal,
@@ -129,7 +132,16 @@ high-contrast labels and no dimension clutter. The original PNGs remain there
 as source references. Both redraws retain the original coordinate system, and
 seed markers follow the edited surface geometry, including SVG transforms.
 These are schematics, not scale drawings. Existing staff-positioned markers are
-not overwritten by the additive location update.
+not overwritten by the additive location update. To explicitly realign the live
+Cosmos catalog with these drawings, preview `npm run sync:maps:cosmos`, then run
+`npm run sync:maps:cosmos -- --apply --backup <absolute-path>`. This backs up the
+catalog, uses one ETag-guarded transaction to change mapped surface names and
+coordinates, creates missing drawn surfaces with stable IDs, and verifies that
+other fields and item assignments are unchanged. Named stations/cabinets keep
+their names; unmapped locations are untouched. Existing API processes may need
+a restart to clear their catalog cache after this out-of-band update.
+In PowerShell, use `npm.cmd run sync:maps:cosmos -- --apply --backup <absolute-path>`
+so npm receives both flags unchanged.
 Equipment areas are labeled **Roland** and **Laser**. The **Work Tables** label
 sits within the central table formation, and the fire cabinet is drawn with its
 back against Advanced's left wall and its doors facing into the room. The area
@@ -147,14 +159,19 @@ location on the same map, falling back to the nearest mapped ancestor, explicitl
 labeled as an approximate location.
 
 In **Manage catalog → Locations**, select a location in the map editor, click
-its spot or enter X/Y percentages, then switch to another location or room to
+its spot on the map, then switch to another location in the same room to
 continue placing markers. Every move and **Remove marker** stays in the preview
 until **Save all markers** saves the entire batch together. The unsaved count
-includes changes in other rooms. **Undo marker change** resets the selected
+tracks the current draft batch. **Undo marker change** resets the selected
 marker; **Discard all marker changes** resets the whole batch.
-Switching markers, rooms, or their browser-history entries preserves drafts
-without a warning; leaving Locations or closing the page still warns.
-Invalid coordinates or a failed save leave all drafts available to fix and retry,
+These actions use trash, undo, save, and X icons with tooltips and accessible
+labels. Remove/undo stay on the left below the map; save/discard and the unsaved
+count sit on the right.
+Switching markers within the same room preserves drafts without a warning.
+Switching rooms (including browser Back/Forward) or leaving Locations prompts
+you to stay or discard the batch. Save or explicitly discard changes before
+switching rooms; closing the page also warns.
+A failed save leaves all drafts available to fix and retry,
 and no partial batch is written. A batch supports up to 100 changed markers.
 Renaming a location retains its marker. A cross-room move, or changing a room's
 floor plan, makes old coordinates inactive until the location is remapped.
@@ -167,7 +184,7 @@ locations. Staff can assign items to them with location search and see their
 actual names and sub-location paths. Visitors can still find those items, but
 their location is **Ask Staff**, with no private map or breadcrumb.
 
-**Manage catalog → Locations** has a **Staff-only location** checkbox for new
+**Manage catalog → Locations** has a **Staff-only** checkbox for new
 and existing locations. The restriction includes all descendants; unchecking a
 child does not override a restricted parent. Catalog responses, item details,
 and assistant recommendations redact restricted location metadata on the server.
@@ -176,8 +193,8 @@ notes, which remain public.
 
 For an existing catalog, deploy this code before creating restricted records.
 Then run `npm run update:locations` to preview changes and
-`npm run update:locations -- --apply` to add the two rooms and Table U, and align
-the old Advanced labels with the drawing. The script uses the configured JSON
+`npm run update:locations -- --apply` to add the two rooms and the missing drawn
+table (now Table X), and align known old table labels with the drawing. The script uses the configured JSON
 or Cosmos backend, is safe to rerun, and preserves inventory, existing IDs,
 custom location names, parent links, and saved marker positions. It is not a
 reset and does not run automatically on startup.
@@ -197,6 +214,28 @@ Its sections share one navigation bar with slim separators:
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
+
+In **Locations**, each branch of the tree below the map starts collapsed.
+Use its chevron to expand or collapse children; collapsing keeps any draft edit.
+Rename/move, delete, save, cancel, and add use icons with tooltips and accessible
+labels. Clicking Delete on a location that holds items or children opens a popup
+explaining what must be moved or removed first; it does not attempt deletion.
+Each location's **+** opens an inline form for a child of that location, without
+a parent picker. The **+** below the list creates a top-level room; there is no
+permanent creation form at the bottom. New child locations require an explicit
+**Type** selection, displayed in Title Case. Top-level room forms use **Room**.
+Editing retains the saved type and includes the parent picker, except for
+top-level rooms, whose parent and room type stay fixed.
+
+In a mapped room, create/edit forms include a placement map and **Save** remains
+disabled until the location has its own valid marker. Click the map (or an
+existing marker's spot) to place it. An inherited ancestor highlight does not
+count. Moving a location to another mapped room clears its old placement and
+requires a new one. Top-level rooms and children of unmapped rooms, including
+staff-only storage, do not require a marker. Metadata and placement are saved
+together; no temporary location is created first. Save or discard any marker
+batch before opening a location form, and finish that form before editing the
+saved markers again. Unsaved forms also protect room switches and navigation.
 
 Each item belongs to **one or more categories**. In the item editor, open
 **Categories** and toggle every applicable category; all selected names remain
@@ -244,7 +283,7 @@ The recycle bin also has a sortable deletion-date column (newest first by defaul
 Headers stay visible while scrolling through the grid.
 
 Location editing fields use the same single-choice picker: **Move to**, the item
-editor, bulk-entry defaults, parent fields for new or existing locations, and
+editor, bulk-entry defaults, parent fields when editing non-root-room locations, and
 **Location to place** in the marker editor. Outside the item editor, click
 **Choose on map**, switch rooms,
 and click a location marker to select it without using the dropdown. The picker
@@ -310,7 +349,7 @@ Navigation uses real URLs and browser history:
 | `/?mode=ask&q=Build+a+planter` | Shared input ready to Ask about a project |
 | `/assistant` | Legacy link; redirects to the shared interface in Ask mode, preserving query parameters |
 | `/maps?room=loc-common-makerspace` | Common Makerspace floor plan |
-| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table V selected (stable location ID) |
+| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table U selected (stable location ID) |
 | `/manage/items` | Items grid |
 | `/manage/items/new` | New item form |
 | `/manage/items/<id>/edit` | Edit an item |

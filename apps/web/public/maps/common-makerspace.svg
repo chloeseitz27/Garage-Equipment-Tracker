@@ -26,7 +26,7 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.1955193"
      inkscape:cx="777.48637"
-     inkscape:cy="491"
+     inkscape:cy="357.16695"
      inkscape:window-width="3360"
      inkscape:window-height="1766"
      inkscape:window-x="695"
@@ -36,7 +36,7 @@
   <title
      id="title">Common Makerspace</title>
   <desc
-     id="description">Common Makerspace storage surfaces run A through M from the upper-left desk down the left wall, across the bottom, up the right wall, and along the top. Six central work tables are unlettered and must remain clear of stored items. The toolbox is in Advanced Makerspace. This diagram is not to scale.</desc>
+     id="description">Common Makerspace storage surfaces run A through M clockwise from the top-right table: down the right wall, right to left across the bottom, up the left wall, and along the top. Six central work tables are unlettered and must remain clear of stored items. The toolbox is in Advanced Makerspace. This diagram is not to scale.</desc>
   <style
      id="style1">
     text { font-family: &quot;Segoe UI&quot;, Arial, sans-serif; fill: #20384b; text-anchor: middle; }
@@ -105,7 +105,7 @@
      id="text7">STORAGE A–M · NOT TO SCALE</text>
   <g
      data-location-id="loc-common-desk-1"
-     data-storage-letter="A"
+     data-storage-letter="L"
      id="g9"
      transform="translate(2.5093697,4.1822828)">
     <rect
@@ -124,15 +124,15 @@
        id="text8">DESK</text>
     <text
        x="60"
-       y="94"
+       y="82.289612"
        font-size="26px"
        font-weight="700"
-       id="text9">A</text>
+       id="text9">L</text>
   </g>
   <g
      data-location-id="loc-common-roland"
      id="g10"
-     transform="translate(114.59455,-14.219761)">
+     transform="translate(71.098809,-14.219761)">
     <rect
        class="station"
        x="101"
@@ -169,7 +169,7 @@
   </g>
   <g
      data-location-id="loc-common-table-14"
-     data-storage-letter="L"
+     data-storage-letter="A"
      id="g12">
     <rect
        class="surface"
@@ -184,11 +184,11 @@
        y="42"
        font-size="24"
        font-weight="600"
-       id="text12">Table L</text>
+       id="text12">Table A</text>
   </g>
   <g
      data-location-id="loc-common-table-9"
-     data-storage-letter="B"
+     data-storage-letter="K"
      id="g14">
     <rect
        class="surface"
@@ -207,11 +207,11 @@
        class="letter"
        x="68"
        y="234"
-       id="text14">B</text>
+       id="text14">K</text>
   </g>
   <g
      data-location-id="loc-common-table-8"
-     data-storage-letter="C"
+     data-storage-letter="J"
      id="g16">
     <rect
        class="surface"
@@ -230,11 +230,11 @@
        class="letter"
        x="69"
        y="445"
-       id="text16">C</text>
+       id="text16">J</text>
   </g>
   <g
      data-location-id="loc-common-table-7"
-     data-storage-letter="D"
+     data-storage-letter="I"
      id="g18">
     <rect
        class="surface"
@@ -253,11 +253,11 @@
        class="letter"
        x="69"
        y="650"
-       id="text18">D</text>
+       id="text18">I</text>
   </g>
   <g
      data-location-id="loc-common-table-6-5"
-     data-storage-letter="E"
+     data-storage-letter="H"
      id="g20">
     <path
        class="surface"
@@ -272,11 +272,11 @@
        class="letter"
        x="111"
        y="885"
-       id="text20">E</text>
+       id="text20">H</text>
   </g>
   <g
      data-location-id="loc-common-table-6"
-     data-storage-letter="F"
+     data-storage-letter="G"
      id="g21">
     <rect
        class="surface"
@@ -290,11 +290,11 @@
        class="label"
        x="343"
        y="896"
-       id="text21">Table F</text>
+       id="text21">Table G</text>
   </g>
   <g
      data-location-id="loc-common-table-5"
-     data-storage-letter="G"
+     data-storage-letter="F"
      id="g22">
     <rect
        class="surface"
@@ -308,11 +308,11 @@
        class="label"
        x="608"
        y="896"
-       id="text22">Table G</text>
+       id="text22">Table F</text>
   </g>
   <g
      data-location-id="loc-common-table-10"
-     data-storage-letter="H"
+     data-storage-letter="E"
      id="g23">
     <rect
        class="surface"
@@ -326,11 +326,11 @@
        class="label"
        x="873"
        y="896"
-       id="text23">Table H</text>
+       id="text23">Table E</text>
   </g>
   <g
      data-location-id="loc-common-table-4"
-     data-storage-letter="I"
+     data-storage-letter="D"
      id="g24">
     <rect
        class="surface"
@@ -344,7 +344,7 @@
        class="label"
        x="1137"
        y="896"
-       id="text24">Table I</text>
+       id="text24">Table D</text>
   </g>
   <g
      data-work-tables="true"
@@ -434,7 +434,7 @@
   </g>
   <g
      data-location-id="loc-common-workbench-17"
-     data-storage-letter="K"
+     data-storage-letter="B"
      id="g34">
     <rect
        class="surface"
@@ -454,11 +454,11 @@
        class="letter"
        x="1479"
        y="630"
-       id="text34">K</text>
+       id="text34">B</text>
   </g>
   <g
      data-location-id="loc-common-workbench-2"
-     data-storage-letter="J"
+     data-storage-letter="C"
      id="g36">
     <rect
        class="surface"
@@ -478,7 +478,7 @@
        class="letter"
        x="1479"
        y="838"
-       id="text36">J</text>
+       id="text36">C</text>
   </g>
   <rect
      class="landmark"
