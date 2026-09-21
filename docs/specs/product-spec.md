@@ -1,4 +1,6 @@
-# Garage Inventory — Product Specification
+# GET IT — Product Specification
+
+Garage Equipment Tracker & Inventory Tool
 
 **Status:** Draft
 **Last updated:** 2026-09-15

@@ -98,8 +98,8 @@ export function App(): JSX.Element {
         <div className="app">
           <header>
             <div className="brand">
-              <h1>Garage Inventory</h1>
-              <p className="muted">Reston Garage — find it, then go get it.</p>
+              <h1>GET IT</h1>
+              <p className="muted">Garage Equipment Tracker &amp; Inventory Tool</p>
             </div>
             <nav className="tabs" aria-label="Main navigation">
               <NavLink to="/" end>Search &amp; ask</NavLink>

@@ -148,6 +148,8 @@ test('a failed first visit displays an actionable error and clears it after retr
 
 test('the refresh icon is labelled, indicates progress, and updates the saved catalog', async () => {
   await render();
+  assert.equal(host.querySelector('.brand h1')?.textContent, 'GET IT');
+  assert.equal(host.querySelector('.brand p')?.textContent, 'Garage Equipment Tracker & Inventory Tool');
   const refreshButton = button('Refresh catalog');
   assert.ok(refreshButton.closest('header .header-actions'));
   assert.ok(refreshButton.parentElement?.querySelector('.staff-bar'));
