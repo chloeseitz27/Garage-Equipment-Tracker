@@ -49,3 +49,16 @@ export function locationMapProblem(
   }
   return null;
 }
+
+/** A location's own marker is required when its containing room has a floor plan. */
+export function locationPlacementProblem(
+  location: Pick<Location, 'parentId' | 'mapPosition'>,
+  locations: Location[],
+): string | null {
+  const room = location.parentId ? getLocationPath(locations, location.parentId)[0] : undefined;
+  if (!room || room.parentId !== null || room.kind !== 'room' || !room.mapId) return null;
+  if (!location.mapPosition || location.mapPosition.roomId !== room.id || location.mapPosition.mapId !== room.mapId) {
+    return `Place this location on the ${room.name} map before saving.`;
+  }
+  return null;
+}

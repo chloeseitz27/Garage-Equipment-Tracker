@@ -647,6 +647,43 @@ test('location map updates preserve normalized coordinates', async () => {
   });
 });
 
+test('creating or editing a child in a mapped room requires its own marker', async () => {
+  const input = { name: 'New drawer', parentId: 'loc-shelf', kind: 'bin' };
+  const original = structuredClone(await repository.getLocations());
+  const refused = await call('POST', '/api/locations', input);
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /Place this location.*before saving/);
+  assert.deepEqual(await repository.getLocations(), original);
+  const edited = await call('PUT', '/api/locations/loc-bin', { ...input, name: 'Renamed drawer' });
+  assert.equal(edited.status, 400);
+  const mapPosition = { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 };
+  const created = await call('POST', '/api/locations', { ...input, mapPosition });
+  assert.equal(created.status, 201);
+  assert.deepEqual((await created.json()).mapPosition, mapPosition);
+  const moved = await call('PUT', '/api/locations/loc-bin', { ...input, mapPosition });
+  assert.equal(moved.status, 200);
+});
+
+test('top-level rooms and children of unmapped rooms do not require a marker', async () => {
+  const room = await call('POST', '/api/locations', { name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true });
+  assert.equal(room.status, 201);
+  const parent = await room.json();
+  const child = await call('POST', '/api/locations', { name: 'Shelf', parentId: parent.id, kind: 'shelf' });
+  assert.equal(child.status, 201);
+  assert.equal((await child.json()).mapPosition, undefined);
+});
+
+test('a cross-room edit cannot reuse a stale marker even when coordinates were unchanged', async () => {
+  const original = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+  const mapPosition = { roomId: 'loc-room', mapId: 'common' as const, x: 0.25, y: 0.4 };
+  await repository.saveLocation({ ...original, mapPosition });
+  const advanced = await repository.createLocation({ name: 'Advanced', parentId: null, kind: 'room', mapId: 'advanced' });
+  const response = await call('PUT', '/api/locations/loc-bin', { ...original, parentId: advanced.id, mapPosition });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Advanced map before saving/);
+  assert.equal((await repository.getLocations()).find((location) => location.id === original.id)?.parentId, original.parentId);
+});
+
 test('marker batches update multiple rooms atomically and preserve other location fields', async (t) => {
   const advanced = await repository.createLocation({ name: 'Advanced', kind: 'room', parentId: null, mapId: 'advanced' });
   const table = await repository.createLocation({ name: 'Table', kind: 'table', parentId: advanced.id });

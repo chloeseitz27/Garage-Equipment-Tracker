@@ -3,14 +3,17 @@ import { useBlocker } from 'react-router-dom';
 
 export const ItemDraftContext = createContext<((dirty: boolean) => void) | null>(null);
 
-export function useItemDraftGuard(dirty: boolean, options: { allowSearchChanges?: boolean } = {}) {
+export function useItemDraftGuard(dirty: boolean, options: {
+  allowSearchChanges?: (currentSearch: string, nextSearch: string) => boolean;
+} = {}) {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const reportDirty = useContext(ItemDraftContext);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     dirtyRef.current && (
       currentLocation.pathname !== nextLocation.pathname ||
-      (!options.allowSearchChanges && currentLocation.search !== nextLocation.search) ||
+      (currentLocation.search !== nextLocation.search &&
+        !options.allowSearchChanges?.(currentLocation.search, nextLocation.search)) ||
       currentLocation.hash !== nextLocation.hash
     ),
   );
@@ -42,9 +45,10 @@ interface Props {
   onStay: () => void;
   onLeave: () => void;
   subject?: string;
+  description?: string;
 }
 
-export function UnsavedItemDialog({ busy, onStay, onLeave, subject = 'item' }: Props): JSX.Element {
+export function UnsavedItemDialog({ busy, onStay, onLeave, subject = 'item', description }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const stayRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -69,7 +73,7 @@ export function UnsavedItemDialog({ busy, onStay, onLeave, subject = 'item' }: P
       <h2 id={titleId}>Unsaved changes</h2>
       <p id={descriptionId}>
         {busy ? `Your ${subject} is still being saved. Please wait before leaving.` :
-          `This ${subject} has unsaved changes. Leaving this page will discard them.`}
+          description ?? `This ${subject} has unsaved changes. Leaving this page will discard them.`}
       </p>
       <div className="editor-actions">
         <button ref={stayRef} type="button" onClick={onStay}>Stay on page</button>

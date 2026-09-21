@@ -758,6 +758,7 @@ header h1 {
 .add-row button,
 .tree-actions button,
 .tree-edit button,
+.location-form-actions button,
 .bulk-bar > button,
 .bulk-actions > button,
 .items-view-actions > button,
@@ -932,8 +933,14 @@ header h1 {
   align-items: flex-end;
 }
 
-.map-pin-controls input {
-  max-width: 9rem;
+.map-batch-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
+  max-width: 100%;
 }
 
 .map-item-list {
@@ -943,6 +950,7 @@ header h1 {
 .editor-actions button.secondary,
 .tree-actions button,
 .tree-edit button.secondary,
+.location-form-actions > button.secondary,
 .items-view-actions > button.secondary {
   background: var(--panel-2);
   color: var(--text);
@@ -1007,6 +1015,22 @@ button:disabled {
   font-weight: 600;
 }
 
+.tree-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.tree-toggle[aria-expanded="true"] .action-icon {
+  transform: rotate(90deg);
+}
+
+.tree-toggle-space {
+  flex: none;
+  width: 2.5rem;
+}
+
 .tree-actions,
 .tree-edit {
   display: flex;
@@ -1042,6 +1066,76 @@ button:disabled {
 
 .add-row input {
   flex: 1 1 240px;
+}
+
+.location-fields {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.location-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.location-editor > .hint {
+  margin-top: 0;
+}
+
+.location-placement {
+  max-width: 52rem;
+}
+
+.manager .location-fields > label:not(.staff-only-option) {
+  flex: 1 1 9rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.manager .location-fields > label.location-name-field {
+  flex: 1 1 11rem;
+}
+
+.manager .location-fields > label.location-type-field {
+  flex: 0 1 8rem;
+}
+
+.location-fields input:not([type="checkbox"]),
+.location-fields select {
+  flex: none;
+  min-width: 0;
+  height: 2.5rem;
+  font-size: 1rem;
+}
+
+.manager .location-fields > .staff-only-option {
+  flex: none;
+  flex-wrap: nowrap;
+  height: 2.5rem;
+  font-size: 0.85rem;
+}
+
+.location-form-actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.location-access-hint {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .inline-check {
@@ -1212,6 +1306,10 @@ code {
 .tree-actions > .icon-button,
 .tree-edit > .icon-button,
 .header-actions > .icon-button,
+.map-pin-controls .icon-button,
+.tree-name > .icon-button,
+.add-row > .icon-button,
+.location-form-actions > .icon-button,
 .item-action-buttons > .icon-button {
   display: inline-flex;
   align-items: center;
@@ -1425,6 +1523,7 @@ code {
 }
 
 .tree-edit > .location-picker,
+.location-fields > .location-picker,
 .add-row > .location-picker {
   flex: 1 1 300px;
 }
@@ -1501,11 +1600,13 @@ code {
 }
 
 .location-map-dialog .room-map-canvas,
+.location-placement .room-map-canvas,
 .editor-location .room-map-canvas {
   margin-bottom: 3rem;
 }
 
 .location-map-dialog .room-map-controls,
+.location-placement .room-map-controls,
 .editor-location .room-map-controls {
   top: calc(100% + 0.5rem);
   bottom: auto;

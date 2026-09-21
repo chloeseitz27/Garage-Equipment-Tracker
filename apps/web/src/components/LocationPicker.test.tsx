@@ -58,6 +58,7 @@ const catalog = { locations, categories, items: [item] };
 const path = (id: string): string => formatLocationPath(getLocationPath(locations, id));
 const originalFetch = globalThis.fetch;
 const originalConfirm = window.confirm;
+const originalAlert = window.alert;
 let root: Root;
 let host: HTMLDivElement;
 let testRouter: ReturnType<typeof createMemoryRouter> | null;
@@ -100,6 +101,7 @@ afterEach(async () => {
   host.remove();
   globalThis.fetch = originalFetch;
   window.confirm = originalConfirm;
+  window.alert = originalAlert;
 });
 after(() => dom.window.close());
 
@@ -318,12 +320,9 @@ test('bulk-entry location defaults are retained and used for every submitted row
 
 test('parent selectors support null, filter self and descendants, and keep full ancestor paths', async () => {
   await render(createElement(LocationManager, { locations, items: [item], onChanged: () => {} }));
-  const row = [...host.querySelectorAll('.tree-node')].find((node) =>
-    node.querySelector('.tree-name')?.textContent?.startsWith('Cabinet B'));
-  assert.ok(row);
-  const edit = row.querySelector<HTMLButtonElement>('button');
-  assert.ok(edit);
-  await click(edit);
+  await click(button('Expand Main Shop'));
+  await click(button('Expand Electronics Bench'));
+  await click(button('Rename or move Cabinet B'));
   const input = combobox('Parent location');
   assert.equal(input.value, path('bench'));
   await focus(input);
@@ -341,21 +340,84 @@ test('parent selectors support null, filter self and descendants, and keep full 
   assert.equal(writes[0]?.body.parentId, null);
 });
 
-test('new location parents can be changed and reset to top level without an implicit write', async () => {
+const selectLocationType = async (kind: string, editing = false): Promise<void> => {
+  const select = host.querySelector<HTMLSelectElement>(`select[aria-label="${editing ? 'Location type' : 'New location type'}"]`);
+  assert.ok(select);
+  await act(() => {
+    select.value = kind;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+};
+
+test('each plus opens a child form with a fixed parent and no preselected type', async () => {
   await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
-  const input = combobox('New location parent');
-  assert.equal(input.value, 'Top level (no parent)');
-  await choose(input);
-  assert.equal(input.value, path('destination'));
-  await choose(input, 'top');
-  assert.equal(input.value, 'Top level (no parent)');
-  const name = host.querySelector<HTMLInputElement>('input[placeholder="New location name"]');
+  assert.equal(host.querySelector('.location-editor'), null);
+  assert.equal(host.querySelector('.add-row input'), null);
+  await click(button('Add child to Main Shop'));
+  const select = host.querySelector<HTMLSelectElement>('select[aria-label="New location type"]');
+  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
+  assert.ok(select && name);
+  assert.equal(select.value, '');
+  assert.equal(select.selectedOptions[0]?.textContent, 'Select type...');
+  assert.deepEqual([...select.options].slice(1).map((option) => option.textContent),
+    ['Room', 'Zone', 'Table', 'Workbench', 'Cabinet', 'Shelf', 'Bin']);
+  assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
+  assert.match(host.querySelector('.new-child-location')?.textContent ?? '', /New child of Main Shop/);
+  assert.equal(locationChildren(button('Collapse Main Shop')).hidden, false);
+  await type(name, 'New shelf');
+  assert.equal(button('Save').disabled, true);
+  await click(button('Save'));
+  assert.equal(writes.length, 0);
+  await selectLocationType('shelf');
+  assert.equal(button('Save').disabled, false);
+  assert.equal(host.querySelector('.location-editor .staff-only-option')?.textContent?.trim(), 'Staff-only');
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.kind, 'shelf');
+  assert.equal(writes[0]?.body.parentId, 'room');
+  assert.equal(host.querySelector('.location-editor'), null);
+  await click(button('Add child to Main Shop'));
+  assert.equal(host.querySelector<HTMLSelectElement>('select[aria-label="New location type"]')?.value, '');
+  assert.equal(button('Save').disabled, true);
+});
+
+test('editing keeps the stored type, while saving a new type still uses its canonical lowercase value', async () => {
+  await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
+  await click(button('Expand Main Shop'));
+  await click(button('Rename or move Electronics Bench'));
+  const select = host.querySelector<HTMLSelectElement>('select[aria-label="Location type"]');
+  assert.ok(select);
+  assert.equal(select.value, 'zone');
+  assert.equal(select.selectedOptions[0]?.textContent, 'Zone');
+  assert.deepEqual([...select.options].slice(1).map((option) => option.textContent),
+    ['Room', 'Zone', 'Table', 'Workbench', 'Cabinet', 'Shelf', 'Bin']);
+  assert.equal(combobox('Parent location').value, path('room'));
+  assert.equal(host.querySelector('.location-editor .staff-only-option')?.textContent?.trim(), 'Staff-only');
+  await selectLocationType('shelf', true);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.kind, 'shelf');
+});
+
+test('the bottom plus creates a top-level room and root-room edits cannot change its parent', async () => {
+  await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
+  assert.ok(button('Add room').closest('.add-row'));
+  await click(button('Add room'));
+  assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
+  const kind = host.querySelector<HTMLSelectElement>('[aria-label="New location type"]');
+  assert.ok(kind?.disabled);
+  assert.equal(kind.value, 'room');
+  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'Annex');
   assert.equal(writes.length, 0);
-  await click(button('Add location'));
+  await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations');
   assert.equal(writes[0]?.body.parentId, null);
+  assert.equal(writes[0]?.body.kind, 'room');
+  assert.equal(writes[0]?.body.mapPosition, undefined);
+  await click(button('Rename or move Main Shop'));
+  assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
+  assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.disabled, true);
+  assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.value, 'room');
 });
 
 test('location management creates staff-only storage and retains the flag through a rename', async () => {
@@ -367,21 +429,157 @@ test('location management creates staff-only storage and retains the flag throug
     node.querySelector('.tree-name')?.textContent?.startsWith('Storage Closet'));
   assert.ok(row);
   assert.match(row.textContent ?? '', /Staff only/);
+  await click(button('Expand Storage Closet'));
   const child = [...host.querySelectorAll('.tree-node')].find((node) =>
     node.querySelector('.tree-name')?.textContent?.startsWith('Private bin'));
   assert.match(child?.textContent ?? '', /Staff only/);
-  await click(row.querySelector('button')!);
-  const checkbox = host.querySelector<HTMLInputElement>('.tree-edit input[type="checkbox"]');
+  await click(button('Rename or move Storage Closet'));
+  const checkbox = host.querySelector<HTMLInputElement>('.location-editor input[type="checkbox"]');
   assert.equal(checkbox?.checked, true);
   await click(button('Save'));
   assert.equal(writes[0]?.body.staffOnly, true);
-  const name = host.querySelector<HTMLInputElement>('input[placeholder="New location name"]');
-  const restriction = host.querySelector<HTMLInputElement>('.add-row input[type="checkbox"]');
+  await click(button('Add room'));
+  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
+  const restriction = host.querySelector<HTMLInputElement>('.location-editor input[type="checkbox"]');
   assert.ok(name && restriction);
   await type(name, 'Basement Storage');
   await click(restriction);
-  await click(button('Add location'));
+  await click(button('Save'));
   assert.equal(writes[1]?.body.staffOnly, true);
+});
+
+const locationChildren = (toggle: HTMLButtonElement): HTMLUListElement => {
+  const list = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+  assert.ok(list instanceof dom.window.HTMLUListElement);
+  return list;
+};
+
+test('location branches start collapsed and expand independently without catalog writes', async () => {
+  const props = { locations, items: [item], onChanged: () => {} };
+  await render(createElement(LocationManager, props));
+  assert.equal(host.querySelector('.manager h3'), null);
+  assert.equal(host.querySelector('.location-map-editor h4'), null);
+  assert.doesNotMatch(host.textContent ?? '', /Items attach at any depth|Deleting is blocked|Room maps and markers/);
+  const shop = button('Expand Main Shop');
+  const storage = button('Expand Storage Room');
+  assert.equal(shop.getAttribute('aria-expanded'), 'false');
+  assert.equal(locationChildren(shop).hidden, true);
+  assert.equal(locationChildren(storage).hidden, true);
+  assert.ok(shop.querySelector('svg.action-icon-chevron[aria-hidden="true"]'));
+  await click(shop);
+  assert.equal(shop.getAttribute('aria-expanded'), 'true');
+  assert.equal(shop.getAttribute('aria-label'), 'Collapse Main Shop');
+  assert.equal(locationChildren(shop).hidden, false);
+  const bench = button('Expand Electronics Bench');
+  assert.equal(locationChildren(bench).hidden, true);
+  await click(bench);
+  assert.equal(locationChildren(bench).hidden, false);
+  assert.equal(locationChildren(button('Expand Cabinet B')).hidden, true);
+  await click(shop);
+  assert.equal(locationChildren(shop).hidden, true);
+  assert.equal(locationChildren(storage).hidden, true);
+  await click(shop);
+  assert.equal(locationChildren(bench).hidden, false);
+  await render(createElement(LocationManager, { ...props, locations: [...locations] }));
+  assert.equal(locationChildren(button('Collapse Main Shop')).hidden, false);
+  assert.equal(writes.length, 0);
+});
+
+test('collapsing a location branch preserves an in-progress descendant edit', async () => {
+  await render(createElement(LocationManager, { locations, items: [item], onChanged: () => {} }));
+  await click(button('Expand Main Shop'));
+  await click(button('Rename or move Electronics Bench'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="Location name"]');
+  assert.ok(name);
+  await type(name, 'New bench name');
+  await click(button('Collapse Main Shop'));
+  assert.ok(name.closest('ul[hidden]'));
+  await click(button('Expand Main Shop'));
+  assert.equal(name.closest('ul[hidden]'), null);
+  assert.equal(name.value, 'New bench name');
+  assert.equal(writes.length, 0);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.name, 'New bench name');
+  assert.equal(writes[0]?.url, '/api/locations/bench');
+});
+
+test('location actions use labelled icons and do not toggle the branch when editing', async () => {
+  await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
+  for (const [label, icon] of [
+    ['Rename or move Main Shop', 'edit'], ['Delete Main Shop', 'delete'],
+    ['Add child to Main Shop', 'add'], ['Add room', 'add'],
+  ] as const) {
+    const action = button(label);
+    assert.equal(action.textContent, '');
+    assert.ok(action.title);
+    assert.ok(action.classList.contains('icon-button'));
+    assert.ok(action.querySelector(`svg.action-icon-${icon}[aria-hidden="true"]`));
+  }
+  const children = locationChildren(button('Expand Main Shop'));
+  await click(button('Rename or move Main Shop'));
+  assert.equal(children.hidden, true);
+  for (const [label, icon] of [['Save', 'save'], ['Cancel', 'cancel']] as const) {
+    assert.equal(button(label).textContent, '');
+    assert.ok(button(label).title);
+    assert.ok(button(label).querySelector(`svg.action-icon-${icon}[aria-hidden="true"]`));
+  }
+  await click(button('Cancel'));
+  assert.equal(locationChildren(button('Expand Main Shop')).hidden, true);
+  assert.equal(writes.length, 0);
+});
+
+test('protected location delete icons explain children, items, or both without sending a request', async () => {
+  const messages: string[] = [];
+  window.alert = (message) => { messages.push(String(message)); };
+  await render(createElement(LocationManager, {
+    locations, items: [item, { ...item, id: 'retired-tool', locationId: 'room', retiredAt: '2026-09-21T00:00:00Z' }],
+    onChanged: () => {},
+  }));
+  assert.equal(button('Delete Main Shop').disabled, false);
+  await click(button('Delete Main Shop'));
+  assert.match(messages[0] ?? '', /Cannot delete "Main Shop"/);
+  assert.match(messages[0] ?? '', /1 sub-location\(s\)/);
+  assert.match(messages[0] ?? '', /1 item\(s\).*recycle bin/);
+  assert.match(messages[0] ?? '', /Move them to another location first/);
+  await click(button('Expand Main Shop'));
+  await click(button('Delete Electronics Bench'));
+  assert.match(messages[1] ?? '', /1 sub-location\(s\)/);
+  assert.doesNotMatch(messages[1] ?? '', /item\(s\)/);
+  await click(button('Expand Electronics Bench'));
+  await click(button('Expand Cabinet B'));
+  await click(button('Delete Bin B19'));
+  assert.match(messages[2] ?? '', /1 item\(s\)/);
+  assert.doesNotMatch(messages[2] ?? '', /sub-location\(s\)/);
+  assert.equal(writes.length, 0);
+  assert.equal(locationChildren(button('Collapse Main Shop')).hidden, false);
+});
+
+test('empty locations can still be deleted, and server-side refusal is explained in a popup', async () => {
+  const messages: string[] = [];
+  const requests: string[] = [];
+  let changed = 0;
+  let refuse = true;
+  window.alert = (message) => { messages.push(String(message)); };
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options?.method, 'DELETE');
+    requests.push(String(url));
+    return refuse
+      ? new Response(JSON.stringify({ error: 'Still holds 1 item(s). Move them first.' }), { status: 409 })
+      : new Response(null, { status: 204 });
+  };
+  await render(createElement(LocationManager, { locations, items: [], onChanged: () => { changed++; } }));
+  await click(button('Expand Storage Room'));
+  await click(button('Delete Spare Shelf'));
+  assert.match(messages[0] ?? '', /Cannot delete "Spare Shelf"/);
+  assert.match(messages[0] ?? '', /Still holds 1 item\(s\)/);
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Move them first/);
+  assert.equal(changed, 0);
+  refuse = false;
+  await click(button('Delete Spare Shelf'));
+  assert.equal(messages.length, 1);
+  assert.equal(changed, 1);
+  assert.deepEqual(requests, ['/api/locations/destination', '/api/locations/destination']);
+  assert.equal(host.querySelector('[role="alert"]'), null);
 });
 
 test('bulk Move to is a draft until Save, including keyboard selection', async () => {
@@ -1698,7 +1896,8 @@ test('the browser router follows real popstate events for browser Back and Forwa
   const forward = new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
   await act(async () => { window.history.forward(); await forward; });
   assert.equal(window.location.pathname, '/manage/locations');
-  assert.equal(host.querySelector('.manager h3')?.textContent, 'Locations');
+  assert.ok(host.querySelector('.location-map-editor'));
+  assert.ok(host.querySelector('.manager .tree'));
 });
 
 test('flag-queue bookmarks preserve Show resolved in the URL', async () => {
@@ -2386,31 +2585,193 @@ test('bulk Move to accepts map selection and writes only on Save', async () => {
   assert.deepEqual(writes[0]?.body, { ids: ['vise'], changes: { locationId: 'table-a' } });
 });
 
-test('location management excludes self and descendants on the map and saves a chosen parent', async () => {
+test('creating a child in a mapped room requires placement and saves metadata and marker together', async () => {
+  let changed = 0;
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => { changed++; } }));
+  await click(button('Expand Common Makerspace'));
+  await click(button('Add child to Table A'));
+  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'Drawer A1');
+  await selectLocationType('bin');
+  assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
+  assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
+  assert.equal(button('Save').disabled, true);
+  assert.match(host.querySelector('.location-placement [role="status"]')?.textContent ?? '', /Place this location/);
+  await click(button('Save'));
+  assert.equal(writes.length, 0);
+  assert.equal(combobox('Location to place').disabled, true);
+  await placeMarker(25, 40, '.location-editor .room-map-stage');
+  assert.equal(button('Save').disabled, false);
+  assert.equal(host.querySelector<HTMLElement>('.location-editor .map-marker.selected')?.style.left, '25%');
+  await click(button('Save'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.url, '/api/locations');
+  assert.equal(writes[0]?.body.name, 'Drawer A1');
+  assert.equal(writes[0]?.body.parentId, 'table-a');
+  assert.equal(writes[0]?.body.kind, 'bin');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
+  assert.equal(writes[0]?.body.id, undefined, 'The server assigns the real id');
+  assert.equal(changed, 1);
+  assert.equal(host.querySelector('.location-editor'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('children of unmapped staff storage need no marker and retain their fixed parent', async () => {
+  const storage: Location = { id: 'storage', name: 'Storage Closet', kind: 'room', parentId: null, staffOnly: true };
+  await render(createElement(LocationManager, { locations: [...mapLocations, storage], items: [], onChanged: () => {} }));
+  await click(button('Add child to Storage Closet'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'Private shelf');
+  await selectLocationType('shelf');
+  assert.equal(host.querySelector('.location-editor .room-map'), null);
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /A map marker is not required/);
+  assert.match(host.querySelector('.location-access-hint')?.textContent ?? '', /required by the parent/);
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.parentId, storage.id);
+  assert.equal(writes[0]?.body.mapPosition, undefined);
+});
+
+test('editing an unmarked mapped location requires explicit placement even when its parent is marked', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }));
+  await click(button('Expand Common Makerspace'));
+  await click(button('Expand Table A'));
+  await click(button('Rename or move Bin A'));
+  assert.equal(button('Save').disabled, true);
+  assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
+  const marker = host.querySelector<HTMLButtonElement>('.location-editor .map-marker[title="Table A"]');
+  assert.ok(marker);
+  await click(marker);
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
+  assert.equal(writes[0]?.url, '/api/locations/bin-a');
+  assert.deepEqual(writes[0]?.body.mapPosition, mapLocations[2]?.mapPosition);
+});
+
+test('unsaved child creation blocks room changes and explicit discard removes the pending form', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common');
+  await click(button('Add child to Common Makerspace'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'Unsaved shelf');
+  await selectLocationType('shelf');
+  await placeMarker(25, 40, '.location-editor .room-map-stage');
+  assert.equal(unloadIsBlocked(), true);
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  await click(button('Stay on page'));
+  assert.equal(name.value, 'Unsaved shelf');
+  assert.equal(host.querySelector<HTMLElement>('.location-editor .map-marker.selected')?.style.left, '25%');
+  await click(link('Advanced Makerspace'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  assert.equal(host.querySelector('.location-editor'), null);
+  assert.equal(unloadIsBlocked(), false);
+  assert.equal(writes.length, 0);
+});
+
+test('failed location creation preserves fields and placement for retry', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }));
+  await click(button('Add child to Common Makerspace'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'New shelf');
+  await selectLocationType('shelf');
+  await placeMarker(25, 40, '.location-editor .room-map-stage');
+  const succeed = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save unavailable' }), { status: 503 });
+  await click(button('Save'));
+  assert.match(host.querySelector('.location-editor [role="alert"]')?.textContent ?? '', /Save unavailable/);
+  assert.equal(name.value, 'New shelf');
+  assert.equal(button('Save').disabled, false);
+  assert.equal(unloadIsBlocked(), true);
+  globalThis.fetch = succeed;
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
+});
+
+test('pending location saves lock metadata, placement, and creation targets', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common');
+  await click(button('Add child to Common Makerspace'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'New shelf');
+  await selectLocationType('shelf');
+  await placeMarker(25, 40, '.location-editor .room-map-stage');
+  globalThis.fetch = () => pending;
+  await click(button('Save'));
+  assert.equal(host.querySelector<HTMLFieldSetElement>('.location-editor fieldset')?.disabled, true);
+  assert.equal(button('Cancel').matches(':disabled'), true);
+  assert.equal(button('Add room').disabled, true);
+  await placeMarker(75, 80, '.location-editor .room-map-stage');
+  assert.equal(host.querySelector<HTMLElement>('.location-editor .map-marker.selected')?.style.left, '25%');
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  await act(async () => { finish(jsonResponse({ id: 'new-shelf' })); await pending; });
+  assert.equal(host.querySelector('.location-editor'), null);
+  assert.equal(unloadIsBlocked(), false);
+});
+
+test('switching creation targets asks before discarding and marker batches cannot be overwritten by a form', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  let alert = '';
+  window.alert = (message) => { alert = String(message); };
+  await placeMarker(25, 40);
+  await click(button('Add child to Common Makerspace'));
+  assert.match(alert, /Save or discard marker changes/);
+  assert.equal(host.querySelector('.location-editor'), null);
+  await click(button('Discard all marker changes'));
+  await click(button('Add child to Common Makerspace'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(name);
+  await type(name, 'Draft');
+  window.confirm = () => false;
+  await click(button('Add room'));
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /New child of Common Makerspace/);
+  window.confirm = () => true;
+  await click(button('Add room'));
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /New top-level room/);
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="New location name"]')?.value, '');
+  assert.equal(writes.length, 0);
+});
+
+test('location management excludes self and descendants on the map and requires remapping across rooms', async () => {
   const withMappedChild = mapLocations.map((location): Location => location.id === 'bin-a'
     ? { ...location, mapPosition: { roomId: 'common', mapId: 'common', x: 0.6, y: 0.6 } }
     : location);
   await render(createElement(LocationManager, { locations: withMappedChild, items: [], onChanged: () => {} }));
-  const row = [...host.querySelectorAll('.tree-node')].find((node) =>
-    node.querySelector('.tree-name')?.textContent?.startsWith('Table A'));
-  const edit = row?.querySelector<HTMLButtonElement>('button');
-  assert.ok(edit);
-  await click(edit);
+  await click(button('Expand Common Makerspace'));
+  await click(button('Rename or move Table A'));
   await click(button('Parent location: choose on map'));
   assert.equal(mapDialog().querySelector('.map-marker'), null);
   await click(panelButton(mapDialog(), 'Advanced Makerspace'));
   await click(pickerMarker('Table 3'));
   assert.equal(combobox('Parent location').value, 'Advanced Makerspace → Table 3');
   assert.equal(writes.length, 0);
+  assert.equal(button('Save').disabled, true);
+  assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
+  await placeMarker(30, 40, '.location-editor .room-map-stage');
   await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations/table-a');
   assert.equal(writes[0]?.body.parentId, 'table-3');
-  await click(button('New location parent: choose on map'));
-  await click(pickerMarker('Table A'));
-  const name = host.querySelector<HTMLInputElement>('input[placeholder="New location name"]');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'advanced', mapId: 'advanced', x: 0.3, y: 0.4 });
+  await click(button('Add child to Table A'));
+  assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
+  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'New drawer');
-  await click(button('Add location'));
+  await selectLocationType('bin');
+  assert.equal(button('Save').disabled, true);
+  await placeMarker(25, 40, '.location-editor .room-map-stage');
+  await click(button('Save'));
   assert.equal(writes[1]?.url, '/api/locations');
   assert.equal(writes[1]?.body.parentId, 'table-a');
 });
@@ -2424,21 +2785,17 @@ test('marker-editor map selection stays in the allowed room and retains other ma
   assert.equal([...mapDialog().querySelectorAll('button')].some((node) => node.textContent?.startsWith('Choose entire room')), false);
   await click(pickerMarker('Table A'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '50.0');
+  assert.equal(markerPercent('X'), 50);
   assert.equal(writes.length, 0);
   await choose(combobox('Location to place'), 'bin a');
-  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
-  const y = host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]');
-  assert.ok(x && y);
-  await type(x, '25');
-  await type(y, '40');
+  await placeMarker(25, 40);
   await click(button('Location to place: choose on map'));
   await click(pickerMarker('Table A'));
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
   await choose(combobox('Location to place'), 'bin a');
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(x.value, '25');
+  assert.equal(markerPercent('X'), 25);
   assert.equal(writes.length, 0);
 });
 
@@ -2505,12 +2862,10 @@ test('staff marker placement is a draft until Save and stores normalized coordin
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => { changed++; },
   }), '/manage/locations?room=common&pin=table-a');
-  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
-  const y = host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]');
-  assert.ok(x && y);
-  assert.equal(x.value, '50.0');
-  await type(x, '25');
-  await type(y, '40');
+  assert.equal(host.querySelector('.location-map-editor input[type="number"]'), null);
+  assert.doesNotMatch(host.querySelector('.location-map-editor')?.textContent ?? '', /X \(%\)|Y \(%\)|enter percentages/);
+  assert.equal(markerPercent('X'), 50);
+  await placeMarker(25, 40);
   assert.equal(writes.length, 0);
   assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '25%');
   await click(button('Save all markers'));
@@ -2524,7 +2879,47 @@ test('staff marker placement is a draft until Save and stores normalized coordin
   assert.equal(changed, 1);
 });
 
-test('room-map click placement calculates percentages and keeps changes unsaved', async () => {
+test('marker batch actions and unsaved count are grouped beside remove and undo below the map', async () => {
+  await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  const map = host.querySelector('.location-map-editor .room-map');
+  const actions = host.querySelector('.location-map-editor .map-pin-controls');
+  const batch = actions?.querySelector('.map-batch-actions');
+  assert.ok(map && actions && batch);
+  assert.ok(map.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING);
+  for (const name of ['Remove marker', 'Undo marker change']) {
+    assert.equal(button(name).parentElement, actions);
+  }
+  assert.equal(batch.parentElement, actions);
+  assert.equal(batch.querySelector('[role="status"]')?.textContent, '0 unsaved marker change(s)');
+  assert.equal(button('Save all markers').parentElement, batch);
+  assert.equal(button('Discard all marker changes').parentElement, batch);
+  for (const [name, icon] of [
+    ['Remove marker', 'delete'],
+    ['Undo marker change', 'undo'],
+    ['Save all markers', 'save'],
+    ['Discard all marker changes', 'cancel'],
+  ] as const) {
+    const action = button(name);
+    assert.equal(action.textContent?.trim(), '');
+    assert.equal(action.title, name);
+    assert.ok(action.classList.contains('icon-button'));
+    assert.ok(action.querySelector(`svg.action-icon-${icon}[aria-hidden="true"][focusable="false"]`));
+  }
+  await placeMarker(25, 40);
+  assert.equal(batch.querySelector('[role="status"]')?.textContent, '1 unsaved marker change(s)');
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(button('Save all markers').parentElement, batch);
+  assert.equal(button('Save all markers').disabled, false);
+  assert.equal(button('Discard all marker changes').parentElement, batch);
+  await click(button('Discard all marker changes'));
+  assert.equal(button('Save all markers').disabled, true);
+  assert.equal(batch.querySelector('[role="status"]')?.textContent, '0 unsaved marker change(s)');
+});
+
+test('room-map click placement positions the marker and keeps changes unsaved', async () => {
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => {},
   }), '/manage/locations?room=common&pin=bin-a');
@@ -2535,25 +2930,29 @@ test('room-map click placement calculates percentages and keeps changes unsaved'
     toJSON: () => ({}),
   });
   await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 260, clientY: 270 })); });
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(markerPercent('X'), 25);
+  assert.equal(markerPercent('Y'), 50);
   assert.equal(writes.length, 0);
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+  await click(button('Stay on page'));
+  assert.equal(markerPercent('X'), 25);
+  await click(button('Save all markers'));
   await click(link('Advanced Makerspace'));
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
   assert.equal(currentUrl(), '/manage/locations?room=advanced');
   await click(link('Common Makerspace'));
   await choose(combobox('Location to place'), 'bin a');
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
+  assert.equal(markerPercent('X'), 25);
 });
 
 test('location rename preserves existing floor plan and marker metadata', async () => {
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
     '/manage/locations?room=common');
-  const row = [...host.querySelectorAll('.tree-node')].find((node) => node.querySelector('.tree-name')?.textContent?.startsWith('Table A'));
-  const edit = row?.querySelector<HTMLButtonElement>('button');
-  assert.ok(edit);
-  await click(edit);
-  const name = host.querySelector<HTMLInputElement>('.tree-edit > input');
+  await click(button('Expand Common Makerspace'));
+  await click(button('Rename or move Table A'));
+  const name = host.querySelector<HTMLInputElement>('[aria-label="Location name"]');
   assert.ok(name);
   await type(name, 'Table A renamed');
   await click(button('Save'));
@@ -2588,27 +2987,34 @@ test('removing a marker is staged until Save and sends an explicit removal', asy
   assert.equal(button('Remove marker').disabled, true);
 });
 
-test('failed and invalid map saves keep the placement draft', async () => {
+test('failed map saves keep the click-placement draft', async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Could not save marker' }), { status: 500 });
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => {},
   }), '/manage/locations?room=common&pin=table-a');
-  const x = host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]');
-  assert.ok(x);
-  await type(x, '120');
-  await click(button('Save all markers'));
-  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /between 0 and 100/);
-  await type(x, '25');
+  await placeMarker(25, 60);
   await click(button('Save all markers'));
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save marker/);
-  assert.equal(x.value, '25');
+  assert.equal(markerPercent('X'), 25);
   assert.equal(button('Save all markers').disabled, false);
 });
 
-const markerCoordinate = (axis: 'X' | 'Y'): HTMLInputElement => {
-  const input = host.querySelector<HTMLInputElement>(`[aria-label="Marker ${axis} percent"]`);
-  assert.ok(input);
-  return input;
+const markerPercent = (axis: 'X' | 'Y'): number => {
+  const marker = host.querySelector<HTMLElement>('.location-map-editor .map-marker.selected');
+  assert.ok(marker);
+  return Number.parseFloat(axis === 'X' ? marker.style.left : marker.style.top);
+};
+
+const placeMarker = async (x: number, y: number, selector = '.location-map-editor .room-map-stage'): Promise<void> => {
+  const stage = host.querySelector<HTMLElement>(selector);
+  assert.ok(stage);
+  stage.getBoundingClientRect = () => ({
+    x: 10, y: 20, left: 10, top: 20, width: 1000, height: 500, right: 1010, bottom: 520,
+    toJSON: () => ({}),
+  });
+  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
+    bubbles: true, clientX: 10 + x * 10, clientY: 20 + y * 5,
+  })); });
 };
 
 const chooseMarkerLocation = async (id: string): Promise<void> => {
@@ -2623,22 +3029,18 @@ const chooseMarkerLocation = async (id: string): Promise<void> => {
   await click(option);
 };
 
-test('several marker drafts survive location and room changes and save in one request', async () => {
+test('several marker drafts survive location changes within one room and save in one request', async () => {
   let changes = 0;
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => { changes++; },
   }), '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '25');
+  await placeMarker(25, 60);
   await choose(combobox('Location to place'), 'bin a');
-  await type(markerCoordinate('X'), '10');
-  await type(markerCoordinate('Y'), '20');
+  await placeMarker(10, 20);
   await chooseMarkerLocation('table-a');
-  assert.equal(markerCoordinate('X').value, '25');
+  assert.equal(markerPercent('X'), 25);
   assert.equal(host.querySelectorAll('.map-marker').length, 2);
-  await click(link('Advanced Makerspace'));
-  await choose(combobox('Location to place'), 'table 3');
-  await type(markerCoordinate('Y'), '90');
-  assert.match(host.textContent ?? '', /3 unsaved marker change/);
+  assert.match(host.textContent ?? '', /2 unsaved marker change/);
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
   assert.equal(writes.length, 0);
   await click(button('Save all markers'));
@@ -2648,24 +3050,78 @@ test('several marker drafts survive location and room changes and save in one re
   assert.deepEqual(writes[0]?.body.markers, [
     { id: 'table-a', roomId: 'common', mapId: 'common', position: { x: 0.25, y: 0.6 } },
     { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.1, y: 0.2 } },
-    { id: 'table-3', roomId: 'advanced', mapId: 'advanced', position: { x: 0.8, y: 0.9 } },
   ]);
   assert.equal(unloadIsBlocked(), false);
   assert.equal(button('Save all markers').disabled, true);
-  assert.equal(markerCoordinate('Y').value, '90.0');
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
   await click(link('Common Makerspace'));
   await chooseMarkerLocation('table-a');
-  assert.equal(markerCoordinate('X').value, '25.0');
+  assert.equal(markerPercent('X'), 25);
+});
+
+test('switching rooms requires saving or explicitly discarding every pending marker change', async () => {
+  await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
+    '/manage/locations?pin=table-a');
+  await placeMarker(25, 60);
+  await chooseMarkerLocation('bin-a');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null, 'Implicit and explicit default rooms share the same draft');
+  await placeMarker(10, 20);
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+  assert.match(host.querySelector('[role="alertdialog"]')?.textContent ?? '', /before switching rooms/);
+  const dialog = host.querySelector('[role="alertdialog"]');
+  assert.ok(dialog);
+  await act(() => { dialog.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(markerPercent('X'), 10);
+  assert.match(host.textContent ?? '', /2 unsaved marker change/);
+  await click(link('Advanced Makerspace'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  assert.equal(button('Save all markers').disabled, true);
+  assert.equal(unloadIsBlocked(), false);
+  await click(link('Common Makerspace'));
+  await chooseMarkerLocation('table-a');
+  assert.equal(markerPercent('X'), 50);
+  assert.equal(host.querySelectorAll('.location-map-editor .map-marker').length, 1);
+  assert.equal(writes.length, 0);
+});
+
+test('room changes through browser Back and Forward cannot bypass unsaved marker protection', async () => {
+  await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  await click(link('Advanced Makerspace'));
+  await click(button('History back'));
+  await placeMarker(25, 60);
+  await click(button('History forward'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  await chooseMarkerLocation('table-3');
+  await placeMarker(20, 14);
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  await click(button('History back'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  await click(button('Stay on page'));
+  await chooseMarkerLocation('table-3');
+  assert.equal(markerPercent('X'), 20);
+  assert.equal(writes.length, 0);
 });
 
 test('browser history within the marker editor retains drafts but leaving still prompts', async () => {
   await render(createElement(StaffPanel, { catalog: mappedCatalog, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '25');
+  await placeMarker(25, 60);
   await choose(combobox('Location to place'), 'bin a');
   await click(button('History back'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  assert.equal(markerCoordinate('X').value, '25');
+  assert.equal(markerPercent('X'), 25);
   await click(button('History forward'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
@@ -2674,7 +3130,7 @@ test('browser history within the marker editor retains drafts but leaving still 
   assert.ok(host.querySelector('[role="alertdialog"]'));
   await click(button('Stay on page'));
   await chooseMarkerLocation('table-a');
-  assert.equal(markerCoordinate('X').value, '25');
+  assert.equal(markerPercent('X'), 25);
   await click(link('Items'));
   await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/items');
@@ -2682,39 +3138,39 @@ test('browser history within the marker editor retains drafts but leaving still 
   assert.equal(writes.length, 0);
 });
 
-test('an invalid nonselected marker rejects the whole save and opens that draft for correction', async () => {
+test('map clicks clamp marker positions to the floor plan before saving the batch', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '120');
-  await click(link('Advanced Makerspace'));
-  await choose(combobox('Location to place'), 'table 3');
-  await type(markerCoordinate('Y'), '90');
-  await click(button('Save all markers'));
+  await placeMarker(120, -10);
+  assert.equal(markerPercent('X'), 100);
+  assert.equal(markerPercent('Y'), 0);
+  await chooseMarkerLocation('bin-a');
+  await placeMarker(80, 90);
   assert.equal(writes.length, 0);
-  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  assert.equal(markerCoordinate('X').value, '120');
-  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Table A.*between 0 and 100/);
-  await type(markerCoordinate('X'), '25');
   await click(button('Save all markers'));
-  assert.equal((writes[0]?.body.markers as unknown[]).length, 2);
+  assert.deepEqual(writes[0]?.body.markers, [
+    { id: 'table-a', roomId: 'common', mapId: 'common', position: { x: 1, y: 0 } },
+    { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.8, y: 0.9 } },
+  ]);
 });
 
-test('a failed batch preserves every draft and can be retried without re-entering coordinates', async () => {
+test('a failed batch preserves every draft and can be retried without placing markers again', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '25');
-  await click(link('Advanced Makerspace'));
-  await choose(combobox('Location to place'), 'table 3');
-  await type(markerCoordinate('Y'), '90');
+  await placeMarker(25, 60);
+  await chooseMarkerLocation('bin-a');
+  await placeMarker(80, 90);
   const succeed = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Batch unavailable' }), { status: 503 });
   await click(button('Save all markers'));
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Batch unavailable/);
   assert.match(host.textContent ?? '', /2 unsaved marker change/);
   assert.equal(unloadIsBlocked(), true);
-  await click(link('Common Makerspace'));
+  await click(link('Advanced Makerspace'));
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
   await chooseMarkerLocation('table-a');
-  assert.equal(markerCoordinate('X').value, '25');
+  assert.equal(markerPercent('X'), 25);
   globalThis.fetch = succeed;
   await click(button('Save all markers'));
   assert.equal((writes[0]?.body.markers as unknown[]).length, 2);
@@ -2725,10 +3181,8 @@ test('undoing or discarding marker drafts restores positions and clears leave pr
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   await click(button('Remove marker'));
-  await click(link('Advanced Makerspace'));
-  await choose(combobox('Location to place'), 'table 3');
-  await type(markerCoordinate('X'), '20');
-  await click(link('Common Makerspace'));
+  await chooseMarkerLocation('bin-a');
+  await placeMarker(20, 14);
   await chooseMarkerLocation('table-a');
   assert.equal(host.querySelector('.map-marker.selected'), null);
   await click(button('Undo marker change'));
@@ -2739,24 +3193,23 @@ test('undoing or discarding marker drafts restores positions and clears leave pr
   assert.equal(unloadIsBlocked(), false);
   await click(link('Advanced Makerspace'));
   await choose(combobox('Location to place'), 'table 3');
-  assert.equal(markerCoordinate('X').value, '80.0');
-  await type(markerCoordinate('X'), '20');
-  await type(markerCoordinate('X'), '80.0');
+  assert.equal(markerPercent('X'), 80);
+  await placeMarker(20, 14);
+  await placeMarker(80, 14);
   assert.equal(button('Save all markers').disabled, true);
   assert.equal(writes.length, 0);
 });
 
-test('marker removal and placement in different rooms save together', async () => {
+test('marker removal and placement in the same room save together', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   await click(button('Remove marker'));
-  await click(link('Advanced Makerspace'));
-  await choose(combobox('Location to place'), 'table 3');
-  await type(markerCoordinate('X'), '20');
+  await chooseMarkerLocation('bin-a');
+  await placeMarker(20, 14);
   await click(button('Save all markers'));
   assert.deepEqual(writes[0]?.body.markers, [
     { id: 'table-a', roomId: 'common', mapId: 'common', position: null },
-    { id: 'table-3', roomId: 'advanced', mapId: 'advanced', position: { x: 0.2, y: 0.14 } },
+    { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.2, y: 0.14 } },
   ]);
 });
 
@@ -2764,10 +3217,10 @@ test('catalog refreshes retain marker drafts and stale room changes are rejected
   const props = { onChanged: () => {} };
   await render(createElement(LocationMapEditor, { ...props, locations: mapLocations }),
     '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '25');
+  await placeMarker(25, 60);
   const renamed = mapLocations.map((location) => location.id === 'table-a' ? { ...location, name: 'Renamed table' } : location);
   await render(createElement(LocationMapEditor, { ...props, locations: renamed }));
-  assert.equal(markerCoordinate('X').value, '25');
+  assert.equal(markerPercent('X'), 25);
   assert.match(combobox('Location to place').value, /Renamed table/);
   const moved = renamed.map((location) => location.id === 'table-a' ? { ...location, parentId: 'advanced' } : location);
   await render(createElement(LocationMapEditor, { ...props, locations: moved }));
@@ -2779,15 +3232,19 @@ test('catalog refreshes retain marker drafts and stale room changes are rejected
   assert.equal(unloadIsBlocked(), false);
 });
 
-test('pending marker saves lock inputs and edits while navigation still protects the batch', async () => {
+test('pending marker saves prevent further placement while navigation still protects the batch', async () => {
   let release = (_response: Response): void => { throw new Error('Uninitialized'); };
   const pending = new Promise<Response>((resolve) => { release = resolve; });
   await render(createElement(StaffPanel, { catalog: mappedCatalog, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await type(markerCoordinate('X'), '25');
+  await placeMarker(25, 60);
   globalThis.fetch = () => pending;
   await click(button('Save all markers'));
-  assert.equal(markerCoordinate('X').disabled, true);
+  assert.equal(button('Saving markers...').getAttribute('aria-busy'), 'true');
+  assert.equal(button('Saving markers...').disabled, true);
+  await placeMarker(75, 80);
+  assert.equal(markerPercent('X'), 25);
+  assert.equal(markerPercent('Y'), 60);
   assert.equal(combobox('Location to place').disabled, true);
   assert.equal(button('Discard all marker changes').disabled, true);
   await click(link('Advanced Makerspace'));
@@ -2802,7 +3259,7 @@ test('pending marker saves lock inputs and edits while navigation still protects
     }] }));
     await pending;
   });
-  assert.equal(markerCoordinate('X').value, '25.0');
+  assert.equal(markerPercent('X'), 25);
   assert.equal(unloadIsBlocked(), false);
 });
 
@@ -3002,7 +3459,7 @@ test('marker placement stays normalized on a zoomed map', async () => {
     toJSON: () => ({}),
   });
   await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 322.5, clientY: 332.5 })); });
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker X percent"]')?.value, '25.0');
-  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Marker Y percent"]')?.value, '50.0');
+  assert.equal(markerPercent('X'), 25);
+  assert.equal(markerPercent('Y'), 50);
   assert.equal(writes.length, 0);
 });

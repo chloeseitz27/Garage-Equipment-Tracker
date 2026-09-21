@@ -5,6 +5,7 @@ import {
   type BulkUpdateMarkersInput, type Location, type MapPosition,
 } from '@garage/shared';
 import { updateLocationMarkers } from '../api.js';
+import { ActionIcon } from './ActionIcon.js';
 import { LocationPicker } from './LocationPicker.js';
 import { RoomMap } from './RoomMap.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
@@ -12,6 +13,11 @@ import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 interface Props {
   locations: Location[];
   onChanged: () => void;
+  disabled?: boolean;
+  formDirty?: boolean;
+  formBusy?: boolean;
+  onDiscardForm?: () => void;
+  onDraftChange?: (dirty: boolean) => void;
 }
 
 interface Point {
@@ -42,7 +48,9 @@ const draftPosition = (draft: MarkerDraft): MapPosition | undefined => {
   return { roomId: draft.roomId, mapId: draft.mapId, x: x / 100, y: y / 100 };
 };
 
-export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element {
+export function LocationMapEditor({
+  locations, onChanged, disabled = false, formDirty = false, formBusy = false, onDiscardForm, onDraftChange,
+}: Props): JSX.Element {
   const [params, setParams] = useSearchParams();
   const [savedLocations, setSavedLocations] = useState(locations);
   const [drafts, setDrafts] = useState<Map<string, MarkerDraft>>(() => new Map());
@@ -50,17 +58,22 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const dirty = drafts.size > 0;
-  const { blocker, markSaved } = useItemDraftGuard(dirty, { allowSearchChanges: true });
+  const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
+  const { blocker, markSaved } = useItemDraftGuard(dirty || formDirty, {
+    allowSearchChanges: (current, next) =>
+      (new URLSearchParams(current).get('room') ?? rooms[0]?.id) ===
+      (new URLSearchParams(next).get('room') ?? rooms[0]?.id),
+  });
+  useEffect(() => { onDraftChange?.(dirty || busy); }, [dirty, busy, onDraftChange]);
+  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
   // Keep successful saves visible until the catalog refresh arrives; drafts stay separate.
   useEffect(() => { setSavedLocations(locations); }, [locations]);
 
-  const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
   const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
   const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
   const draft = selected ? drafts.get(selected.id) : undefined;
-  const point = draft?.point ?? initialPoint(selected, room);
   const preview = savedLocations.map((location) => {
     const change = drafts.get(location.id);
     if (!change) return location;
@@ -69,11 +82,11 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
     return { ...location, mapPosition: draftPosition(change) };
   });
   const choose = (id: string): void => {
-    if (room && !busy) setParams({ room: room.id, pin: id });
+    if (room && !busy && !disabled) setParams({ room: room.id, pin: id });
   };
 
   const updateDraft = (point: Point, remove = false): void => {
-    if (!selected || !room?.mapId || busy) return;
+    if (!selected || !room?.mapId || busy || disabled) return;
     const current = drafts.get(selected.id);
     const next: MarkerDraft = {
       roomId: room.id, mapId: room.mapId, baseline: initialPoint(selected, room),
@@ -96,7 +109,7 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
   };
 
   const save = async (): Promise<void> => {
-    if (!dirty || busy) return;
+    if (!dirty || busy || disabled) return;
     setError(null);
     setNotice(null);
     const markers: BulkUpdateMarkersInput['markers'] = [];
@@ -110,7 +123,7 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
       const position = draftPosition(change);
       if (!change.remove && !position) {
         setParams({ room: change.roomId, pin: id });
-        setError(`${location.name}: enter X and Y percentages between 0 and 100. No markers were saved.`);
+        setError(`${location.name}: click a valid spot on the map. No markers were saved.`);
         return;
       }
       markers.push({
@@ -124,7 +137,7 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
       const updates = new Map(result.locations.map((location) => [location.id, location]));
       setSavedLocations((current) => current.map((location) => updates.get(location.id) ?? location));
       setDrafts(new Map());
-      markSaved();
+      if (!formDirty) markSaved();
       setNotice(`${result.updated} marker change(s) saved.`);
       onChanged();
     } catch (cause) {
@@ -147,15 +160,7 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
   };
 
   return (
-    <section className="location-map-editor">
-      <h4>Room maps and markers</h4>
-      <div className="map-pin-controls">
-        <span role="status">{drafts.size} unsaved marker change(s)</span>
-        <button type="button" disabled={busy || !dirty} onClick={() => void save()}>
-          {busy ? 'Saving markers...' : 'Save all markers'}
-        </button>
-        <button type="button" disabled={busy || !dirty} onClick={() => discard()}>Discard all marker changes</button>
-      </div>
+    <section className="location-map-editor" aria-label="Room maps and markers">
       {error ? <p className="error" role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {room ? (
@@ -166,8 +171,8 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
                 key={candidate.id}
                 to={`?${new URLSearchParams({ room: candidate.id })}`}
                 className={candidate.id === room.id ? 'active' : ''}
-                aria-disabled={busy}
-                onClick={(event) => { if (busy) event.preventDefault(); }}
+                aria-disabled={busy || formBusy}
+                onClick={(event) => { if (busy || formBusy) event.preventDefault(); }}
               >{candidate.name}</Link>
             ))}
           </nav>
@@ -176,37 +181,62 @@ export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element 
             locations={preview}
             excludedIds={savedLocations.filter((location) => !descendants.includes(location.id)).map((location) => location.id)}
             value={selected?.id ?? ''}
-            disabled={busy}
+            disabled={busy || disabled}
             onSelect={choose}
           />
-          <p className="hint">Choose a location, then click its spot on the map or enter percentages from the top-left corner. Switch locations or rooms to move more markers, then Save all markers. Drag to pan when zoomed; dragging does not place a marker.</p>
+          <p className="hint">{disabled ? 'Finish the location form below to resume editing saved markers.' : 'Choose a location, then click its spot on the map. Switch locations within this room to move more markers, then Save all markers. Save or discard changes before switching rooms. Drag to pan when zoomed; dragging does not place a marker.'}</p>
           <RoomMap
             key={room.id}
             room={room}
             locations={preview}
             selectedLocationId={selected?.id}
             onSelect={choose}
-            onPlace={selected && !busy ? ({ x, y }) => updateDraft({ x: (x * 100).toFixed(1), y: (y * 100).toFixed(1) }) : undefined}
+            onPlace={selected && !busy && !disabled ? ({ x, y }) => updateDraft({ x: (x * 100).toFixed(1), y: (y * 100).toFixed(1) }) : undefined}
           />
-          {selected ? (
-            <div className="map-pin-controls">
-              <label>X (%)
-                <input aria-label="Marker X percent" type="number" min={0} max={100} step="0.1" value={point.x} disabled={busy}
-                  onChange={(event) => updateDraft({ ...point, x: event.target.value })} />
-              </label>
-              <label>Y (%)
-                <input aria-label="Marker Y percent" type="number" min={0} max={100} step="0.1" value={point.y} disabled={busy}
-                  onChange={(event) => updateDraft({ ...point, y: event.target.value })} />
-              </label>
-              <button type="button" disabled={busy || Boolean(draft?.remove) || (!selected.mapPosition && !draft)}
-                onClick={() => updateDraft({ x: '', y: '' }, true)}>Remove marker</button>
-              <button type="button" disabled={busy || !draft} onClick={() => discard(selected.id)}>Undo marker change</button>
-            </div>
-          ) : null}
         </>
       ) : <p className="muted">Assign a floor plan to a room to place location markers.</p>}
+      <div className="map-pin-controls">
+        {selected ? (
+          <>
+            <button
+              type="button" className="icon-button" aria-label="Remove marker" title="Remove marker"
+              disabled={busy || disabled || Boolean(draft?.remove) || (!selected.mapPosition && !draft)}
+              onClick={() => updateDraft({ x: '', y: '' }, true)}
+            ><ActionIcon name="delete" /></button>
+            <button
+              type="button" className="icon-button" aria-label="Undo marker change" title="Undo marker change"
+              disabled={busy || disabled || !draft} onClick={() => discard(selected.id)}
+            ><ActionIcon name="undo" /></button>
+          </>
+        ) : null}
+        <div className="map-batch-actions">
+          <span role="status">{drafts.size} unsaved marker change(s)</span>
+          <button
+            type="button" className="icon-button"
+            aria-label={busy ? 'Saving markers...' : 'Save all markers'}
+            title={busy ? 'Saving markers...' : 'Save all markers'}
+            aria-busy={busy} disabled={busy || disabled || !dirty} onClick={() => void save()}
+          ><ActionIcon name="save" /></button>
+          <button
+            type="button" className="icon-button" aria-label="Discard all marker changes" title="Discard all marker changes"
+            disabled={busy || disabled || !dirty} onClick={() => discard()}
+          ><ActionIcon name="cancel" /></button>
+        </div>
+      </div>
       {blocker.state === 'blocked' ? (
-        <UnsavedItemDialog subject="location marker batch" busy={busy} onStay={blocker.reset} onLeave={blocker.proceed} />
+        <UnsavedItemDialog
+          subject={formDirty ? 'location' : 'location marker batch'}
+          description="Save your location and marker changes before switching rooms or leaving, or discard them to continue."
+          busy={busy || formBusy}
+          onStay={blocker.reset}
+          onLeave={() => {
+            if (busy || formBusy) return;
+            discard();
+            onDiscardForm?.();
+            markSaved();
+            blocker.proceed();
+          }}
+        />
       ) : null}
     </section>
   );

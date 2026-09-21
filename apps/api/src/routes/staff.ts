@@ -9,6 +9,7 @@ import {
   createLocationSchema,
   itemSchema,
   locationMapProblem,
+  locationPlacementProblem,
   resolveFlagSchema,
   resolveLocationMap,
   updateCategorySchema,
@@ -266,7 +267,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
-      const mapProblem = locationMapProblem(parsed.data, locations);
+      const mapProblem = locationMapProblem(parsed.data, locations) ?? locationPlacementProblem(parsed.data, locations);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;
@@ -336,7 +337,8 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
-      const mapProblem = locationMapProblem(parsed.data, locations, locations.find((location) => location.id === id));
+      const mapProblem = locationMapProblem(parsed.data, locations, locations.find((location) => location.id === id)) ??
+        locationPlacementProblem(parsed.data, locations);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;
