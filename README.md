@@ -158,12 +158,15 @@ see its active items (including sub-locations). Item details highlight their
 location on the same map, falling back to the nearest mapped ancestor, explicitly
 labeled as an approximate location.
 
-In **Manage catalog → Locations**, select a location in the map editor, click
+In **Manage catalog → Locations**, click a marker to select its location, click
 its spot on the map, then switch to another location in the same room to
 continue placing markers. Every move and **Remove marker** stays in the preview
 until **Save all markers** saves the entire batch together. The unsaved count
 tracks the current draft batch. **Undo marker change** resets the selected
 marker; **Discard all marker changes** resets the whole batch.
+The map section starts with room tabs and the map, without a separate location
+picker or instructions. Use a location's edit form in the tree to place an
+existing location that has no marker.
 These actions use trash, undo, save, and X icons with tooltips and accessible
 labels. Remove/undo stay on the left below the map; save/discard and the unsaved
 count sit on the right.
@@ -283,14 +286,14 @@ The recycle bin also has a sortable deletion-date column (newest first by defaul
 Headers stay visible while scrolling through the grid.
 
 Location editing fields use the same single-choice picker: **Move to**, the item
-editor, bulk-entry defaults, parent fields when editing non-root-room locations, and
-**Location to place** in the marker editor. Outside the item editor, click
+editor, bulk-entry defaults, and parent fields when editing non-root-room locations.
+Outside the item editor, click
 **Choose on map**, switch rooms,
 and click a location marker to select it without using the dropdown. The picker
 opens on the selected location's room; switching rooms, zooming, or closing the
 map does not change the selection. **Choose entire room** selects the room itself.
-Selections remain drafts until the form's normal Save/Add action; choosing a
-location to place only changes which marker is being edited, not its coordinates.
+Selections remain drafts until the form's normal Save/Add action. Clicking a
+marker in the marker editor selects it without changing its coordinates.
 Parent restrictions also apply on the map, and **Top level (no parent)** remains
 available. Locations without a valid marker stay searchable with **Use search
 instead**; highlighting a mapped ancestor is explicitly approximate and does not

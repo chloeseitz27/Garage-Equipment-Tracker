@@ -6,7 +6,6 @@ import {
 } from '@garage/shared';
 import { updateLocationMarkers } from '../api.js';
 import { ActionIcon } from './ActionIcon.js';
-import { LocationPicker } from './LocationPicker.js';
 import { RoomMap } from './RoomMap.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
@@ -176,15 +175,6 @@ export function LocationMapEditor({
               >{candidate.name}</Link>
             ))}
           </nav>
-          <LocationPicker
-            label="Location to place"
-            locations={preview}
-            excludedIds={savedLocations.filter((location) => !descendants.includes(location.id)).map((location) => location.id)}
-            value={selected?.id ?? ''}
-            disabled={busy || disabled}
-            onSelect={choose}
-          />
-          <p className="hint">{disabled ? 'Finish the location form below to resume editing saved markers.' : 'Choose a location, then click its spot on the map. Switch locations within this room to move more markers, then Save all markers. Save or discard changes before switching rooms. Drag to pan when zoomed; dragging does not place a marker.'}</p>
           <RoomMap
             key={room.id}
             room={room}
