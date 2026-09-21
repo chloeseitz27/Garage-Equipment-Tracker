@@ -12,6 +12,7 @@ import type {
 
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 import { recommendForProject } from './recommend.js';
+import { ASK_STAFF_LOCATION } from '@garage/shared';
 
 /**
  * Grounding is the single most important behaviour in the project
@@ -145,6 +146,27 @@ test('name and location are read from the record, not the model', async () => {
   );
 });
 
+test('visitor recommendations conceal restricted paths and do not send private location IDs to the provider', async () => {
+  const privateRepository = {
+    ...repository,
+    getLocations: async () => locations.map((location) => location.id === 'loc-shop'
+      ? { ...location, name: 'Storage Closet', staffOnly: true } : location),
+  };
+  let candidates: Item[] = [];
+  const provider: AssistantProvider = {
+    name: 'private-location-test',
+    recommend: async (input) => {
+      candidates = input.candidates;
+      return { understoodAs: 'A planter box', garageItems: [{ id: 'itm-table-saw', reason: 'Cuts wood' }], notInGarage: [] };
+    },
+  };
+  const response = await recommendForProject(privateRepository, provider, 'planter box');
+  assert.deepEqual(response.garageItems[0]?.locationPath, [ASK_STAFF_LOCATION]);
+  assert.ok(candidates.every((item) => item.locationId === ASK_STAFF_LOCATION.id));
+  assert.doesNotMatch(JSON.stringify(response), /Storage Closet|Wood Shop|loc-shop|loc-wood/);
+  const staff = await recommendForProject(privateRepository, provider, 'planter box', true);
+  assert.deepEqual(staff.garageItems[0]?.locationPath.map((location) => location.name), ['Storage Closet', 'Wood Shop']);
+});
 test('duplicate ids from the model collapse to one entry', async () => {
   const response = await recommendForProject(
     repository,

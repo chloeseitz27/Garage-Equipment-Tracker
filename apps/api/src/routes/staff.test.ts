@@ -4,7 +4,7 @@ import { after, before, beforeEach, test } from 'node:test';
 
 import cookieParser from 'cookie-parser';
 import express from 'express';
-import type { Category, CreateItemInput, Flag, Item, Location } from '@garage/shared';
+import { ASK_STAFF_LOCATION, type Category, type CreateItemInput, type Flag, type Item, type Location } from '@garage/shared';
 
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 import { CachedCatalogRepository } from '../repository/cached-repository.js';
@@ -188,7 +188,7 @@ const call = (method: string, path: string, body?: unknown): Promise<Response> =
 test('the public catalog bypasses HTTP caching and sees writes through the shared repository cache', async () => {
   repository = new CachedCatalogRepository(repository);
   const before = await call('GET', '/api/catalog');
-  assert.equal(before.headers.get('cache-control'), 'no-store');
+  assert.equal(before.headers.get('cache-control'), 'private, no-store');
   const catalog = await before.json() as { categories: Category[] };
   assert.ok(catalog.categories.some((category) => category.id === 'cat-used'));
   const created = await call('POST', '/api/categories', { name: 'Cache integration category' });
@@ -204,6 +204,43 @@ test('the public catalog bypasses HTTP caching and sees writes through the share
 test('staff routes reject an unauthenticated caller', async () => {
   const response = await fetch(`${baseUrl}/api/flags`);
   assert.equal(response.status, 401);
+});
+
+test('visitor catalog and item details conceal restricted locations while staff retain real paths', async () => {
+  const closet = await repository.createLocation({ name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true });
+  const bin = await repository.createLocation({ name: 'Secret Drawer', parentId: closet.id, kind: 'bin', staffOnly: false });
+  const item = (await repository.getItem('itm-meter'))!;
+  await repository.saveItem({ ...item, locationId: bin.id });
+  repository = new CachedCatalogRepository(repository);
+  const staffCatalog = await (await call('GET', '/api/catalog')).json();
+  assert.equal(staffCatalog.access, 'staff');
+  assert.equal(staffCatalog.locations.find((location: Location) => location.id === closet.id).name, 'Storage Closet');
+  const anonymous = await fetch(`${baseUrl}/api/catalog`);
+  assert.equal(anonymous.headers.get('cache-control'), 'private, no-store');
+  assert.equal(anonymous.headers.get('vary'), 'Cookie');
+  const visible = await anonymous.json();
+  assert.equal(visible.access, 'public');
+  assert.equal(visible.items.length, items.length);
+  assert.equal(visible.items.find((item: Item) => item.id === 'itm-meter').locationId, ASK_STAFF_LOCATION.id);
+  assert.deepEqual(visible.locations.find((location: Location) => location.id === ASK_STAFF_LOCATION.id), ASK_STAFF_LOCATION);
+  assert.doesNotMatch(JSON.stringify(visible), /Storage Closet|Secret Drawer/);
+  assert.equal(visible.locations.some((location: Location) => location.id === bin.id), false);
+  const detail = await (await fetch(`${baseUrl}/api/items/itm-meter`)).json();
+  assert.equal(detail.locationId, ASK_STAFF_LOCATION.id);
+  assert.deepEqual(detail.locationPath, [ASK_STAFF_LOCATION]);
+  const staffDetail = await (await call('GET', '/api/items/itm-meter')).json();
+  assert.deepEqual(staffDetail.locationPath.map((location: Location) => location.name), ['Storage Closet', 'Secret Drawer']);
+  assert.equal((await repository.getItem('itm-meter'))?.locationId, bin.id);
+});
+
+test('staff-only flags persist through staff location edits and reject invalid values', async () => {
+  const response = await call('POST', '/api/locations', { name: 'Basement Storage', parentId: null, kind: 'room', staffOnly: true });
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(created.staffOnly, true);
+  const update = await call('PUT', `/api/locations/${created.id}`, { ...created, name: 'Basement Storage renamed' });
+  assert.equal((await update.json()).staffOnly, true);
+  assert.equal((await call('PUT', `/api/locations/${created.id}`, { ...created, staffOnly: 'yes' })).status, 400);
 });
 
 test('an item pointing at an unknown location is rejected', async () => {

@@ -92,6 +92,7 @@ interface Location {
   name: string;
   parentId: string | null;  // null = Room (root)
   kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'bin';
+  staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
   mapPosition?: {
     roomId: string;
@@ -178,17 +179,37 @@ one JSON file replacement (updating memory only after persistence succeeds) or
 one Cosmos transaction of replacements in the `location` partition. Successful
 saves invalidate the catalog cache; failed saves retain the client drafts.
 Visitor map URLs preserve the
-selected room and location. Seed data now contains only the two mapped rooms,
-their labeled locations, starter categories, and empty item/report arrays.
+selected room and location. Seed data contains two mapped rooms, their labeled
+locations, two staff-only storage rooms, starter categories, and empty item/report arrays.
 
 Storage surfaces are lettered uniquely across rooms: Common A-M from the
-upper-left desk down the left perimeter; Advanced Z-T from the lower-left table
-up the left perimeter. Existing IDs are retained when display labels change.
+upper-left desk down the left perimeter; Advanced S-Z follows the edited plan
+with Table S at left-center, T/U at bottom-left, V in the center, W on the right,
+and X/Y/Workbench Z across the top. Existing IDs are retained when display labels change;
+the new Table U uses `loc-table-u`.
 The six central Common work tables are drawing-only features, not catalog
 locations, so they have no markers and are absent from storage pickers. The
-current seed contains 28 locations: two rooms, 20 lettered surfaces, and six
-named stations/cabinets. Drawer numbering (for example C2) is separate from
+current seed contains 31 locations: four rooms (two staff-only), 21 lettered surfaces, and six
+named stations/cabinets. SVG tests parse XML and apply transforms rather than
+depending on Inkscape's attribute ordering or whitespace. Drawer numbering (for example C2) is separate from
 table lettering; no drawer records are invented from the plans.
+
+### 3.4 Staff-only locations
+
+`staffOnly` defaults to public when omitted and is inherited through the location
+tree. `Storage Closet` and `Basement Storage` start as restricted, unmapped rooms.
+For anonymous requests, `publicCatalog` removes the entire restricted subtree,
+adds one synthetic `public-ask-staff` room named **Ask Staff**, and rewrites the
+affected items' response-only `locationId` to that room. Stored assignments never
+change. The same projection is used for individual item details and assistant
+candidate/response assembly. Public items stay discoverable, while restricted
+names, IDs, coordinates, and breadcrumbs are not sent to visitors.
+
+`GET /api/catalog` returns `access: "public" | "staff"` based on the signed
+session cookie. Audience-dependent reads use `Cache-Control: private, no-store`
+and `Vary: Cookie`. The server repository cache remains canonical; redaction is
+per response, never a mutation of cached data. Existing catalogs can be upgraded
+explicitly using `npm run update:locations -- --apply` after deploying the code.
 
 ---
 
@@ -412,7 +433,12 @@ Kiosk idle reset is still deferred; when implemented, it should also refresh.
 ### 7.1 Browser persistence and refresh
 
 `BrowserCatalogCache` persists one validated, versioned catalog under
-`garage-inventory:catalog:v2`. The React `useCatalog` hook renders saved data
+`garage-inventory:catalog:v3`. Only `publicCatalog` projections are persisted,
+even during staff sessions, and v2 snapshots are removed. Staff catalog data
+stays in memory, scoped to the current sign-in state. Staff editors wait for a
+network response with `access: "staff"` rather than editing synthetic assignments.
+Sign-out redacts the current view and clears assistant results; cross-tab
+sign-out and access revocation also hide private data. The React `useCatalog` hook renders saved data
 while the network request runs. A snapshot is marked stale after **5 minutes**,
 not deleted, and remains available during API failures. The timestamp denotes
 browser retrieval, not the database's last modification (§4.4).
@@ -423,15 +449,17 @@ availability information is never presented as verified current after a failed
 refresh. Staff writes continue to require the API; there is no offline queue.
 
 Updates to the rendered catalog wait while an item, location, category, bulk,
-or map draft is dirty.
+or map draft is dirty, unless access has been revoked.
 Relevant cross-tab storage changes reload the snapshot; invalidation refetches,
-whereas another tab's saved snapshot is adopted without a fetch/write loop.
+whereas visitors adopt another tab's saved public snapshot without refetching.
+Staff refetch their private view without persisting another snapshot, preventing
+a cross-tab fetch/write loop.
 Unknown fields outside the public catalog contract are not persisted. Corrupt,
 incompatible, or future-dated saved data is reported and removed; storage access
 or quota failures are surfaced while in-memory/network operation can continue.
 
 Network catalog requests have a **10-second timeout**, use `cache: 'no-store'`,
-and receive `Cache-Control: no-store`, so the application owns freshness.
+and receive `Cache-Control: private, no-store` and `Vary: Cookie`, so the application owns freshness.
 Authentication, flags, searches, and assistant inputs/responses are not cached.
 This does not cache HTML, JavaScript, or images and does not enable offline
 cold startup.

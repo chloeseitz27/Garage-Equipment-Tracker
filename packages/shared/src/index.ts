@@ -7,3 +7,4 @@ export * from './retirement.js';
 export * from './room-maps.js';
 export * from './map-location.js';
 export * from './catalog.js';
+export * from './location-access.js';

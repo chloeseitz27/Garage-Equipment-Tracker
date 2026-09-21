@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { createFlagSchema, getLocationPath, type ItemDetail } from '@garage/shared';
+import { createFlagSchema, getLocationPath, publicCatalog, type ItemDetail, type CatalogResponse } from '@garage/shared';
+import { isStaff } from '../auth.js';
 
 import { asyncHandler } from '../middleware.js';
 import type { CatalogRepository } from '../repository/catalog-repository.js';
@@ -12,13 +13,14 @@ export function publicRoutes(repository: CatalogRepository): Router {
   // (technical-spec.md §5, §7).
   router.get(
     '/catalog',
-    asyncHandler(async (_req, res) => {
+    asyncHandler(async (req, res) => {
       const [items, locations, categories] = await Promise.all([
         repository.getItems(),
         repository.getLocations(),
         repository.getCategories(),
       ]);
-      res.set('Cache-Control', 'no-store').json({ items, locations, categories });
+      const catalog: CatalogResponse = { items, locations, categories, access: 'staff' };
+      res.set('Cache-Control', 'private, no-store').vary('Cookie').json(isStaff(req) ? catalog : publicCatalog(catalog));
     }),
   );
 
@@ -32,8 +34,10 @@ export function publicRoutes(repository: CatalogRepository): Router {
       }
 
       const locations = await repository.getLocations();
-      const detail: ItemDetail = { ...item, locationPath: getLocationPath(locations, item.locationId) };
-      res.json(detail);
+      const visible = isStaff(req) ? { items: [item], locations } : publicCatalog({ items: [item], locations, categories: [] });
+      const visibleItem = visible.items[0]!;
+      const detail: ItemDetail = { ...visibleItem, locationPath: getLocationPath(visible.locations, visibleItem.locationId) };
+      res.set('Cache-Control', 'private, no-store').vary('Cookie').json(detail);
     }),
   );
 

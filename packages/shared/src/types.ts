@@ -37,6 +37,7 @@ export type BulkUpdateMarkersInput = z.infer<typeof bulkUpdateMarkersSchema>;
 
 /** Everything the kiosk needs in one payload (technical-spec.md §5, §7). */
 export interface CatalogResponse {
+  access?: 'public' | 'staff';
   items: Item[];
   locations: Location[];
   categories: Category[];

@@ -663,6 +663,19 @@ header h1 {
   font-size: 0.95rem;
 }
 
+.manager label.staff-only-option {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.staff-only-option input[type="checkbox"] {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
 .editor input,
 .editor select,
 .editor textarea,

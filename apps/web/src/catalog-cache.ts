@@ -1,11 +1,11 @@
-import { catalogSchema, type CatalogResponse } from '@garage/shared';
+import { catalogSchema, publicCatalog, type CatalogResponse } from '@garage/shared';
 
-export const CATALOG_CACHE_KEY = 'garage-inventory:catalog:v2';
+export const CATALOG_CACHE_KEY = 'garage-inventory:catalog:v3';
 export const CATALOG_MAX_AGE_MS = 5 * 60_000;
 export type CatalogStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 interface StoredCatalog {
-  version: 2;
+  version: 3;
   fetchedAt: number;
   catalog: CatalogResponse;
 }
@@ -63,9 +63,9 @@ export class BrowserCatalogCache {
     return this.entry ? this.snapshot(this.entry, 'cache') : null;
   }
 
-  async refresh(): Promise<CatalogSnapshot> {
+  async refresh(persist = true): Promise<CatalogSnapshot> {
     const generation = this.generation;
-    const pending = this.pending ??= this.fetchSnapshot(generation);
+    const pending = this.pending ??= this.fetchSnapshot(generation, persist);
     try {
       const entry = await pending;
       if (generation !== this.generation) throw new CatalogRefreshSupersededError();
@@ -94,6 +94,7 @@ export class BrowserCatalogCache {
   private hydrate(): void {
     let raw: string | null;
     try {
+      if (this.key === CATALOG_CACHE_KEY) this.storage.removeItem('garage-inventory:catalog:v2');
       raw = this.storage.getItem(this.key);
     } catch (error) {
       this.options.onCacheError({ operation: 'read', error });
@@ -104,7 +105,7 @@ export class BrowserCatalogCache {
       const stored: unknown = JSON.parse(raw);
       if (
         !stored || typeof stored !== 'object' ||
-        !('version' in stored) || stored.version !== 2 ||
+        !('version' in stored) || stored.version !== 3 ||
         !('fetchedAt' in stored) || typeof stored.fetchedAt !== 'number' ||
         !Number.isSafeInteger(stored.fetchedAt) || stored.fetchedAt < 0 ||
         stored.fetchedAt > this.now() || !('catalog' in stored)
@@ -112,9 +113,9 @@ export class BrowserCatalogCache {
         throw new Error('Invalid or incompatible saved catalog');
       }
       this.entry = {
-        version: 2,
+        version: 3,
         fetchedAt: stored.fetchedAt,
-        catalog: catalogSchema.parse(stored.catalog),
+        catalog: publicCatalog(catalogSchema.parse(stored.catalog)),
       };
     } catch (error) {
       this.options.onCacheError({ operation: 'read', error });
@@ -122,17 +123,19 @@ export class BrowserCatalogCache {
     }
   }
 
-  private async fetchSnapshot(generation: number): Promise<StoredCatalog> {
+  private async fetchSnapshot(generation: number, persist: boolean): Promise<StoredCatalog> {
     const payload = await this.options.fetchCatalog();
     if (generation !== this.generation) throw new CatalogRefreshSupersededError();
     const catalog = catalogSchema.parse(payload);
-    const entry: StoredCatalog = { version: 2, fetchedAt: this.now(), catalog };
+    const entry: StoredCatalog = { version: 3, fetchedAt: this.now(), catalog };
     this.entry = entry;
     this.hydrated = true;
-    try {
-      this.storage.setItem(this.key, JSON.stringify(entry));
-    } catch (error) {
-      this.options.onCacheError({ operation: 'write', error });
+    if (persist) {
+      try {
+        this.storage.setItem(this.key, JSON.stringify({ ...entry, catalog: publicCatalog(catalog) }));
+      } catch (error) {
+        this.options.onCacheError({ operation: 'write', error });
+      }
     }
     return entry;
   }

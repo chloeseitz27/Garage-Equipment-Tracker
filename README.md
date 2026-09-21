@@ -69,6 +69,7 @@ request automatically.
 | `npm run dev` | API and web dev servers together |
 | `npm run seed` | Copy `data/seed` to `data/runtime` if runtime is empty |
 | `npm run seed:cosmos` | Import `data/seed` into Cosmos (validates first, upserts by id) |
+| `npm run update:locations` | Preview additive location updates; pass `-- --apply` to apply to the configured backend |
 | `npm run reset` | Overwrite `data/runtime` from seed — the "put the demo back" button |
 | `npm test` | Grounding, safety, and location-path tests, plus seed validation |
 | `npm run validate:seed` | Schema + referential integrity check on `data/seed` |
@@ -97,8 +98,8 @@ validator can't drift apart.
 
 ## Demo data
 
-`data/seed` holds two rooms and 26 storage/station locations from the supplied
-floor plans (28 location nodes total), plus 10 starter categories. The previous
+`data/seed` holds two mapped rooms, 27 storage/station locations from the edited
+floor plans, and two staff-only storage rooms (31 location nodes total), plus 10 starter categories. The previous
 fictional inventory and room structure have been replaced; `items.json` and
 `flags.json` are empty. Tables and named stations are locations, not assertions
 that any particular tool or material is available.
@@ -109,12 +110,12 @@ that any particular tool or material is available.
   at the upper-left desk and going down the left wall, across the bottom, up the
   right wall, then along the top. The six center work tables stay visible but
   have no individual labels or storage locations: keep them clear.
-- **Advanced Makerspace:** seven lettered tables/workbenches, **Z–T**, starting
-  at the lower-left table and going up the left wall, across the top, down the
-  right wall, then along the bottom. The Toolbox remains in the former coat-rack
-  area.
+- **Advanced Makerspace:** eight lettered tables/workbenches, **S–Z**, matching
+  the edited plan. Table S sits left-center; T and the new U sit bottom-left;
+  V is in the center; W is on the right; X, Y, and Workbench Z run across the top
+  from right to left. The Toolbox remains in the former coat-rack area.
 
-Letters are unique across rooms. **N–S** are unused, leaving room to expand.
+Letters are unique across rooms. **N–R** are unused, leaving room to expand.
 Cabinets, the Toolbox, and named stations retain descriptive names outside the
 table/bench sequence. Storage-location IDs are not renamed, so existing links
 and item assignments follow the new display names. The center work tables are
@@ -125,8 +126,10 @@ actual counts and positions.
 
 The app uses clean SVG schematics in `apps/web/public/maps`, with horizontal,
 high-contrast labels and no dimension clutter. The original PNGs remain there
-as source references. Both redraws retain the original coordinate system so
-existing markers still align; these are schematics, not scale drawings.
+as source references. Both redraws retain the original coordinate system, and
+seed markers follow the edited surface geometry, including SVG transforms.
+These are schematics, not scale drawings. Existing staff-positioned markers are
+not overwritten by the additive location update.
 Equipment areas are labeled **Roland** and **Laser**. The **Work Tables** label
 sits within the central table formation, and the fire cabinet is drawn with its
 back against Advanced's left wall and its doors facing into the room. The area
@@ -156,6 +159,28 @@ and no partial batch is written. A batch supports up to 100 changed markers.
 Renaming a location retains its marker. A cross-room move, or changing a room's
 floor plan, makes old coordinates inactive until the location is remapped.
 Existing item and location IDs remain stable during normal edits.
+
+### Staff-only storage
+
+**Storage Closet** and **Basement Storage** are top-level, unmapped, staff-only
+locations. Staff can assign items to them with location search and see their
+actual names and sub-location paths. Visitors can still find those items, but
+their location is **Ask Staff**, with no private map or breadcrumb.
+
+**Manage catalog → Locations** has a **Staff-only location** checkbox for new
+and existing locations. The restriction includes all descendants; unchecking a
+child does not override a restricted parent. Catalog responses, item details,
+and assistant recommendations redact restricted location metadata on the server.
+This protects location metadata, not arbitrary staff-written descriptions or
+notes, which remain public.
+
+For an existing catalog, deploy this code before creating restricted records.
+Then run `npm run update:locations` to preview changes and
+`npm run update:locations -- --apply` to add the two rooms and Table U, and align
+the old Advanced labels with the drawing. The script uses the configured JSON
+or Cosmos backend, is safe to rerun, and preserves inventory, existing IDs,
+custom location names, parent links, and saved marker positions. It is not a
+reset and does not run automatically on startup.
 
 `seed:cosmos` upserts seed records; it does **not** delete existing data or migrate
 an old demo automatically. Back up an existing catalog before replacing a demo.
@@ -422,25 +447,29 @@ sign-in in the header, which spins while refreshing unless reduced motion is
 preferred). Connection notices below the header appear only when needed.
 Successful staff catalog mutations
 invalidate the saved snapshot and refetch. Another tab's saved catalog is
-adopted without an echoing network request; cross-tab invalidation triggers a
-refresh. Incoming updates wait while staff have unsaved catalog forms, bulk
-drafts, or map edits.
+adopted by visitors without an echoing network request; staff re-fetch their
+authenticated view without writing another storage event. Cross-tab invalidation
+triggers a refresh. Incoming updates wait while staff have unsaved catalog forms,
+bulk drafts, or map edits, except that revoked access immediately hides staff data.
 
 Failed refreshes keep the current view and display a warning and retry button
 instead of replacing the app with an error screen. Cached locations, status,
 and safety/training data are explicitly labelled as potentially outdated.
-Writes still require the API: there is no offline write queue or simulated
+Staff editing requires an authenticated network catalog, never a redacted cached
+snapshot. Writes still require the API: there is no offline write queue or simulated
 success. The displayed timestamp is when the browser fetched the catalog,
 **not** when the database was last changed; a server response may already be up
 to the server TTL old.
 
-Both caches use `@garage/shared` validation and preserve `retiredAt`, all
-location kinds, map metadata, and verbatim safety text. The browser key is
-`garage-inventory:catalog:v2`; incompatible earlier drafts are not reused.
+Both caches use `@garage/shared` validation and preserve `retiredAt`, public
+location kinds, public map metadata, and verbatim safety text. The browser key is
+`garage-inventory:catalog:v3`; the old v2 snapshot is removed on load.
 Malformed saved data is reported and removed; blocked storage or quota failures
 are reported while network-backed use can continue in memory. Only public
-catalog data is persisted, not staff sessions, searches, flags, or assistant
-inputs/responses. Clearing this site's local storage clears its saved catalog.
+catalog data is persisted; private location data stays in memory only. Sign-out
+immediately redacts the view, clears assistant results, and notifies other tabs.
+Sign-in, focus, and reconnection re-check access. Sessions, searches, flags, and
+assistant inputs/responses are not cached. Clearing this site's local storage clears its saved catalog.
 Clear it when switching the backend behind the same origin.
 
 This is data caching, not offline app installation: loading the HTML/JS still

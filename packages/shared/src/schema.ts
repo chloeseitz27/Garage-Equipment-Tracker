@@ -101,6 +101,7 @@ export const locationSchema = z.object({
   name: z.string().min(1),
   parentId: idSchema.nullable(),
   kind: locationKindSchema,
+  staffOnly: z.boolean().optional(),
   mapId: z.enum(ROOM_MAP_IDS).optional(),
   mapPosition: z.object({
     roomId: idSchema,

@@ -36,7 +36,7 @@
   <title
      id="title">Advanced Makerspace</title>
   <desc
-     id="description">Advanced Makerspace storage surfaces run Z through T from the lower-left table up the left wall, across the top, down the right wall, and along the bottom. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
+     id="description">Advanced Makerspace storage surfaces run S through Z: Table S is at the left-center, Tables T and U are along the bottom-left, Table V is at the center, Table W is on the right, and Table X, Table Y, and Workbench Z run across the top from right to left. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
   <style
      id="style1">
     text { font-family: &quot;Segoe UI&quot;, Arial, sans-serif; fill: #20384b; text-anchor: middle; }
@@ -97,7 +97,7 @@
      class="small"
      x="745"
      y="275"
-     id="text6">STORAGE Z–T · NOT TO SCALE</text>
+     id="text6">STORAGE S–Z · NOT TO SCALE</text>
   <rect
      id="advanced-left-wall"
      class="wall"
@@ -174,7 +174,7 @@
   </g>
   <g
      data-location-id="loc-advanced-workbench-16"
-     data-storage-letter="X"
+     data-storage-letter="Z"
      id="g11">
     <rect
        class="surface"
@@ -192,7 +192,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-19"
-     data-storage-letter="W"
+     data-storage-letter="Y"
      id="g12"
      transform="matrix(0.96003356,0,0,1.0004389,28.316235,-0.03050662)">
     <rect
@@ -211,7 +211,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-3"
-     data-storage-letter="V"
+     data-storage-letter="X"
      id="g13"
      transform="translate(-9.7974684)">
     <rect
@@ -230,7 +230,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-18"
-     data-storage-letter="U"
+     data-storage-letter="W"
      id="g15">
     <rect
        class="surface"
@@ -253,7 +253,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-21"
-     data-storage-letter="Y"
+     data-storage-letter="S"
      id="g17"
      transform="translate(70.759494,74.56962)">
     <rect
@@ -278,7 +278,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-20"
-     data-storage-letter="Z"
+     data-storage-letter="T"
      id="g19">
     <rect
        class="surface"
@@ -303,8 +303,8 @@
        id="text18">TABLE</text>
   </g>
   <g
-     data-location-id="loc-advanced-table-20"
-     data-storage-letter="Z"
+     data-location-id="loc-table-u"
+     data-storage-letter="U"
      id="g19-8"
      transform="translate(183.32256,-0.42426392)">
     <rect
@@ -333,7 +333,7 @@
   </g>
   <g
      data-location-id="loc-advanced-table-11"
-     data-storage-letter="T"
+     data-storage-letter="V"
      id="g20"
      transform="matrix(0.86853954,0,0,0.90974585,362.94334,20.025244)">
     <rect

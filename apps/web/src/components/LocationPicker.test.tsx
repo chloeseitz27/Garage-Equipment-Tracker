@@ -358,6 +358,32 @@ test('new location parents can be changed and reset to top level without an impl
   assert.equal(writes[0]?.body.parentId, null);
 });
 
+test('location management creates staff-only storage and retains the flag through a rename', async () => {
+  const privateLocations: Location[] = [...locations, {
+    id: 'closet', name: 'Storage Closet', kind: 'room', parentId: null, staffOnly: true,
+  }, { id: 'private-bin', name: 'Private bin', kind: 'bin', parentId: 'closet' }];
+  await render(createElement(LocationManager, { locations: privateLocations, items: [], onChanged: () => {} }));
+  const row = [...host.querySelectorAll('.tree-node')].find((node) =>
+    node.querySelector('.tree-name')?.textContent?.startsWith('Storage Closet'));
+  assert.ok(row);
+  assert.match(row.textContent ?? '', /Staff only/);
+  const child = [...host.querySelectorAll('.tree-node')].find((node) =>
+    node.querySelector('.tree-name')?.textContent?.startsWith('Private bin'));
+  assert.match(child?.textContent ?? '', /Staff only/);
+  await click(row.querySelector('button')!);
+  const checkbox = host.querySelector<HTMLInputElement>('.tree-edit input[type="checkbox"]');
+  assert.equal(checkbox?.checked, true);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.staffOnly, true);
+  const name = host.querySelector<HTMLInputElement>('input[placeholder="New location name"]');
+  const restriction = host.querySelector<HTMLInputElement>('.add-row input[type="checkbox"]');
+  assert.ok(name && restriction);
+  await type(name, 'Basement Storage');
+  await click(restriction);
+  await click(button('Add location'));
+  assert.equal(writes[1]?.body.staffOnly, true);
+});
+
 test('bulk Move to is a draft until Save, including keyboard selection', async () => {
   await render(createElement(ItemsManager, { catalog, mode: 'live', onChanged: () => {} }));
   const checkbox = host.querySelector<HTMLInputElement>('.row-check input');
@@ -1294,10 +1320,10 @@ const jsonResponse = (body: unknown): Response => new Response(JSON.stringify(bo
 });
 const mockAppApi = (staff = true): void => {
   globalThis.fetch = async (url) => {
-    if (url === '/api/catalog') return jsonResponse(gridCatalog);
+    if (url === '/api/catalog') return jsonResponse({ ...gridCatalog, access: staff ? 'staff' : 'public' });
     if (url === '/api/auth/session') return jsonResponse({ staff });
-    if (url === '/api/auth/login') return jsonResponse({ staff: true });
-    if (url === '/api/auth/logout') return jsonResponse({ staff: false });
+    if (url === '/api/auth/login') { staff = true; return jsonResponse({ staff }); }
+    if (url === '/api/auth/logout') { staff = false; return jsonResponse({ staff }); }
     if (url === '/api/flags') return jsonResponse([]);
     throw new Error(`Unexpected request: ${url}`);
   };

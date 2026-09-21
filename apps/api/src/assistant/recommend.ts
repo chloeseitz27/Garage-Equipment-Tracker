@@ -2,6 +2,7 @@ import {
   getLocationPath,
   indexLocations,
   isRetired,
+  publicCatalog,
   type AssistantProvider,
   type Item,
   type RecommendResponse,
@@ -23,6 +24,7 @@ export async function recommendForProject(
   repository: CatalogRepository,
   provider: AssistantProvider,
   projectDescription: string,
+  staff = false,
 ): Promise<RecommendResponse> {
   const [items, locations, categories] = await Promise.all([
     repository.getItems(),
@@ -30,21 +32,22 @@ export async function recommendForProject(
     repository.getCategories(),
   ]);
 
+  const visible = staff ? { items, locations, categories } : publicCatalog({ items, locations, categories });
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
 
   // [1] Deterministic, server-side, from the catalog.
-  const candidates = retrieveCandidates(items, categoryNames, projectDescription);
+  const candidates = retrieveCandidates(visible.items, categoryNames, projectDescription);
 
   // [2] Candidates in, selected IDs + reasons out.
   const recommendation = await provider.recommend({ projectDescription, candidates });
 
   // [3] Re-resolution. Every returned ID is looked up in the catalog; anything
   // that doesn't resolve is dropped silently from the response and logged.
-  const catalogById = new Map<string, Item>(items.map((item) => [item.id, item]));
+  const catalogById = new Map<string, Item>(visible.items.map((item) => [item.id, item]));
   const seen = new Set<string>();
   const dropped: string[] = [];
   const resolved: RecommendedItem[] = [];
-  const locationIndex = indexLocations(locations);
+  const locationIndex = indexLocations(visible.locations);
 
   for (const entry of recommendation.garageItems) {
     const item = catalogById.get(entry.id);

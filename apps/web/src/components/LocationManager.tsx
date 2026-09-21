@@ -5,6 +5,7 @@ import {
   ROOM_MAPS,
   getChildLocations,
   getDescendantLocationIds,
+  isStaffOnlyLocation,
   type Item,
   type Location,
   type LocationKind,
@@ -35,10 +36,12 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
   const [draftParentId, setDraftParentId] = useState<string | null>(null);
   const [draftKind, setDraftKind] = useState<LocationKind>('bin');
   const [draftMapId, setDraftMapId] = useState<RoomMapId | ''>('');
+  const [draftStaffOnly, setDraftStaffOnly] = useState(false);
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState<string | null>(null);
   const [newKind, setNewKind] = useState<LocationKind>('bin');
   const [newMapId, setNewMapId] = useState<RoomMapId | ''>('');
+  const [newStaffOnly, setNewStaffOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useCatalogDraft(editingId !== null || newName.trim().length > 0);
 
@@ -69,6 +72,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     setDraftParentId(location.parentId);
     setDraftKind(location.kind);
     setDraftMapId(location.mapId ?? '');
+    setDraftStaffOnly(location.staffOnly ?? false);
     setError(null);
   };
 
@@ -107,6 +111,11 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
                   {ROOM_MAP_IDS.map((id) => <option key={id} value={id}>{ROOM_MAPS[id].name}</option>)}
                 </select>
               </label>
+              <label className="staff-only-option">
+                <input type="checkbox" checked={draftStaffOnly} onChange={(event) => setDraftStaffOnly(event.target.checked)} />
+                Staff-only location
+                {draftParentId && isStaffOnlyLocation(locations, draftParentId) ? <span className="hint">Also restricted by its parent.</span> : null}
+              </label>
               <button
                 type="button"
                 onClick={() =>
@@ -118,6 +127,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
                       parentId: draftParentId,
                       kind: draftKind,
                       mapId: draftMapId || undefined,
+                      staffOnly: draftStaffOnly,
                     });
                     setEditingId(null);
                   })
@@ -134,6 +144,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
               <span className="tree-name">
                 {location.name}
                 <span className="kind">{location.kind}</span>
+                {isStaffOnlyLocation(locations, location.id) ? <span className="kind">Staff only</span> : null}
                 {held > 0 ? <span className="muted small">{held} item(s)</span> : null}
               </span>
               <span className="tree-actions">
@@ -207,12 +218,17 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
             {ROOM_MAP_IDS.map((id) => <option key={id} value={id}>{ROOM_MAPS[id].name}</option>)}
           </select>
         </label>
+        <label className="staff-only-option">
+          <input type="checkbox" checked={newStaffOnly} onChange={(event) => setNewStaffOnly(event.target.checked)} />
+          Staff-only new location
+          {newParentId && isStaffOnlyLocation(locations, newParentId) ? <span className="hint">Also restricted by its parent.</span> : null}
+        </label>
         <button
           type="button"
           disabled={!newName.trim()}
           onClick={() =>
             void run(async () => {
-              await createLocation({ name: newName.trim(), parentId: newParentId, kind: newKind, mapId: newMapId || undefined });
+              await createLocation({ name: newName.trim(), parentId: newParentId, kind: newKind, mapId: newMapId || undefined, staffOnly: newStaffOnly });
               setNewName('');
             })
           }

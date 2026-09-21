@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 
 import { JsonCatalogRepository } from './json-repository.js';
+import { locationsFileSchema } from '@garage/shared';
+import { updateLocationCatalog } from './location-updates.js';
 
 const legacy = {
   id: 'itm-saw', name: 'Saw', kind: 'equipment', categoryId: 'cat-tools',
@@ -116,4 +118,32 @@ test('JSON batch validation and disk failures leave all in-memory and persisted 
   } finally {
     await rename(offline, dataDir);
   }
+});
+
+test('location upgrades add staff storage and Table U once without resetting inventory or custom markers', async (t) => {
+  const seed = locationsFileSchema.parse(JSON.parse(await readFile(
+    new URL('../../../../data/seed/locations.json', import.meta.url), 'utf8',
+  )));
+  const { repository, dataDir } = await fixture(t, []);
+  const original = seed.filter((location) => !['loc-table-u', 'loc-storage-closet', 'loc-basement-storage'].includes(location.id))
+    .map((location) => location.id === 'loc-advanced-table-20'
+      ? { ...location, name: 'Table Z', mapPosition: { roomId: 'loc-advanced-makerspace', mapId: 'advanced' as const, x: 0.1, y: 0.2 } }
+      : location);
+  original.push({ id: 'custom-closet', name: 'Storage Closet', kind: 'room', parentId: null });
+  await writeFile(join(dataDir, 'locations.json'), JSON.stringify(original));
+  await repository.load();
+  const preview = await updateLocationCatalog(repository, seed, false);
+  assert.equal(preview.length, 4);
+  assert.deepEqual(await repository.getLocations(), original);
+  await updateLocationCatalog(repository, seed, true);
+  const updated = await repository.getLocations();
+  const table = updated.find((location) => location.id === 'loc-advanced-table-20')!;
+  assert.equal(table.name, 'Table T');
+  assert.deepEqual(table.mapPosition, { roomId: 'loc-advanced-makerspace', mapId: 'advanced', x: 0.1, y: 0.2 });
+  assert.equal(updated.find((location) => location.id === 'custom-closet')?.staffOnly, true);
+  assert.equal(updated.filter((location) => location.name === 'Storage Closet').length, 1);
+  assert.equal(updated.find((location) => location.id === 'loc-basement-storage')?.staffOnly, true);
+  assert.ok(updated.some((location) => location.id === 'loc-table-u'));
+  assert.deepEqual(await updateLocationCatalog(repository, seed, true), []);
+  assert.deepEqual(await repository.getItems(), []);
 });
