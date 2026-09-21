@@ -484,9 +484,12 @@ cross-process invalidation. For JSON resets or direct file edits, restart the
 API to reload its in-memory data.
 
 The browser shows saved data immediately, then revalidates on page load, window
-focus, reconnect, and **Refresh catalog** (the circular-arrow icon beside staff
-sign-in in the header, which spins while refreshing unless reduced motion is
-preferred). Connection notices below the header appear only when needed.
+focus, and reconnect. In development, **Refresh catalog** is also available as
+the circular-arrow icon beside staff sign-in in the header; it spins while
+refreshing unless reduced motion is preferred. The header icon is omitted from
+production builds for staff and visitors. Automatic refreshes and the **Retry
+catalog** action after an initial load failure remain available in production.
+Connection notices below the header appear only when needed.
 Successful staff catalog mutations
 invalidate the saved snapshot and refetch. Another tab's saved catalog is
 adopted by visitors without an echoing network request; staff re-fetch their
@@ -494,8 +497,9 @@ authenticated view without writing another storage event. Cross-tab invalidation
 triggers a refresh. Incoming updates wait while staff have unsaved catalog forms,
 bulk drafts, or map edits, except that revoked access immediately hides staff data.
 
-Failed refreshes keep the current view and display a warning and retry button
-instead of replacing the app with an error screen. Cached locations, status,
+Failed refreshes keep the current view and display a warning instead of replacing
+the app with an error screen. An initial load failure with no saved data offers
+**Retry catalog**. Cached locations, status,
 and safety/training data are explicitly labelled as potentially outdated.
 Staff editing requires an authenticated network catalog, never a redacted cached
 snapshot. Writes still require the API: there is no offline write queue or simulated

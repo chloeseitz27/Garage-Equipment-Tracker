@@ -19,7 +19,7 @@ function AssistantRedirect(): JSX.Element {
   return <Navigate to={{ pathname: '/', search: `?${params}`, hash: location.hash }} replace />;
 }
 
-export function App(): JSX.Element {
+export function App({ development = import.meta.env?.DEV ?? false }: { development?: boolean }): JSX.Element {
   const [staff, setStaff] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -107,17 +107,19 @@ export function App(): JSX.Element {
               {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
             </nav>
             <div className="header-actions">
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
-                title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
-                aria-busy={refreshing}
-                disabled={refreshing}
-                onClick={() => void refresh()}
-              >
-                <ActionIcon name="refresh" />
-              </button>
+              {development ? (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                  title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                  aria-busy={refreshing}
+                  disabled={refreshing}
+                  onClick={() => void refresh()}
+                >
+                  <ActionIcon name="refresh" />
+                </button>
+              ) : null}
               <StaffBar staff={staff} beforeSignOut={() =>
                 !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
               } onChange={(signedIn) => {
@@ -155,7 +157,7 @@ export function App(): JSX.Element {
               sessionLoading ? <p role="status">Checking staff sign-in…</p> :
                 staff ? catalog.access === 'staff'
                   ? <StaffPanel catalog={catalog} onChanged={() => void refresh(true)} />
-                  : <p role="status">Staff catalog unavailable. Refresh the catalog while connected before editing.</p> : (
+                  : <p role="status">Staff catalog unavailable. Reconnect or reload this page before editing.</p> : (
                   <section className="manager">
                     <h2>Staff sign-in required</h2>
                     <p>Sign in above to open this catalog page.</p>

@@ -454,7 +454,9 @@ category, description, and location name, with name and tags weighted highest.
 Fuzzy matching covers the misspelling and plural tolerance required by product
 spec §6.1.
 
-Refetch the catalog on page load, window focus, reconnect, and manual refresh.
+Refetch the catalog on page load, window focus, and reconnect. The manual header
+refresh icon is development-only, gated by Vite's `import.meta.env.DEV`.
+Initial-load failure recovery remains available in production.
 Successful staff catalog changes invalidate the browser snapshot and refetch.
 Kiosk idle reset is still deferred; when implemented, it should also refresh.
 
@@ -471,8 +473,8 @@ while the network request runs. A snapshot is marked stale after **5 minutes**,
 not deleted, and remains available during API failures. The timestamp denotes
 browser retrieval, not the database's last modification (§4.4).
 
-Refresh failures show an explicit notice and retry action without discarding
-the current catalog or unsaved drafts. Saved safety/training, location, and
+Refresh failures show an explicit notice without discarding the current catalog
+or unsaved drafts. Initial failures with no saved catalog also offer a retry action. Saved safety/training, location, and
 availability information is never presented as verified current after a failed
 refresh. Staff writes continue to require the API; there is no offline queue.
 

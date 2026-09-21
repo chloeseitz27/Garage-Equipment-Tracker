@@ -80,8 +80,8 @@ afterEach(async () => {
 });
 after(() => dom.window.close());
 
-const render = async (path = '/'): Promise<void> => {
-  router = createMemoryRouter([{ path: '*', element: createElement(App) }], { initialEntries: [path] });
+const render = async (path = '/', development = true): Promise<void> => {
+  router = createMemoryRouter([{ path: '*', element: createElement(App, { development }) }], { initialEntries: [path] });
   await act(() => root.render(createElement(RouterProvider, { router })));
 };
 const saveSnapshot = (catalog: CatalogResponse, fetchedAt = Date.now()): string => {
@@ -138,13 +138,30 @@ test('saved data renders while loading; failure leaves browsing visible and a re
 
 test('a failed first visit displays an actionable error and clears it after retry', async () => {
   respond = async () => { throw new Error('No connection'); };
-  await render();
+  await render('/', false);
   assert.match(host.textContent ?? '', /No saved catalog is available/);
   respond = async () => Response.json(remote);
   await click(button('Retry catalog'));
   assert.match(host.textContent ?? '', /Inspection camera/);
   assert.doesNotMatch(host.textContent ?? '', /No connection|No saved catalog/);
 });
+
+for (const staff of [false, true]) {
+  test(`production hides the refresh icon for ${staff ? 'staff' : 'visitors'} without disabling automatic refresh`, async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (url, options) => url === '/api/auth/session'
+      ? Promise.resolve(Response.json({ staff })) : original(url, options);
+    await render('/', false);
+    assert.equal(host.querySelector('header button[aria-label="Refresh catalog"]'), null);
+    assert.equal(host.querySelector('header .action-icon-refresh'), null);
+    assert.ok(host.querySelector('.staff-bar'));
+    remote.items[0]!.name = 'Automatically refreshed camera';
+    await event('focus');
+    assert.match(host.textContent ?? '', /Automatically refreshed camera/);
+    assert.equal(reads, 2);
+    assert.equal(host.querySelector('header .action-icon-refresh'), null);
+  });
+}
 
 test('the refresh icon is labelled, indicates progress, and updates the saved catalog', async () => {
   await render();
