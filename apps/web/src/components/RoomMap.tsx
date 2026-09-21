@@ -6,6 +6,9 @@ interface Props {
   room: Location;
   locations: Location[];
   selectedLocationId?: string;
+  selectedLocationIds?: readonly string[];
+  excludedIds?: readonly string[];
+  caption?: string;
   onSelect?: (id: string) => void;
   onPlace?: (point: { x: number; y: number }) => void;
 }
@@ -29,7 +32,9 @@ const clampView = (view: MapView): MapView => ({
   y: Math.max(1 - view.zoom, Math.min(0, view.y)),
 });
 
-export function RoomMap({ room, locations, selectedLocationId, onSelect, onPlace }: Props): JSX.Element {
+export function RoomMap({
+  room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, onSelect, onPlace,
+}: Props): JSX.Element {
   const asset = room.mapId ? ROOM_MAPS[room.mapId] : undefined;
   const [failed, setFailed] = useState(false);
   const [view, setView] = useState<MapView>(FIT_VIEW);
@@ -105,7 +110,7 @@ export function RoomMap({ room, locations, selectedLocationId, onSelect, onPlace
   };
 
   if (!asset) return <p className="muted">No floor plan is assigned to {room.name}.</p>;
-  const markers = roomMapMarkers(locations, room.id);
+  const markers = roomMapMarkers(locations, room.id).filter((location) => !excludedIds?.includes(location.id));
   const place = (event: MouseEvent<HTMLDivElement>): void => {
     if (!onPlace || failed) return;
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -161,7 +166,7 @@ export function RoomMap({ room, locations, selectedLocationId, onSelect, onPlace
             {!failed && markers.map((location) => {
               const pin = location.mapPosition;
               if (!pin) return null;
-              const selected = highlighted === location.id;
+              const selected = selectedLocationIds ? selectedLocationIds.includes(location.id) : highlighted === location.id;
               const className = selected ? 'map-marker selected' : 'map-marker';
               const style = {
                 left: `${pin.x * 100}%`, top: `${pin.y * 100}%`,
@@ -214,7 +219,7 @@ export function RoomMap({ room, locations, selectedLocationId, onSelect, onPlace
       </div>
       <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view.</p>
       <figcaption>
-        {highlighted ? `Highlighted: ${resolved?.marker?.location.name}.` : 'Select a marker to browse that location.'}
+        {caption ?? (highlighted ? `Highlighted: ${resolved?.marker?.location.name}.` : 'Select a marker to browse that location.')}
       </figcaption>
     </figure>
   );

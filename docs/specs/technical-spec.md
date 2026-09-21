@@ -167,7 +167,17 @@ must both match the current room; stale positions from cross-room moves or plan
 changes are ignored, never shown on the wrong floor plan.
 
 Staff stage marker positions using clicks or numeric percentages and save via
-the existing authenticated location-update API. Visitor map URLs preserve the
+the authenticated `POST /api/locations/markers` API. The editor keeps one draft
+per location across room/pin URL changes, with a single **Save all markers**
+action; leaving the location editor still requires discarding unsaved changes.
+The batch accepts up to 100 distinct `{ id, roomId, mapId, position }` records,
+where `position` is normalized `{ x, y }` or `null` to remove a marker.
+All references and room/plan identities are validated before writing, and only
+marker data is merged into existing records. The repository saves the batch in
+one JSON file replacement (updating memory only after persistence succeeds) or
+one Cosmos transaction of replacements in the `location` partition. Successful
+saves invalidate the catalog cache; failed saves retain the client drafts.
+Visitor map URLs preserve the
 selected room and location. Seed data now contains only the two mapped rooms,
 their labeled locations, starter categories, and empty item/report arrays.
 
@@ -194,6 +204,7 @@ interface CatalogRepository {
   getItems(): Promise<Item[]>;
   getItem(id: string): Promise<Item | null>;
   saveItem(item: Item): Promise<void>;
+  saveLocations(locations: Location[]): Promise<void>;
   getLocations(): Promise<Location[]>;
   getCategories(): Promise<Category[]>;
   addFlag(flag: Flag): Promise<void>;
@@ -278,6 +289,7 @@ REST, JSON, served by Express under `/api`.
 | `POST` | `/api/assistant/recommend` | none | Project Assistant (§6) |
 | `POST` | `/api/items` | staff | Create |
 | `PUT` | `/api/items/:id` | staff | Update |
+| `POST` | `/api/locations/markers` | staff | Atomically update/remove up to 100 location markers |
 | `POST` | `/api/auth/login` | none | Staff sign-in (§8) |
 | `POST` | `/api/auth/logout` | staff | |
 | `GET` | `/api/flags` | staff | Flag queue |

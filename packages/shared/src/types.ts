@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type {
+  bulkUpdateMarkersSchema,
   categorySchema,
   consumableSchema,
   createFlagSchema,
@@ -32,6 +33,7 @@ export type Flag = z.infer<typeof flagSchema>;
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 export type CreateFlagInput = z.infer<typeof createFlagSchema>;
+export type BulkUpdateMarkersInput = z.infer<typeof bulkUpdateMarkersSchema>;
 
 /** Everything the kiosk needs in one payload (technical-spec.md §5, §7). */
 export interface CatalogResponse {

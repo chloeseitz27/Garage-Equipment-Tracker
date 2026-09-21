@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 
@@ -80,4 +80,40 @@ test('JSON loading rejects unknown secondary references on retired items', async
     ...multi, categoryIds: ['cat-tools', 'cat-missing'], retiredAt: '2026-09-18T12:00:00.000Z',
   }]);
   await assert.rejects(repository.load(), /itm-tape has unknown categoryId: cat-missing/);
+});
+
+test('JSON location batches persist every marker and reload with stable ids', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const first = await repository.createLocation({ name: 'A', kind: 'table', parentId: 'loc-shop' });
+  const second = await repository.createLocation({ name: 'B', kind: 'table', parentId: 'loc-shop' });
+  const updated = [first, second].map((location, index) => ({
+    ...location, mapPosition: { roomId: 'loc-shop', mapId: 'common' as const, x: 0.2 + index * 0.1, y: 0.5 },
+  }));
+  await repository.saveLocations(updated);
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual((await reloaded.getLocations()).filter((location) => location.id !== 'loc-shop'), updated);
+  await repository.saveLocations([first, second]);
+  assert.ok((await repository.getLocations()).every((location) => !location.mapPosition));
+});
+
+test('JSON batch validation and disk failures leave all in-memory and persisted locations unchanged', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const original = await repository.getLocations();
+  const location = original[0]!;
+  await assert.rejects(repository.saveLocations([
+    { ...location, name: 'Changed' }, { ...location, id: 'missing' },
+  ]), /Unknown location/);
+  assert.deepEqual(await repository.getLocations(), original);
+  const offline = `${dataDir}-offline`;
+  await rename(dataDir, offline);
+  try {
+    await assert.rejects(repository.saveLocations([{ ...location, name: 'Changed' }]), /ENOENT/);
+    assert.deepEqual(await repository.getLocations(), original);
+    assert.deepEqual(JSON.parse(await readFile(join(offline, 'locations.json'), 'utf8')), original);
+  } finally {
+    await rename(offline, dataDir);
+  }
 });

@@ -19,6 +19,8 @@ export interface CatalogRepository {
   getLocations(): Promise<Location[]>;
   createLocation(location: Omit<Location, 'id'>): Promise<Location>;
   saveLocation(location: Location): Promise<void>;
+  /** Saves all locations atomically; a failed batch leaves every marker unchanged. */
+  saveLocations(locations: Location[]): Promise<void>;
   deleteLocation(id: string): Promise<void>;
 
   getCategories(): Promise<Category[]>;

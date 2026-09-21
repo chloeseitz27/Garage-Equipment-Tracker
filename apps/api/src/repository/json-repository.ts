@@ -120,6 +120,16 @@ export class JsonCatalogRepository implements CatalogRepository {
     await this.persist('locations.json', this.locations);
   }
 
+  async saveLocations(locations: Location[]): Promise<void> {
+    const updates = new Map(locations.map((location) => [location.id, location]));
+    for (const id of updates.keys()) {
+      if (!this.locations.some((location) => location.id === id)) throw new Error(`Unknown location: ${id}`);
+    }
+    const next = this.locations.map((location) => updates.get(location.id) ?? location);
+    await this.persist('locations.json', next);
+    this.locations = next;
+  }
+
   async getCategories(): Promise<Category[]> {
     return [...this.categories];
   }

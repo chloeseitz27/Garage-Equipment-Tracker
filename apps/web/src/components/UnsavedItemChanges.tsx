@@ -3,14 +3,14 @@ import { useBlocker } from 'react-router-dom';
 
 export const ItemDraftContext = createContext<((dirty: boolean) => void) | null>(null);
 
-export function useItemDraftGuard(dirty: boolean) {
+export function useItemDraftGuard(dirty: boolean, options: { allowSearchChanges?: boolean } = {}) {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const reportDirty = useContext(ItemDraftContext);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     dirtyRef.current && (
       currentLocation.pathname !== nextLocation.pathname ||
-      currentLocation.search !== nextLocation.search ||
+      (!options.allowSearchChanges && currentLocation.search !== nextLocation.search) ||
       currentLocation.hash !== nextLocation.hash
     ),
   );

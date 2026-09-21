@@ -1,4 +1,5 @@
 import type {
+  BulkUpdateMarkersInput,
   CatalogResponse,
   Category,
   CreateFlagInput,
@@ -91,6 +92,9 @@ export const updateLocation = (location: Location): Promise<Location> =>
     method: 'PUT',
     body: JSON.stringify(location),
   });
+
+export const updateLocationMarkers = (input: BulkUpdateMarkersInput): Promise<{ updated: number; locations: Location[] }> =>
+  request('/api/locations/markers', { method: 'POST', body: JSON.stringify(input) });
 
 export const deleteLocation = (id: string): Promise<void> =>
   request(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE' });

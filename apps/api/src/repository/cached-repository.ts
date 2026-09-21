@@ -103,6 +103,10 @@ export class CachedCatalogRepository implements CatalogRepository {
     return this.write(() => this.repository.saveLocation(location));
   }
 
+  saveLocations(locations: Location[]): Promise<void> {
+    return this.write(() => this.repository.saveLocations(locations));
+  }
+
   deleteLocation(id: string): Promise<void> {
     return this.write(() => this.repository.deleteLocation(id));
   }

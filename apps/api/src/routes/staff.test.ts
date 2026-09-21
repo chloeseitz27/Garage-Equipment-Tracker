@@ -100,6 +100,10 @@ const makeRepository = (): CatalogRepository => {
         existing.id === location.id ? location : existing,
       );
     },
+    saveLocations: async (locations) => {
+      const byId = new Map(locations.map((location) => [location.id, location]));
+      state.locations = state.locations.map((location) => byId.get(location.id) ?? location);
+    },
     deleteLocation: async (id) => {
       state.locations = state.locations.filter((location) => location.id !== id);
     },
@@ -604,6 +608,73 @@ test('location map updates preserve normalized coordinates', async () => {
   assert.deepEqual((await response.json()).mapPosition, {
     roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4,
   });
+});
+
+test('marker batches update multiple rooms atomically and preserve other location fields', async (t) => {
+  const advanced = await repository.createLocation({ name: 'Advanced', kind: 'room', parentId: null, mapId: 'advanced' });
+  const table = await repository.createLocation({ name: 'Table', kind: 'table', parentId: advanced.id });
+  const current = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+  await repository.saveLocation({ ...current, name: 'Renamed bin' });
+  const save = t.mock.method(repository, 'saveLocations');
+  const response = await call('POST', '/api/locations/markers', { markers: [
+    { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } },
+    { id: table.id, roomId: advanced.id, mapId: 'advanced', position: { x: 0.8, y: 0.1 } },
+  ] });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.updated, 2);
+  assert.equal(body.locations[0].name, 'Renamed bin');
+  assert.equal(body.locations[0].parentId, 'loc-shelf');
+  assert.deepEqual(body.locations[1].mapPosition, { roomId: advanced.id, mapId: 'advanced', x: 0.8, y: 0.1 });
+  assert.equal(save.mock.callCount(), 1);
+  assert.equal(save.mock.calls[0]?.arguments[0].length, 2);
+});
+
+test('marker removal and movement share one batch and invalidate the catalog cache', async () => {
+  const current = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+  await repository.saveLocation({ ...current, mapPosition: { roomId: 'loc-room', mapId: 'common', x: 0.1, y: 0.2 } });
+  repository = new CachedCatalogRepository(repository);
+  await call('GET', '/api/catalog');
+  const response = await call('POST', '/api/locations/markers', { markers: [
+    { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: null },
+    { id: 'loc-empty', roomId: 'loc-room', mapId: 'common', position: { x: 0, y: 1 } },
+  ] });
+  assert.equal(response.status, 200);
+  const catalog = await (await call('GET', '/api/catalog')).json() as { locations: Location[] };
+  assert.equal('mapPosition' in catalog.locations.find((location) => location.id === 'loc-bin')!, false);
+  assert.equal(catalog.locations.find((location) => location.id === 'loc-empty')?.mapPosition?.y, 1);
+});
+
+test('invalid, missing, stale, and duplicate marker changes reject the entire batch', async (t) => {
+  const original = structuredClone(await repository.getLocations());
+  const save = t.mock.method(repository, 'saveLocations');
+  const valid = { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } };
+  for (const [invalid, status] of [
+    [{ ...valid, id: 'loc-empty', position: { x: 2, y: 0.5 } }, 400],
+    [{ ...valid, id: 'missing' }, 404],
+    [{ ...valid, id: 'loc-empty', roomId: 'another-room' }, 409],
+    [{ ...valid, id: 'loc-empty', mapId: 'advanced' }, 409],
+    [{ ...valid, id: 'loc-empty', mapId: 'advanced', position: null }, 409],
+    [{ ...valid, id: 'loc-room' }, 409],
+    [valid, 400],
+  ] as const) {
+    const response = await call('POST', '/api/locations/markers', { markers: [valid, invalid] });
+    assert.equal(response.status, status);
+    assert.deepEqual(await repository.getLocations(), original);
+  }
+  assert.equal(save.mock.callCount(), 0);
+});
+
+test('marker batches are staff-only and propagate storage failure without reporting success', async () => {
+  const body = { markers: [{ id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.1, y: 0.2 } }] };
+  const anonymous = await fetch(`${baseUrl}/api/locations/markers`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal(anonymous.status, 401);
+  const original = structuredClone(await repository.getLocations());
+  repository.saveLocations = async () => { throw new Error('Storage unavailable'); };
+  assert.equal((await call('POST', '/api/locations/markers', body)).status, 500);
+  assert.deepEqual(await repository.getLocations(), original);
 });
 
 test('location map updates reject coordinates outside the image or on another room', async () => {

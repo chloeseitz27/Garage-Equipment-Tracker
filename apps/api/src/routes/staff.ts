@@ -3,17 +3,20 @@ import {
   bulkCreateItemsSchema,
   bulkRetireItemsSchema,
   bulkUpdateItemsSchema,
+  bulkUpdateMarkersSchema,
   createCategorySchema,
   createItemSchema,
   createLocationSchema,
   itemSchema,
   locationMapProblem,
   resolveFlagSchema,
+  resolveLocationMap,
   updateCategorySchema,
   updateItemSchema,
   updateLocationSchema,
   wouldCreateCycle,
   type Item,
+  type Location,
 } from '@garage/shared';
 
 import { requireStaff } from '../auth.js';
@@ -269,6 +272,38 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
       res.status(201).json(await repository.createLocation(parsed.data));
+    }),
+  );
+
+  router.post(
+    '/locations/markers',
+    asyncHandler(async (req, res) => {
+      const parsed = bulkUpdateMarkersSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid marker batch', details: parsed.error.issues });
+        return;
+      }
+      const locations = await repository.getLocations();
+      const updated: Location[] = [];
+      for (const marker of parsed.data.markers) {
+        const location = locations.find((candidate) => candidate.id === marker.id);
+        if (!location) {
+          res.status(404).json({ error: `Location no longer exists: ${marker.id}` });
+          return;
+        }
+        const mapped = resolveLocationMap(locations, location.id);
+        if (!mapped || mapped.room.id === location.id || mapped.room.id !== marker.roomId || mapped.room.mapId !== marker.mapId) {
+          res.status(409).json({ error: `${location.name}: the room or floor plan changed. Discard this marker draft and place it again.` });
+          return;
+        }
+        // Merge only marker data so a batch cannot overwrite a rename or hierarchy edit.
+        const { mapPosition: _old, ...record } = location;
+        updated.push(marker.position === null ? record : {
+          ...record, mapPosition: { roomId: marker.roomId, mapId: marker.mapId, ...marker.position },
+        });
+      }
+      await repository.saveLocations(updated);
+      res.json({ updated: updated.length, locations: updated });
     }),
   );
 

@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import type { Location } from '@garage/shared';
+import { LocationMapDialog } from './LocationMapDialog.js';
 
 export interface FilterOption {
   value: string;
@@ -15,12 +17,14 @@ interface Props {
   disabled?: boolean;
   hint?: string;
   purpose?: 'filter' | 'selection';
+  mapLocations?: Location[];
 }
 
 export function MultiSelectFilter({
-  label, emptyLabel, options, selected, onChange, disabled = false, hint, purpose = 'filter',
+  label, emptyLabel, options, selected, onChange, disabled = false, hint, purpose = 'filter', mapLocations,
 }: Props): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState<CSSProperties>({});
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -81,7 +85,10 @@ export function MultiSelectFilter({
   }, [expanded]);
 
   useEffect(() => {
-    if (disabled) setOpen(false);
+    if (disabled) {
+      setOpen(false);
+      setMapOpen(false);
+    }
   }, [disabled]);
 
   useEffect(() => {
@@ -144,6 +151,12 @@ export function MultiSelectFilter({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          {mapLocations ? (
+            <button type="button" className="location-map-trigger" onClick={() => {
+              setOpen(false);
+              setMapOpen(true);
+            }}>Choose on map</button>
+          ) : null}
           {hint ? <p className="hint">{hint}</p> : null}
           <div className="multi-filter-options" role="group" aria-label={`${label} options`}>
             {matches.length === 0 ? <p role="status">No matching options.</p> : matches.map((option) => (
@@ -168,6 +181,18 @@ export function MultiSelectFilter({
             <button type="button" onClick={close}>Done</button>
           </div>
         </div>, document.body,
+      ) : null}
+      {mapOpen && !disabled && mapLocations ? createPortal(
+        <LocationMapDialog
+          label={accessibleLabel}
+          locations={mapLocations}
+          excludedIds={mapLocations.filter((location) => !options.some((option) => option.value === location.id)).map((location) => location.id)}
+          selectedIds={selected}
+          multiple
+          onSelect={(id) => onChange(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id])}
+          onClose={() => { setMapOpen(false); buttonRef.current?.focus(); }}
+          onSearch={() => { setMapOpen(false); setQuery(''); setOpen(true); }}
+        />, document.body,
       ) : null}
     </>
   );

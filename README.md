@@ -144,8 +144,15 @@ location on the same map, falling back to the nearest mapped ancestor, explicitl
 labeled as an approximate location.
 
 In **Manage catalog → Locations**, select a location in the map editor, click
-its spot or enter X/Y percentages, then **Save marker**. **Remove marker** is
-also staged until saved. Unsaved marker moves warn before navigation.
+its spot or enter X/Y percentages, then switch to another location or room to
+continue placing markers. Every move and **Remove marker** stays in the preview
+until **Save all markers** saves the entire batch together. The unsaved count
+includes changes in other rooms. **Undo marker change** resets the selected
+marker; **Discard all marker changes** resets the whole batch.
+Switching markers, rooms, or their browser-history entries preserves drafts
+without a warning; leaving Locations or closing the page still warns.
+Invalid coordinates or a failed save leave all drafts available to fix and retry,
+and no partial batch is written. A batch supports up to 100 changed markers.
 Renaming a location retains its marker. A cross-room move, or changing a room's
 floor plan, makes old coordinates inactive until the location is remapped.
 Existing item and location IDs remain stable during normal edits.
@@ -211,9 +218,34 @@ rows; filtered-out items are unchecked, while sorting preserves the selection.
 The recycle bin also has a sortable deletion-date column (newest first by default).
 Headers stay visible while scrolling through the grid.
 
-Location editing fields use the same single-choice searchable picker: **Move to**, the item
-editor, bulk-entry defaults, and the parent fields for new or existing locations.
-It matches on the full breadcrumb, so
+Location editing fields use the same single-choice picker: **Move to**, the item
+editor, bulk-entry defaults, parent fields for new or existing locations, and
+**Location to place** in the marker editor. Outside the item editor, click
+**Choose on map**, switch rooms,
+and click a location marker to select it without using the dropdown. The picker
+opens on the selected location's room; switching rooms, zooming, or closing the
+map does not change the selection. **Choose entire room** selects the room itself.
+Selections remain drafts until the form's normal Save/Add action; choosing a
+location to place only changes which marker is being edited, not its coordinates.
+Parent restrictions also apply on the map, and **Top level (no parent)** remains
+available. Locations without a valid marker stay searchable with **Use search
+instead**; highlighting a mapped ancestor is explicitly approximate and does not
+reassign the selected sub-location.
+
+In the item editor, the location picker and a live map sit to the right of the
+item fields (stacked below them on smaller screens). The map follows the draft
+location, including room changes and approximate ancestor markers. Room tabs
+above the map let you browse another room without changing the item. Click a
+marker to change the draft location; location search also switches the map to
+the chosen location's room. There is no separate **Choose on map** button in the
+item editor. Changes are only saved with **Save changes** or **Create item**.
+
+The location column filter also offers **Choose on map**. Click markers to toggle
+multiple locations, including across rooms, then **Close map**. Like the existing
+filter list, changes apply immediately and include sub-locations; they never move
+items. This works in both Items and the recycle bin.
+
+The searchable picker matches on the full breadcrumb, so
 `electronics` reaches every bin under that bench, and every token must match the
 start of a word — `bin b3` and `b3 bin` find the same node, while `bin` doesn't
 drag in every Cabinet. Arrows move the highlight, Enter picks, Escape closes.
