@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
-import { EQUIPMENT_STATUSES, STOCK_LEVELS, formatLocationPath, getLocationPath, type BulkUpdateMarkersInput, type Item, type Location, type RecommendResponse } from '@garage/shared';
+import { EQUIPMENT_STATUSES, STOCK_LEVELS, formatLocationPath, getLocationPath, type Item, type Location, type RecommendResponse } from '@garage/shared';
 import { RoomMapSourcesContext } from '../room-map-source.js';
 import { pointMapSources } from './map-test-sources.js';
 
@@ -78,19 +78,7 @@ beforeEach(() => {
     assert.ok(typeof text === 'string', 'Unexpected request: tests must not access a real API');
     const body: Record<string, unknown> = JSON.parse(text);
     writes.push({ url: String(url), body });
-    if (url === '/api/locations/markers') {
-      const { markers } = body as BulkUpdateMarkersInput;
-      const updated = markers.map((marker) => {
-        const location = mapLocations.find((candidate) => candidate.id === marker.id);
-        assert.ok(location);
-        const { mapPosition: _old, ...record } = location;
-        return marker.position ? {
-          ...record, mapPosition: { roomId: marker.roomId, mapId: marker.mapId, ...marker.position },
-        } : record;
-      });
-      return jsonResponse({ updated: updated.length, locations: updated });
-    }
-    return new Response(JSON.stringify({ ...body, id: 'saved', created: 1, updated: 1, items: [] }), {
+    return new Response(JSON.stringify({ ...body, id: typeof body.id === 'string' ? body.id : 'saved', created: 1, updated: 1, items: [] }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
@@ -2727,16 +2715,16 @@ test('pending location saves lock metadata, placement, and creation targets', as
   assert.equal(unloadIsBlocked(), false);
 });
 
-test('switching creation targets asks before discarding and marker batches cannot be overwritten by a form', async () => {
+test('switching creation targets asks before discarding and highlighted-location drafts are protected', async () => {
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   let alert = '';
   window.alert = (message) => { alert = String(message); };
   await placeMarker(25, 40);
   await click(button('Add child to Common Makerspace'));
-  assert.match(alert, /Save or discard marker changes/);
-  assert.equal(host.querySelector('.location-editor'), null);
-  await click(button('Discard all marker changes'));
+  assert.match(alert, /Save or cancel the highlighted location/);
+  assert.equal(host.querySelector('[aria-label="New child location"]'), null);
+  await click(button('Cancel'));
   await click(button('Add child to Common Makerspace'));
   const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
   assert.ok(name);
@@ -2784,28 +2772,34 @@ test('location management excludes self and descendants on the map and requires 
   assert.equal(writes[1]?.body.parentId, 'table-a');
 });
 
-test('the marker editor starts with room tabs and the map, and marker clicks preserve drafts', async () => {
+test('map selection populates the location edit panel without recreating the map', async () => {
   await render(createElement(LocationMapEditor, {
     locations: markerLocations, onChanged: () => {},
   }), '/manage/locations?room=common');
   const editor = host.querySelector('.location-map-editor');
   assert.ok(editor);
-  assert.equal(editor.firstElementChild?.getAttribute('aria-label'), 'Map to edit');
-  assert.ok(editor.firstElementChild?.nextElementSibling?.classList.contains('room-map'));
+  assert.ok(editor.querySelector('nav[aria-label="Map to edit"]'));
+  const stage = editor.querySelector('.room-map-stage');
+  assert.ok(stage);
+  assert.equal(editor.querySelector('.location-fields'), null);
   assert.equal(editor.querySelector('.location-picker'), null);
   assert.equal(editor.querySelector('[role="combobox"]'), null);
   assert.doesNotMatch(editor.textContent ?? '', /Location to place|Choose on map|Choose a location, then click its spot/);
   await chooseMarkerLocation('table-a');
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
   assert.equal(markerPercent('X'), 50);
+  assert.equal(mapLocationName().value, 'Table A');
+  await click(button('Zoom in'));
   assert.equal(writes.length, 0);
   await chooseMarkerLocation('bin-a');
+  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(editor.querySelector('.room-map-stage'), stage);
+  assert.match((stage as HTMLElement).style.transform, /scale\(1.25\)/);
   await placeMarker(25, 40);
   await chooseMarkerLocation('table-a');
-  assert.equal(host.querySelector('[role="alertdialog"]'), null);
-  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  await chooseMarkerLocation('bin-a');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+  await click(button('Stay on page'));
   assert.equal(markerPercent('X'), 25);
   assert.equal(writes.length, 0);
 });
@@ -2868,7 +2862,7 @@ test('room-map image errors are visible and do not leave misleading markers', as
   assert.equal(host.querySelector('.map-marker'), null);
 });
 
-test('staff marker placement is a draft until Save and stores normalized coordinates', async () => {
+test('the highlighted location saves metadata and normalized point placement together', async () => {
   let changed = 0;
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => { changed++; },
@@ -2876,58 +2870,40 @@ test('staff marker placement is a draft until Save and stores normalized coordin
   assert.equal(host.querySelector('.location-map-editor input[type="number"]'), null);
   assert.doesNotMatch(host.querySelector('.location-map-editor')?.textContent ?? '', /X \(%\)|Y \(%\)|enter percentages/);
   assert.equal(markerPercent('X'), 50);
+  await type(mapLocationName(), 'Table A renamed');
   await placeMarker(25, 40);
   assert.equal(writes.length, 0);
   assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '25%');
-  await click(button('Save all markers'));
+  await click(button('Save'));
   assert.equal(writes.length, 1);
-  assert.equal(writes[0]?.url, '/api/locations/markers');
-  assert.deepEqual(writes[0]?.body.markers, [{
-    id: 'table-a', roomId: 'common', mapId: 'common', position: { x: 0.25, y: 0.4 },
-  }]);
+  assert.equal(writes[0]?.url, '/api/locations/table-a');
+  assert.equal(writes[0]?.body.name, 'Table A renamed');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
   assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '25%');
-  assert.equal(button('Save all markers').disabled, true);
+  assert.equal(mapLocationName().value, 'Table A renamed');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(unloadIsBlocked(), false);
   assert.equal(changed, 1);
 });
 
-test('marker batch actions and unsaved count are grouped beside remove and undo below the map', async () => {
+test('the selected location fields replace the marker action toolbar below a single map', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   const map = host.querySelector('.location-map-editor .room-map');
-  const actions = host.querySelector('.location-map-editor .map-pin-controls');
-  const batch = actions?.querySelector('.map-batch-actions');
-  assert.ok(map && actions && batch);
-  assert.ok(map.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING);
-  for (const name of ['Remove marker', 'Undo marker change']) {
-    assert.equal(button(name).parentElement, actions);
+  const fields = host.querySelector('.location-map-editor .location-fields');
+  assert.ok(map && fields);
+  assert.ok(map.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.equal(host.querySelectorAll('.location-map-editor .room-map').length, 1);
+  assert.equal(host.querySelector('.map-pin-controls, .map-batch-actions'), null);
+  for (const label of ['Remove marker', 'Undo marker change', 'Save all markers', 'Discard all marker changes']) {
+    assert.equal(host.querySelector(`button[aria-label="${label}"]`), null);
   }
-  assert.equal(batch.parentElement, actions);
-  assert.equal(batch.querySelector('[role="status"]')?.textContent, '0 unsaved marker change(s)');
-  assert.equal(button('Save all markers').parentElement, batch);
-  assert.equal(button('Discard all marker changes').parentElement, batch);
-  for (const [name, icon] of [
-    ['Remove marker', 'delete'],
-    ['Undo marker change', 'undo'],
-    ['Save all markers', 'save'],
-    ['Discard all marker changes', 'cancel'],
-  ] as const) {
-    const action = button(name);
-    assert.equal(action.textContent?.trim(), '');
-    assert.equal(action.title, name);
-    assert.ok(action.classList.contains('icon-button'));
-    assert.ok(action.querySelector(`svg.action-icon-${icon}[aria-hidden="true"][focusable="false"]`));
-  }
-  await placeMarker(25, 40);
-  assert.equal(batch.querySelector('[role="status"]')?.textContent, '1 unsaved marker change(s)');
-  await click(link('Advanced Makerspace'));
-  assert.ok(host.querySelector('[role="alertdialog"]'));
-  await click(button('Stay on page'));
-  assert.equal(button('Save all markers').parentElement, batch);
-  assert.equal(button('Save all markers').disabled, false);
-  assert.equal(button('Discard all marker changes').parentElement, batch);
-  await click(button('Discard all marker changes'));
-  assert.equal(button('Save all markers').disabled, true);
-  assert.equal(batch.querySelector('[role="status"]')?.textContent, '0 unsaved marker change(s)');
+  assert.equal(mapLocationName().value, 'Table A');
+  assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.value, 'table');
+  assert.equal(combobox('Parent location').value, 'Common Makerspace');
+  assert.ok(fields.querySelector('input[type="checkbox"]'));
+  assert.ok(button('Save').querySelector('.action-icon-save'));
+  assert.ok(button('Cancel').querySelector('.action-icon-cancel'));
 });
 
 test('room-map click placement positions the marker and keeps changes unsaved', async () => {
@@ -2949,7 +2925,7 @@ test('room-map click placement positions the marker and keeps changes unsaved', 
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
   await click(button('Stay on page'));
   assert.equal(markerPercent('X'), 25);
-  await click(button('Save all markers'));
+  await click(button('Save'));
   await click(link('Advanced Makerspace'));
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
   assert.equal(currentUrl(), '/manage/locations?room=advanced');
@@ -2985,17 +2961,26 @@ test('item detail highlights the assigned room and falls back to a mapped parent
   assert.equal(currentUrl(), '/maps?room=common&location=table-a');
 });
 
-test('removing a marker is staged until Save and sends an explicit removal', async () => {
+test('cancelling the highlighted edit restores saved placement and clears the selection', async () => {
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => {},
   }), '/manage/locations?room=common&pin=table-a');
-  await click(button('Remove marker'));
+  const stage = host.querySelector<HTMLElement>('.location-map-editor .room-map-stage');
+  assert.ok(stage);
+  await click(button('Zoom in'));
+  await type(mapLocationName(), 'Unsaved name');
+  await placeMarker(25, 40);
+  await click(button('Cancel'));
   assert.equal(writes.length, 0);
   assert.equal(host.querySelector('.map-marker.selected'), null);
-  await click(button('Save all markers'));
-  assert.deepEqual(writes[0]?.body.markers, [{ id: 'table-a', roomId: 'common', mapId: 'common', position: null }]);
-  assert.equal(host.querySelector('.map-marker.selected'), null);
-  assert.equal(button('Remove marker').disabled, true);
+  assert.equal(host.querySelector('.location-map-editor .location-fields'), null);
+  assert.equal(host.querySelector('.location-map-editor .room-map-stage'), stage);
+  assert.match(stage.style.transform, /scale\(1.25\)/);
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  await chooseMarkerLocation('table-a');
+  assert.equal(mapLocationName().value, 'Table A');
+  assert.equal(markerPercent('X'), 50);
+  assert.equal(unloadIsBlocked(), false);
 });
 
 test('failed map saves keep the click-placement draft', async () => {
@@ -3004,11 +2989,17 @@ test('failed map saves keep the click-placement draft', async () => {
     locations: mapLocations, onChanged: () => {},
   }), '/manage/locations?room=common&pin=table-a');
   await placeMarker(25, 60);
-  await click(button('Save all markers'));
+  await click(button('Save'));
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not save marker/);
   assert.equal(markerPercent('X'), 25);
-  assert.equal(button('Save all markers').disabled, false);
+  assert.equal(button('Save').disabled, false);
 });
+
+const mapLocationName = (): HTMLInputElement => {
+  const input = host.querySelector<HTMLInputElement>('.location-map-editor [aria-label="Location name"]');
+  assert.ok(input);
+  return input;
+};
 
 const markerPercent = (axis: 'X' | 'Y'): number => {
   const marker = host.querySelector<HTMLElement>('.location-map-editor .map-marker.selected');
@@ -3029,71 +3020,55 @@ const placeMarker = async (x: number, y: number, selector = '.location-map-edito
 };
 
 const chooseMarkerLocation = async (id: string): Promise<void> => {
-  const location = mapLocations.find((location) => location.id === id);
-  assert.ok(location);
   const marker = [...host.querySelectorAll<HTMLButtonElement>('.location-map-editor .map-marker')]
-    .find((marker) => marker.title === location.name);
-  assert.ok(marker, `Missing map marker ${location.name}`);
+    .find((marker) => marker.dataset.locationId === id);
+  assert.ok(marker, `Missing map marker ${id}`);
   await click(marker);
 };
 
-test('several marker drafts survive location changes within one room and save in one request', async () => {
-  let changes = 0;
-  await render(createElement(LocationMapEditor, {
-    locations: markerLocations, onChanged: () => { changes++; },
-  }), '/manage/locations?room=common&pin=table-a');
-  await placeMarker(25, 60);
-  await chooseMarkerLocation('bin-a');
-  await placeMarker(10, 20);
-  await chooseMarkerLocation('table-a');
-  assert.equal(markerPercent('X'), 25);
-  assert.equal(host.querySelectorAll('.map-marker').length, 2);
-  assert.match(host.textContent ?? '', /2 unsaved marker change/);
-  assert.equal(host.querySelector('[role="alertdialog"]'), null);
-  assert.equal(writes.length, 0);
-  await click(button('Save all markers'));
-  assert.equal(changes, 1);
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0]?.url, '/api/locations/markers');
-  assert.deepEqual(writes[0]?.body.markers, [
-    { id: 'table-a', roomId: 'common', mapId: 'common', position: { x: 0.25, y: 0.6 } },
-    { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.1, y: 0.2 } },
-  ]);
-  assert.equal(unloadIsBlocked(), false);
-  assert.equal(button('Save all markers').disabled, true);
-  await click(link('Advanced Makerspace'));
-  assert.equal(currentUrl(), '/manage/locations?room=advanced');
-  assert.equal(host.querySelector('[role="alertdialog"]'), null);
-  await click(link('Common Makerspace'));
-  await chooseMarkerLocation('table-a');
-  assert.equal(markerPercent('X'), 25);
-});
-
-test('switching rooms requires saving or explicitly discarding every pending marker change', async () => {
+test('selecting another location requires saving or explicitly discarding the current draft', async () => {
   await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
     '/manage/locations?pin=table-a');
+  await type(mapLocationName(), 'Local name');
   await placeMarker(25, 60);
-  await chooseMarkerLocation('bin-a');
+  await chooseMarkerLocation('table-a');
   assert.equal(host.querySelector('[role="alertdialog"]'), null, 'Implicit and explicit default rooms share the same draft');
-  await placeMarker(10, 20);
-  await click(link('Advanced Makerspace'));
+  await chooseMarkerLocation('bin-a');
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(mapLocationName().value, 'Local name');
+  await chooseMarkerLocation('bin-a');
+  await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.match(host.querySelector('[role="alertdialog"]')?.textContent ?? '', /before switching rooms/);
+  assert.equal(mapLocationName().value, 'Bin A');
+  await chooseMarkerLocation('table-a');
+  assert.equal(mapLocationName().value, 'Table A');
+  assert.equal(markerPercent('X'), 50);
+  assert.equal(writes.length, 0);
+});
+
+test('switching rooms protects metadata edits and cancelling the warning retains them', async () => {
+  await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  await type(mapLocationName(), 'Unsaved table');
+  await click(link('Advanced Makerspace'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.match(host.querySelector('[role="alertdialog"]')?.textContent ?? '', /switching rooms/);
   const dialog = host.querySelector('[role="alertdialog"]');
   assert.ok(dialog);
   await act(() => { dialog.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
-  assert.equal(markerPercent('X'), 10);
-  assert.match(host.textContent ?? '', /2 unsaved marker change/);
+  assert.equal(mapLocationName().value, 'Unsaved table');
   await click(link('Advanced Makerspace'));
   await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/locations?room=advanced');
-  assert.equal(button('Save all markers').disabled, true);
+  assert.equal(host.querySelector('.location-map-editor .location-fields'), null);
   assert.equal(unloadIsBlocked(), false);
   await click(link('Common Makerspace'));
   await chooseMarkerLocation('table-a');
   assert.equal(markerPercent('X'), 50);
-  assert.equal(host.querySelectorAll('.location-map-editor .map-marker').length, 2);
+  assert.equal(mapLocationName().value, 'Table A');
   assert.equal(writes.length, 0);
 });
 
@@ -3111,33 +3086,28 @@ test('room changes through browser Back and Forward cannot bypass unsaved marker
   await chooseMarkerLocation('table-3');
   await placeMarker(20, 14);
   await click(button('History back'));
-  assert.equal(currentUrl(), '/manage/locations?room=advanced');
-  assert.equal(host.querySelector('[role="alertdialog"]'), null);
-  await click(button('History back'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
-  assert.equal(currentUrl(), '/manage/locations?room=advanced');
+  assert.equal(currentUrl(), '/manage/locations?room=advanced&pin=table-3');
   await click(button('Stay on page'));
-  await chooseMarkerLocation('table-3');
   assert.equal(markerPercent('X'), 20);
   assert.equal(writes.length, 0);
 });
 
-test('browser history within the marker editor retains drafts but leaving still prompts', async () => {
+test('browser history protects dirty selection changes and leaving still prompts', async () => {
   await render(createElement(StaffPanel, { catalog: { ...mappedCatalog, locations: markerLocations }, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await placeMarker(25, 60);
   await chooseMarkerLocation('bin-a');
   await click(button('History back'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  assert.equal(markerPercent('X'), 25);
+  await placeMarker(25, 60);
   await click(button('History forward'));
-  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
   assert.equal(unloadIsBlocked(), true);
   await click(link('Items'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
   await click(button('Stay on page'));
-  await chooseMarkerLocation('table-a');
   assert.equal(markerPercent('X'), 25);
   await click(link('Items'));
   await click(button('Discard changes'));
@@ -3146,129 +3116,101 @@ test('browser history within the marker editor retains drafts but leaving still 
   assert.equal(writes.length, 0);
 });
 
-test('map clicks clamp marker positions to the floor plan before saving the batch', async () => {
+test('point location placement stays inside the floor plan when saved through the panel', async () => {
   await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   await placeMarker(120, -10);
   assert.equal(markerPercent('X'), 100);
   assert.equal(markerPercent('Y'), 0);
-  await chooseMarkerLocation('bin-a');
-  await placeMarker(80, 90);
   assert.equal(writes.length, 0);
-  await click(button('Save all markers'));
-  assert.deepEqual(writes[0]?.body.markers, [
-    { id: 'table-a', roomId: 'common', mapId: 'common', position: { x: 1, y: 0 } },
-    { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.8, y: 0.9 } },
-  ]);
+  await click(button('Save'));
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 1, y: 0 });
 });
 
-test('a failed batch preserves every draft and can be retried without placing markers again', async () => {
+test('a failed panel save preserves metadata and placement for retry', async () => {
   await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   await placeMarker(25, 60);
-  await chooseMarkerLocation('bin-a');
-  await placeMarker(80, 90);
+  await type(mapLocationName(), 'My table');
   const succeed = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Batch unavailable' }), { status: 503 });
-  await click(button('Save all markers'));
-  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Batch unavailable/);
-  assert.match(host.textContent ?? '', /2 unsaved marker change/);
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save unavailable' }), { status: 503 });
+  await click(button('Save'));
+  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Save unavailable/);
+  assert.equal(mapLocationName().value, 'My table');
   assert.equal(unloadIsBlocked(), true);
   await click(link('Advanced Makerspace'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
   await click(button('Stay on page'));
-  await chooseMarkerLocation('table-a');
   assert.equal(markerPercent('X'), 25);
   globalThis.fetch = succeed;
-  await click(button('Save all markers'));
-  assert.equal((writes[0]?.body.markers as unknown[]).length, 2);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.name, 'My table');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.6 });
   assert.equal(unloadIsBlocked(), false);
 });
 
-test('undoing or discarding marker drafts restores positions and clears leave protection', async () => {
+test('changing the selected location parent requires remapping and follows the saved room', async () => {
   await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await click(button('Remove marker'));
-  await chooseMarkerLocation('bin-a');
-  await placeMarker(20, 14);
-  await click(button('History back'));
-  assert.equal(host.querySelector('.map-marker.selected'), null);
-  await click(button('Undo marker change'));
-  assert.equal(host.querySelector<HTMLElement>('.map-marker.selected')?.style.left, '50%');
-  assert.match(host.textContent ?? '', /1 unsaved marker change/);
-  await click(button('Discard all marker changes'));
-  assert.equal(button('Save all markers').disabled, true);
-  assert.equal(unloadIsBlocked(), false);
-  await click(link('Advanced Makerspace'));
-  await chooseMarkerLocation('table-3');
-  assert.equal(markerPercent('X'), 80);
-  await placeMarker(20, 14);
-  await placeMarker(80, 14);
-  assert.equal(button('Save all markers').disabled, true);
+  await choose(combobox('Parent location'), 'table 3');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(host.querySelector('.location-map-editor img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
+  assert.equal(link('Advanced Makerspace').className, 'active');
   assert.equal(writes.length, 0);
+  await placeMarker(30, 40);
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.parentId, 'table-3');
+  assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'advanced', mapId: 'advanced', x: 0.3, y: 0.4 });
+  assert.equal(currentUrl(), '/manage/locations?room=advanced&pin=table-a');
+  assert.equal(mapLocationName().value, 'Table A');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
 });
 
-test('marker removal and placement in the same room save together', async () => {
-  await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
-    '/manage/locations?room=common&pin=table-a');
-  await click(button('Remove marker'));
-  await chooseMarkerLocation('bin-a');
-  await placeMarker(20, 14);
-  await click(button('Save all markers'));
-  assert.deepEqual(writes[0]?.body.markers, [
-    { id: 'table-a', roomId: 'common', mapId: 'common', position: null },
-    { id: 'bin-a', roomId: 'common', mapId: 'common', position: { x: 0.2, y: 0.14 } },
-  ]);
-});
-
-test('catalog refreshes retain marker drafts and stale room changes are rejected rather than remapped', async () => {
+test('catalog refreshes update pristine panel fields but do not replace unsaved metadata', async () => {
   const props = { onChanged: () => {} };
   await render(createElement(LocationMapEditor, { ...props, locations: mapLocations }),
     '/manage/locations?room=common&pin=table-a');
-  await placeMarker(25, 60);
   const renamed = mapLocations.map((location) => location.id === 'table-a' ? { ...location, name: 'Renamed table' } : location);
   await render(createElement(LocationMapEditor, { ...props, locations: renamed }));
-  assert.equal(markerPercent('X'), 25);
-  assert.equal(host.querySelector('.location-map-editor .map-marker.selected')?.getAttribute('title'), 'Renamed table');
-  const moved = renamed.map((location) => location.id === 'table-a' ? { ...location, parentId: 'advanced' } : location);
-  await render(createElement(LocationMapEditor, { ...props, locations: moved }));
-  await click(button('Save all markers'));
-  assert.equal(writes.length, 0);
-  assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Renamed table.*changed/);
-  assert.match(host.textContent ?? '', /1 unsaved marker change/);
-  await click(button('Discard all marker changes'));
+  assert.equal(mapLocationName().value, 'Renamed table');
+  await type(mapLocationName(), 'Local draft');
+  const refreshed = renamed.map((location) => location.id === 'table-a' ? { ...location, name: 'Remote name' } : location);
+  await render(createElement(LocationMapEditor, { ...props, locations: refreshed }));
+  assert.equal(mapLocationName().value, 'Local draft');
+  await click(button('Cancel'));
   assert.equal(unloadIsBlocked(), false);
+  assert.equal(writes.length, 0);
 });
 
-test('pending marker saves prevent further placement while navigation still protects the batch', async () => {
+test('pending panel saves lock placement and selection and complete a blocked navigation after saving', async () => {
   let release = (_response: Response): void => { throw new Error('Uninitialized'); };
   const pending = new Promise<Response>((resolve) => { release = resolve; });
   await render(createElement(StaffPanel, { catalog: { ...mappedCatalog, locations: markerLocations }, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   await placeMarker(25, 60);
   globalThis.fetch = () => pending;
-  await click(button('Save all markers'));
-  assert.equal(button('Saving markers...').getAttribute('aria-busy'), 'true');
-  assert.equal(button('Saving markers...').disabled, true);
+  await click(button('Save'));
+  assert.equal(button('Save').getAttribute('aria-busy'), 'true');
+  assert.equal(button('Save').disabled, true);
   await placeMarker(75, 80);
   assert.equal(markerPercent('X'), 25);
   assert.equal(markerPercent('Y'), 60);
   await chooseMarkerLocation('bin-a');
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
-  assert.equal(button('Discard all marker changes').disabled, true);
+  assert.equal(button('Cancel').matches(':disabled'), true);
   await click(link('Advanced Makerspace'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
   await click(link('Items'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
   assert.equal(button('Discard changes').disabled, true);
-  await click(button('Stay on page'));
   await act(async () => {
-    release(jsonResponse({ updated: 1, locations: [{
+    release(jsonResponse({
       ...mapLocations[2], mapPosition: { roomId: 'common', mapId: 'common', x: 0.25, y: 0.6 },
-    }] }));
+    }));
     await pending;
   });
-  assert.equal(markerPercent('X'), 25);
+  assert.equal(currentUrl(), '/manage/items');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
   assert.equal(unloadIsBlocked(), false);
 });
 

@@ -154,8 +154,8 @@ into ordinary shapes and SVG transform attributes. Invalid XML, duplicate
 location IDs, or unsupported region geometry produces a visible map error
 instead of silently using misaligned hit targets.
 
-SVG-linked locations are read-only in the point-marker editor: edit the SVG to
-change their geometry. Existing database coordinates are retained for
+SVG-linked geometry is read-only in the location editor: edit the SVG to change
+its outline or position. Location metadata remains editable. Existing database coordinates are retained for
 compatibility but ignored while a matching SVG shape exists. If the SVG link
 is removed, a valid stored point can be used as a fallback; no catalog record
 is deleted by editing an SVG.
@@ -189,25 +189,21 @@ see its active items (including sub-locations). Item details highlight their
 location on the same map, falling back to the nearest mapped ancestor, explicitly
 labeled as an approximate location.
 
-In **Manage catalog → Locations**, point-only locations can still be moved:
-click a marker to select its location, click
-its spot on the map, then switch to another location in the same room to
-continue placing markers. Every move and **Remove marker** stays in the preview
-until **Save all markers** saves the entire batch together. The unsaved count
-tracks the current draft batch. **Undo marker change** resets the selected
-marker; **Discard all marker changes** resets the whole batch.
-The map section starts with room tabs and the map, without a separate location
-picker or instructions. Use a location's edit form in the tree to place an
-existing location that has neither a marker nor a linked SVG shape.
-These actions use trash, undo, save, and X icons with tooltips and accessible
-labels. Remove/undo stay on the left below the map; save/discard and the unsaved
-count sit on the right.
-Switching markers within the same room preserves drafts without a warning.
-Switching rooms (including browser Back/Forward) or leaving Locations prompts
-you to stay or discard the batch. Save or explicitly discard changes before
-switching rooms; closing the page also warns.
-A failed save leaves all drafts available to fix and retry,
-and no partial batch is written. A batch supports up to 100 changed markers.
+In **Manage catalog → Locations**, clicking a shape or point opens that
+location's edit panel directly below the same map. Edit its name, type, parent,
+and staff-only setting there. **Save** becomes available when the draft changes;
+**Cancel** discards the draft and clears the highlight. The old marker
+save/discard/delete/undo toolbar and batch count are no longer shown.
+Point-only locations can be repositioned by clicking empty space in the main
+map; their metadata and point are saved together. SVG-linked shapes continue
+to follow the SVG rather than accepting point edits.
+
+Selecting a different location, switching rooms, browser Back/Forward, or
+leaving the page prompts when there are unsaved edits. Failed saves preserve
+the draft for retry. Selection and cancellation keep the current map zoom.
+The map section has room tabs and the map, without a separate location picker.
+Use the tree's edit form to place an existing location that has no marker or
+SVG shape, or to place a point directly on a drawn surface.
 Renaming a location retains its marker. A cross-room move, or changing a room's
 floor plan, makes old coordinates inactive until the location is remapped.
 Existing item and location IDs remain stable during normal edits.
@@ -270,9 +266,10 @@ An inherited ancestor highlight does not
 count. Moving a location to another mapped room clears its old placement and
 requires a new one. Top-level rooms and children of unmapped rooms, including
 staff-only storage, do not require a marker. Metadata and placement are saved
-together; no temporary location is created first. Save or discard any marker
-batch before opening a location form, and finish that form before editing the
-saved markers again. Unsaved forms also protect room switches and navigation.
+together; no temporary location is created first. Save or cancel the highlighted
+location's draft before opening another tree form. While a tree form is open,
+the main map stays visible without displaying a second editable panel.
+Unsaved forms also protect room switches and navigation.
 
 Each item belongs to **one or more categories**. In the item editor, open
 **Categories** and toggle every applicable category; all selected names remain

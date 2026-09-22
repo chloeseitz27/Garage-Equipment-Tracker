@@ -190,14 +190,20 @@ copy the SVG assets into `@garage/shared/dist/maps` as a deployment fallback, so
 the same shape IDs remain available when source folders are not shipped.
 Development reads the current source files, not a stale generated list.
 
-Staff stage point-marker positions by clicking the map, without numeric coordinate fields, and save via
-the authenticated `POST /api/locations/markers` API. The editor keeps one draft
-per location across pin URL changes within the same room, with a single
-**Save all markers** action. Room changes, including Back/Forward, are blocked
-until the user saves or explicitly discards the draft batch. Discarding before
-a room switch clears in-memory drafts even though the editor remains mounted;
-leaving the location editor also retains unsaved-change protection.
-The batch accepts up to 100 distinct `{ id, roomId, mapId, position }` records,
+The management map renders the shared `LocationEditor` below the highlighted
+location rather than a point-marker toolbar. One persistent map sits above the
+fields, retaining zoom across selection changes. Changes to name, type, parent,
+staff-only access, and any point placement save together through
+`PUT /api/locations/:id`. Save is disabled for a pristine draft; Cancel resets
+the draft and clears the selection. Room and pin URL changes, including
+Back/Forward, are blocked until edits are saved or explicitly discarded.
+Failed saves retain the draft, and pending saves lock selection and form
+actions. Metadata/parent edits preview on the same map; successful moves follow
+the saved room. Tree forms and the map panel do not edit simultaneously.
+
+The legacy `POST /api/locations/markers` API remains available for compatibility,
+but is no longer driven by a UI toolbar. It accepts up to 100 distinct
+`{ id, roomId, mapId, position }` records,
 where `position` is normalized `{ x, y }` or `null` to remove a marker.
 All references and room/plan identities are validated before writing, and only
 marker data is merged into existing records. SVG-linked locations reject point
@@ -216,9 +222,9 @@ matching that room and map version, or its own linked SVG shape. Ancestor
 markers/shapes do not satisfy this rule. Shape-linked metadata edits need no
 point, and their geometry cannot be repositioned through the location form.
 Root locations and children of unmapped rooms are exempt. Cross-room edits
-require remapping; failed saves retain the form. Location forms and standalone
-marker batches are mutually exclusive editing modes and share one navigation
-guard. Marker-removal batches remain supported separately.
+require remapping; failed saves retain the form. Tree forms and
+the selected map panel are mutually exclusive editing modes and share one navigation
+guard. The legacy marker-removal API remains supported separately.
 
 Visitor map URLs preserve the
 selected room and location. Seed data contains two mapped rooms, their labeled

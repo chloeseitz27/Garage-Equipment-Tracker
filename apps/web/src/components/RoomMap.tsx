@@ -272,6 +272,7 @@ export function RoomMap({
               return onSelect ? (
                 <button
                   key={location.id}
+                  data-location-id={location.id}
                   type="button"
                   className={className}
                   style={style}
@@ -286,6 +287,7 @@ export function RoomMap({
               ) : (
                 <Link
                   key={location.id}
+                  data-location-id={location.id}
                   className={className}
                   style={style}
                   to={roomMapUrl(room.id, location.id)}

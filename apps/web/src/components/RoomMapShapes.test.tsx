@@ -51,7 +51,7 @@ beforeEach(() => {
     assert.ok(options?.body, `Unexpected request ${url}`);
     const body = JSON.parse(String(options.body));
     writes.push({ url: String(url), body });
-    return Response.json({ ...body, id: 'saved' });
+    return Response.json({ ...body, id: typeof body.id === 'string' ? body.id : 'saved' });
   };
 });
 afterEach(async () => {
@@ -190,14 +190,36 @@ test('SVG content is never injected as executable DOM', async () => {
   assert.equal(region().querySelector('rect')?.attributes.length, 6);
 });
 
-test('the point-marker editor cannot override an SVG-linked shape', async () => {
+test('the selected SVG location has an edit panel instead of marker controls', async () => {
   await render(createElement(LocationMapEditor, { locations, onChanged: () => {} }), parseSvgMap(source()),
     '/manage/locations?room=room&pin=table');
-  assert.equal(button('Remove marker').disabled, true);
-  assert.equal(button('Save all markers').disabled, true);
+  assert.equal(host.querySelector('button[aria-label="Remove marker"]'), null);
+  assert.equal(host.querySelector('button[aria-label="Save all markers"]'), null);
+  assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Location name"]')?.value, 'Table A');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(host.querySelectorAll('.room-map').length, 1);
+  const map = host.querySelector('.room-map'), fields = host.querySelector('.location-fields');
+  assert.ok(map && fields);
+  assert.ok(map.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(host.querySelector('.room-map-stage')?.classList.contains('placing'), false);
-  assert.match(host.textContent ?? '', /SVG-linked shape/);
+  assert.match(host.textContent ?? '', /follows its SVG shape/);
   assert.equal(writes.length, 0);
+  const input = host.querySelector<HTMLInputElement>('[aria-label="Location name"]');
+  assert.ok(input);
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  assert.ok(setter);
+  await act(() => {
+    setter.call(input, 'Updated table');
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
+  assert.equal(writes[0]?.url, '/api/locations/table');
+  assert.equal(writes[0]?.body.name, 'Updated table');
+  assert.deepEqual(writes[0]?.body.mapPosition, locations[1]?.mapPosition);
+  assert.equal(input.value, 'Updated table');
+  assert.equal(button('Save').disabled, true);
+  assert.equal(region().getAttribute('aria-label'), 'Updated table');
 });
 
 test('metadata editing accepts a linked SVG shape without requiring a point marker', async () => {

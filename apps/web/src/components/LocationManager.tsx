@@ -22,7 +22,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
-  const [markerDirty, setMarkerDirty] = useState(false);
+  const [mapEditDirty, setMapEditDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useCatalogDraft(editor !== null);
 
@@ -37,8 +37,8 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
   };
   const openEditor = (target: EditorTarget): void => {
     if (editorBusy || (editor && targetKey(editor) === targetKey(target))) return;
-    if (markerDirty) {
-      window.alert('Save or discard marker changes before adding or editing a location.');
+    if (mapEditDirty) {
+      window.alert('Save or cancel the highlighted location changes before adding or editing another location.');
       return;
     }
     if (editorDirty && !window.confirm('Discard the unsaved location changes and open another location?')) return;
@@ -138,8 +138,8 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
                         held > 0 ? `${held} item(s), including any in the recycle bin. Move them to another location first.` : '',
                       ].filter(Boolean);
                       window.alert(`${title}\n\nThis location still contains:\n${reasons.join('\n')}`);
-                    } else if (editor || markerDirty) {
-                      window.alert(`${title}\n\nSave or discard your location and marker edits before deleting locations.`);
+                    } else if (editor || mapEditDirty) {
+                      window.alert(`${title}\n\nSave or cancel your location edits before deleting locations.`);
                     } else void remove(location);
                   }}
                 ><ActionIcon name="delete" /></button>
@@ -163,7 +163,7 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
       <LocationMapEditor
         locations={locations} onChanged={onChanged} disabled={editor !== null}
         formDirty={editorDirty} formBusy={editorBusy} onDiscardForm={closeEditor}
-        onDraftChange={setMarkerDirty}
+        onDraftChange={setMapEditDirty}
       />
       <ul className="tree">{getChildLocations(locations, null).map((root) => renderNode(root, 0))}</ul>
       <div className="add-row">
