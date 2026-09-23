@@ -24,12 +24,12 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="1.8372093"
-     inkscape:cx="666.5"
-     inkscape:cy="210.10127"
-     inkscape:window-width="3360"
-     inkscape:window-height="1766"
-     inkscape:window-x="695"
+     inkscape:zoom="3.6744186"
+     inkscape:cx="1019.8892"
+     inkscape:cy="351.62025"
+     inkscape:window-width="4480"
+     inkscape:window-height="2396"
+     inkscape:window-x="-12"
      inkscape:window-y="-12"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg23" />
@@ -58,8 +58,9 @@
   <!-- Preserve the source coordinate system; catalog markers follow the transformed surface geometry. -->
   <path
      class="floor"
-     d="M 163.08861,22 H 1245.0886 v 93 h 70 v 292 h -94 v 79 H 23.088608 V 134 H 163.08861 Z"
-     id="path1" />
+     d="M 23.088608,22 H 1315.0886 V 486 H 23.088608 V 134 Z"
+     id="path1"
+     sodipodi:nodetypes="cccccc" />
   <path
      d="M293 496H934M1145 496H1220"
      stroke="#53a5bd"
@@ -101,8 +102,8 @@
   <rect
      id="advanced-left-wall"
      class="wall"
-     x="22"
-     y="22"
+     x="25.265823"
+     y="23.905064"
      width="140"
      height="112" />
   <rect
@@ -114,7 +115,8 @@
      height="92.868935" />
   <g
      data-location-id="loc-common-toolbench"
-     id="g7">
+     id="g7"
+     transform="translate(2.3132911,0.95253165)">
     <rect
        class="cabinet"
        x="166.00822"
@@ -133,7 +135,7 @@
   <g
      data-location-id="loc-advanced-fire-cabinet"
      id="g10"
-     transform="translate(0,-46.810127)">
+     transform="translate(1.9050633,-45.177216)">
     <rect
        class="cabinet"
        x="24"
@@ -142,11 +144,6 @@
        height="140"
        rx="7"
        id="rect7" />
-    <path
-       d="M 24,191 V 317"
-       stroke="#876833"
-       stroke-width="4"
-       id="path7" />
     <path
        d="m 66,198 v 112 m -5,-69 v 26"
        stroke="#aa8750"
@@ -175,7 +172,8 @@
   <g
      data-location-id="loc-advanced-workbench-16"
      data-storage-letter="S"
-     id="g11">
+     id="g11"
+     transform="translate(-2.5017259,1.3470832)">
     <rect
        class="surface"
        x="383"
@@ -194,7 +192,7 @@
      data-location-id="loc-advanced-table-19"
      data-storage-letter="T"
      id="g12"
-     transform="matrix(0.96003356,0,0,1.0004389,28.316235,-0.03050662)">
+     transform="matrix(0.96003356,0,0,1.0004389,27.931354,1.509017)">
     <rect
        class="surface"
        x="709"
@@ -213,7 +211,7 @@
      data-location-id="loc-advanced-table-3"
      data-storage-letter="U"
      id="g13"
-     transform="translate(-9.7974684)">
+     transform="translate(-9.4125875,1.5395236)">
     <rect
        class="surface"
        x="994"
@@ -231,7 +229,8 @@
   <g
      data-location-id="loc-advanced-table-18"
      data-storage-letter="V"
-     id="g15">
+     id="g15"
+     transform="translate(-2.1772152,3.4018987)">
     <rect
        class="surface"
        x="1219.9243"
@@ -279,7 +278,8 @@
   <g
      data-location-id="loc-advanced-table-20"
      data-storage-letter="Y"
-     id="g19">
+     id="g19"
+     transform="translate(3.1297468,-0.2721519)">
     <rect
        class="surface"
        x="-483.09995"
@@ -306,7 +306,7 @@
      data-location-id="loc-table-u"
      data-storage-letter="X"
      id="g19-8"
-     transform="translate(183.32256,-0.42426392)">
+     transform="translate(185.77193,-0.42426392)">
     <rect
        class="surface"
        x="-483.0159"
@@ -335,7 +335,7 @@
      data-location-id="loc-advanced-table-11"
      data-storage-letter="W"
      id="g20"
-     transform="matrix(0.86853954,0,0,0.90974585,362.94334,20.025244)">
+     transform="matrix(0.86853954,0,0,0.90974585,369.33891,20.025244)">
     <rect
        class="surface"
        x="-508.85764"
@@ -364,7 +364,7 @@
   <g
      data-location-id="loc-advanced-laser"
      id="g21"
-     transform="translate(-148.59494,-4.8987342)">
+     transform="translate(-140.56646,-3.2658228)">
     <rect
        class="station"
        x="578.00562"
@@ -381,12 +381,13 @@
   </g>
   <g
      data-location-id="loc-advanced-laptop-cart"
-     id="g22">
+     id="g22"
+     transform="translate(-6.9398734,-3.2658228)">
     <rect
        class="surface"
        x="785.10999"
        y="406.86948"
-       width="103.78001"
+       width="103.78"
        height="79.020523"
        rx="7.983078"
        id="rect21" />
@@ -407,8 +408,8 @@
   </g>
   <rect
      class="landmark"
-     x="1220.2639"
-     y="358.82089"
+     x="1218.7671"
+     y="355.96329"
      width="93.472153"
      height="126.91519"
      rx="3.9775386"
