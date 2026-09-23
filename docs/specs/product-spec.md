@@ -160,10 +160,11 @@ Rules:
 Room maps use the supplied Common Makerspace and Advanced Makerspace plans.
 Drawn locations link directly to SVG shapes by stable location ID. Selecting a
 table highlights its full shape, and SVG moves, rotations, and resizing update
-the mapping without pin repositioning. Other locations can keep point markers.
+the mapping without pin repositioning. Other room-level locations can keep point markers. Drawers, bins, shelves, and
+deeper locations do not have separate map pins; they inherit their enclosing
+table, station, desk, workbench, or cabinet.
 Selecting a map shape or marker lists active items at or beneath that location. Item
-details highlight the closest mapped location, stating when it is a parent
-rather than the exact bin. Staff can position or remove point markers with an
+details highlight that enclosing location for storage. Staff can position or remove surface point markers with an
 explicit save; SVG-linked shapes are edited in the drawing. Floor plans do not imply any tool availability or unverified item placement.
 
 Table/bench letters are unique across rooms. Common runs A-M clockwise from the

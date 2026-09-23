@@ -110,15 +110,19 @@ test('new markers must belong to the current mapped room, including inherited lo
   assert.equal(findCatalogProblems({ items: [], categories: [], locations }).length, 0);
 });
 
-test('saving a mapped child requires its own valid marker, not an ancestor marker', () => {
+test('only room-level surfaces require placement, while storage inherits its enclosing surface', () => {
   const bin = locations.find((location) => location.id === 'bin')!;
-  assert.match(locationPlacementProblem(bin, locations) ?? '', /Place this location.*Common Makerspace/);
-  assert.equal(locationPlacementProblem({
-    ...bin, mapPosition: { roomId: 'common', mapId: 'common', x: 0.2, y: 0.3 },
-  }, locations), null);
+  assert.equal(locationPlacementProblem(bin, locations), null);
+  const table = locations.find((location) => location.id === 'table')!;
+  assert.match(locationPlacementProblem({ ...table, mapPosition: undefined }, locations) ?? '', /Place this location.*Common Makerspace/);
   assert.match(locationPlacementProblem({
-    ...bin, mapPosition: { roomId: 'advanced', mapId: 'advanced', x: 0.2, y: 0.3 },
+    ...table, mapPosition: { roomId: 'advanced', mapId: 'advanced', x: 0.2, y: 0.3 },
   }, locations) ?? '', /before saving/);
+  const oldPin: Location = { ...bin, mapPosition: { roomId: 'common', mapId: 'common', x: 0.1, y: 0.2 } };
+  const legacy = locations.map((location) => location.id === bin.id ? oldPin : location);
+  assert.match(locationMapProblem(oldPin, locations) ?? '', /cannot have separate map pins/);
+  assert.equal(resolveLocationMap(legacy, bin.id)?.marker?.location.id, 'table');
+  assert.equal(roomMapMarkers(legacy, 'common').some((location) => location.id === bin.id), false);
   assert.equal(locationPlacementProblem(locations[0]!, locations), null);
   const storage: Location = { id: 'storage', name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true };
   assert.equal(locationPlacementProblem({ parentId: storage.id }, [...locations, storage]), null);

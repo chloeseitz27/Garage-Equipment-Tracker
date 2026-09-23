@@ -133,9 +133,10 @@ as source references. Both redraws retain the original coordinate system, and
 **SVG geometry is now the source of truth for drawn locations**. Clicking a
 table selects its whole surface, and selection highlights the full outline
 rather than a dot. Rectangles, paths, polygons, circles, ellipses, and nested
-SVG transforms stay aligned while zooming or panning. Locations not drawn in
-the SVG keep their point markers. Unplaced descendants can highlight their
-nearest mapped ancestor, explicitly marked as approximate.
+SVG transforms stay aligned while zooming or panning. Room-level locations not
+drawn in the SVG can use point markers. Drawers, bins, shelves, and deeper
+locations do not get their own pins: they inherit their enclosing table,
+station, desk, workbench, or cabinet's map location.
 
 Each drawn location is linked by `data-location-id="<database location id>"`.
 Keep that attribute when moving, resizing, rotating, or reshaping a table in
@@ -186,8 +187,8 @@ The Toolbox retains its original location ID after moving to Advanced Makerspace
 so linked items and sub-locations follow it.
 Open **Room maps** to switch rooms and click a shape or point marker to
 see its active items (including sub-locations). Item details highlight their
-location on the same map, falling back to the nearest mapped ancestor, explicitly
-labeled as an approximate location.
+location on the same map. For smaller storage locations, the map highlights
+their enclosing room-level location and labels that mapping as inherited.
 
 In **Manage catalog → Locations**, clicking a shape or point opens that
 location's edit panel directly below the same map. Edit its name, type, parent,
@@ -200,8 +201,8 @@ open the existing child-creation form with this location as its fixed parent.
 The tree expands the full parent path so that form is visible, and the new
 child appears in the selection panel after saving. Save or cancel parent edits
 before adding a child; selecting a child also protects unsaved changes.
-Point-only locations can be repositioned by clicking empty space in the main
-map; their metadata and point are saved together. SVG-linked shapes continue
+Point-only room-level locations can be repositioned by clicking empty space in
+the main map; their metadata and point are saved together. SVG-linked shapes continue
 to follow the SVG rather than accepting point edits.
 
 Selecting a different location, switching rooms, browser Back/Forward, or
@@ -308,14 +309,15 @@ instance. Do not run multiple API writers or edit location code fields directly
 in Cosmos while the app is writing. Moving more than 100 storage records as one
 subtree is refused to keep renumbering within a single storage transaction.
 
-In a mapped room, create/edit forms include a placement map and **Save** remains
-disabled until the location has its own valid point marker or linked SVG shape.
-For a point-only location, click the map or a spot on a drawn surface to place
-it. SVG-linked locations follow the drawing without requiring a pin.
-An inherited ancestor highlight does not
-count. Moving a location to another mapped room clears its old placement and
-requires a new one. Top-level rooms and children of unmapped rooms, including
-staff-only storage, do not require a marker. Metadata and placement are saved
+In a mapped room, room-level tables, stations, desks, workbenches, and cabinets
+require their own point marker or linked SVG shape before saving. For a point-only
+surface, click the map to place it; SVG-linked surfaces follow the drawing.
+Smaller locations only require their type and generated number. Their creation
+form has no placement map, and selecting one highlights its enclosing surface
+rather than a separate pin. Existing storage-level pins are ignored on display
+and removed from normalized reads and subsequent location writes. Surface
+locations in unmapped rooms and top-level rooms do not require placement.
+Metadata and any surface placement are saved
 together; no temporary location is created first. Save or cancel the highlighted
 location's draft before opening another tree form. While a tree form is open,
 the main map stays visible without displaying a second editable panel.
@@ -380,12 +382,12 @@ Selections remain drafts until the form's normal Save/Add action. Clicking a
 marker in the marker editor selects it without changing its coordinates.
 Parent restrictions also apply on the map, and **Top level (no parent)** remains
 available. Locations without a valid marker stay searchable with **Use search
-instead**; highlighting a mapped ancestor is explicitly approximate and does not
-reassign the selected sub-location.
+instead**. Selecting storage highlights its enclosing surface without changing
+the selected sub-location.
 
 In the item editor, the location picker and a live map sit to the right of the
 item fields (stacked below them on smaller screens). The map follows the draft
-location, including room changes and approximate ancestor markers. Room tabs
+location, including room changes and inherited surface locations. Room tabs
 above the map let you browse another room without changing the item. Click a
 marker to change the draft location; location search also switches the map to
 the chosen location's room. There is no separate **Choose on map** button in the

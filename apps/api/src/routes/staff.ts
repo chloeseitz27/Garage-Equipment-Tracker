@@ -10,6 +10,7 @@ import {
   itemSchema,
   locationMapProblem,
   locationPlacementProblem,
+  getLocationPath,
   locationHierarchyProblem,
   prepareLocation,
   MARKER_BATCH_LIMIT,
@@ -314,11 +315,18 @@ export function staffRoutes(repository: CatalogRepository): Router {
           res.status(409).json({ error: `${location.name}: the room or floor plan changed. Discard this marker draft and place it again.` });
           return;
         }
-        let shapes = svgMaps.get(marker.mapId);
-        if (!shapes) { shapes = svgLocationIds(marker.mapId); svgMaps.set(marker.mapId, shapes); }
-        if ((await shapes).has(location.id)) {
-          res.status(409).json({ error: `${location.name} is linked to an SVG shape. Edit the floor plan SVG to move or resize it.` });
+        const surface = getLocationPath(locations, location.id).length === 2;
+        if (!surface && marker.position !== null) {
+          res.status(400).json({ error: `${location.name} inherits its enclosing surface's map location and cannot have a separate pin.` });
           return;
+        }
+        if (surface) {
+          let shapes = svgMaps.get(marker.mapId);
+          if (!shapes) { shapes = svgLocationIds(marker.mapId); svgMaps.set(marker.mapId, shapes); }
+          if ((await shapes).has(location.id)) {
+            res.status(409).json({ error: `${location.name} is linked to an SVG shape. Edit the floor plan SVG to move or resize it.` });
+            return;
+          }
         }
         // Merge only marker data so a batch cannot overwrite a rename or hierarchy edit.
         const { mapPosition: _old, ...record } = location;
@@ -373,7 +381,8 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
       const room = parsed.data.parentId ? resolveLocationMap(locations, parsed.data.parentId)?.room : undefined;
-      const shapes = room?.mapId ? await svgLocationIds(room.mapId) : new Set<string>();
+      const surface = getLocationPath(locations, parsed.data.parentId ?? '').length === 1;
+      const shapes = surface && room?.mapId ? await svgLocationIds(room.mapId) : new Set<string>();
       const mapProblem = locationMapProblem(prepared.location, locations, previous) ??
         locationPlacementProblem(prepared.location, locations, shapes);
       if (mapProblem) {

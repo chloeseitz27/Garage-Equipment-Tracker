@@ -152,24 +152,36 @@ test('shape selection supplies the clicked spot or measured shape center, never 
   assert.deepEqual(points, [{ x: 0.15, y: 0.21 }, { x: 0.22, y: 0.26 }, { x: 0.22, y: 0.26 }]);
 });
 
-test('unmarked descendants highlight the nearest table shape with an approximate-location explanation', async () => {
+test('storage descendants inherit the enclosing table shape instead of receiving their own pin', async () => {
   const unpinned = locations.map((location) => location.id === 'table' ? { ...location, mapPosition: undefined } : location);
   await render(createElement(RoomMap, { room, locations: unpinned, selectedLocationId: 'bin', onSelect: () => {} }));
   assert.ok(region().classList.contains('selected'));
-  assert.match(host.textContent ?? '', /Approximate location:.*Table A/);
+  assert.match(host.textContent ?? '', /Map location inherited from Table A/);
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'point', onSelect: () => {} }));
   assert.equal(region().classList.contains('selected'), false);
   assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Standalone bin');
 });
 
-test('suppressing a caption retains approximate-location and missing-placement notices', async () => {
+test('suppressing a caption retains inherited-location and missing-placement notices', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'bin', caption: '', onSelect: () => {} }));
-  assert.match(host.querySelector('figcaption')?.textContent ?? '', /Approximate location/);
+  assert.match(host.querySelector('figcaption')?.textContent ?? '', /Map location inherited/);
   const unplaced = { id: 'unplaced', name: 'Unplaced bin', kind: 'bin' as const, parentId: room.id };
   await render(createElement(RoomMap, { room, locations: [...locations, unplaced], selectedLocationId: unplaced.id, caption: '', onSelect: () => {} }));
   assert.match(host.querySelector('figcaption')?.textContent ?? '', /no marker or linked SVG shape/);
 });
 
+test('legacy storage pins and SVG regions do not become independently selectable map locations', async () => {
+  const child: Location = { ...locations[2]!, mapPosition: { roomId: room.id, mapId: 'common', x: 0.4, y: 0.5 } };
+  const withChildShape = parseSvgMap(source().replace('</svg>',
+    '<g data-location-id="bin"><rect class="surface" x="140" y="80" width="30" height="30"/></g></svg>'));
+  await render(createElement(RoomMap, {
+    room, locations: [room, locations[1]!, child], selectedLocationId: child.id, onSelect: () => {},
+  }), withChildShape);
+  assert.equal(host.querySelector('.map-marker[data-location-id="bin"]'), null);
+  assert.equal(host.querySelector('.map-region[data-location-id="bin"]'), null);
+  assert.ok(region().classList.contains('selected'));
+  assert.match(host.textContent ?? '', /Map location inherited from Table A/);
+});
 test('shape links navigate normally, while excluded or cross-room locations are not interactive', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'table' }));
   const link = region().closest('a');

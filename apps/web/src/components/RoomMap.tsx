@@ -64,6 +64,7 @@ export function RoomMap({
   const suppressClick = useRef(false);
   const helpId = useId();
   const resolved = selectedLocationId ? resolveLocationMap(locations, selectedLocationId) : null;
+  const enclosingSurface = selectedLocationId ? getLocationPath(locations, selectedLocationId)[1] : undefined;
   const target = selectedLocationId && resolved?.room.id === room.id ? resolveMapTarget(locations, selectedLocationId, svgIds) : null;
   const highlighted = target?.location.id;
   const highlightedCode = target ? locationCodeFromPath(getLocationPath(locations, target.location.id)) : undefined;
@@ -143,7 +144,7 @@ export function RoomMap({
   const markers = roomMapMarkers(locations, room.id).filter((location) => !svgIds.has(location.id) && !excludedIds?.includes(location.id));
   const regions = source.map?.regions.flatMap((region) => {
     const location = locations.find((location) => location.id === region.locationId);
-    return location && !excludedIds?.includes(location.id) && resolveLocationMap(locations, location.id)?.room.id === room.id
+    return location && location.parentId === room.id && !excludedIds?.includes(location.id) && resolveLocationMap(locations, location.id)?.room.id === room.id
       ? [{ ...region, location }] : [];
   }) ?? [];
   const pointerPosition = (event: MouseEvent): { x: number; y: number } | undefined => {
@@ -316,10 +317,12 @@ export function RoomMap({
         <figcaption>
           {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
           {ready && target && target.location.id !== selectedLocationId ? (
-            <p className="hint">Approximate location: showing the nearest mapped location: {target.location.name}; the selected sub-location is not marked.</p>
+            <p className="hint">Map location inherited from {target.location.name}.</p>
           ) : null}
           {ready && selectedLocationId && resolved?.room.id === room.id && !target ? (
-            <p className="hint">Room shown; this location has no marker or linked SVG shape yet.</p>
+            <p className="hint">{enclosingSurface && enclosingSurface.id !== selectedLocationId
+              ? `Room shown; ${enclosingSurface.name} has not been placed on the map yet.`
+              : 'Room shown; this location has no marker or linked SVG shape yet.'}</p>
           ) : null}
         </figcaption>
       ) : null}

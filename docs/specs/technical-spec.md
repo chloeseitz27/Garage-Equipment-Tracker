@@ -170,9 +170,12 @@ SVG overlay; it never injects source scripts, event handlers, styles, or HTML
 into the document. A selected location highlights its entire SVG surface.
 Unknown, excluded, or out-of-room location IDs do not become interactive.
 
-`resolveMapTarget` walks from the selected location to its ancestors, preferring
-an SVG shape to a point at the same node. Point-only locations keep their
-normalized coordinates. `resolveLocationMap` still derives the containing room.
+`resolveMapTarget` resolves the enclosing room-level surface and prefers its
+SVG shape over its point. `resolveLocationMap` derives the containing room and
+that surface's point. Locations below the surface level never contribute their
+own pins or selectable SVG regions, even when a legacy record contains coordinates.
+Selecting storage intentionally highlights its enclosing surface, rather than
+describing it as an approximate or unplaced child location.
 `roomId` and `mapId` in point coordinates
 must both match the current room; stale positions from cross-room moves or plan
 changes are ignored, never shown on the wrong floor plan.
@@ -225,10 +228,13 @@ Location creation starts from a row's **+** (fixed parent) or the bottom **+**
 placement preview without issuing a create request. Top-level room edits omit
 the parent picker; other edits retain it and exclude self/descendants.
 `locationPlacementProblem` gates the form and authenticated location
-create/update routes: a child in a mapped room needs its own `mapPosition`
-matching that room and map version, or its own linked SVG shape. Ancestor
-markers/shapes do not satisfy this rule. Shape-linked metadata edits need no
-point, and their geometry cannot be repositioned through the location form.
+create/update routes: a room-level surface in a mapped room needs its own
+`mapPosition` matching that room/map or its own linked SVG shape. Storage
+inherits the surface and requires no placement. Storage creation has no
+placement map, and storage writes strip `mapPosition`. Legacy storage coordinates
+are also removed during identity normalization, while surface positions remain
+unchanged. The batch marker API rejects new storage pins but permits explicit
+cleanup of old pins. Shape-linked surface geometry remains SVG-owned.
 Root locations and children of unmapped rooms are exempt. Cross-room edits
 require remapping; failed saves retain the form. Tree forms and
 the selected map panel are mutually exclusive editing modes and share one navigation

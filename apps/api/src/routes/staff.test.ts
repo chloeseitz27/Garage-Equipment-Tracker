@@ -637,8 +637,8 @@ test('a bulk update with no changes is rejected', async () => {
 });
 
 test('location map updates preserve normalized coordinates', async () => {
-  const response = await call('PUT', '/api/locations/loc-bin', {
-    name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf',
+  const response = await call('PUT', '/api/locations/loc-shelf', {
+    name: 'Cabinet B', kind: 'cabinet', parentId: 'loc-room',
     mapPosition: { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 },
   });
   assert.equal(response.status, 200);
@@ -647,24 +647,44 @@ test('location map updates preserve normalized coordinates', async () => {
   });
 });
 
-test('creating or editing a child in a mapped room requires its own marker', async () => {
-  const input = { name: 'New drawer', parentId: 'loc-shelf', kind: 'drawer' };
+test('room-level surfaces still require placement in mapped rooms', async () => {
+  const input = { name: 'New cabinet', parentId: 'loc-room', kind: 'cabinet' };
   const original = structuredClone(await repository.getLocations());
   const refused = await call('POST', '/api/locations', input);
   assert.equal(refused.status, 400);
   assert.match((await refused.json()).error, /Place this location.*before saving/);
   assert.deepEqual(await repository.getLocations(), original);
-  const edited = await call('PUT', '/api/locations/loc-bin', { ...input, name: 'Renamed drawer' });
+  const edited = await call('PUT', '/api/locations/loc-empty', { ...input, name: 'Renamed cabinet' });
   assert.equal(edited.status, 400);
   const mapPosition = { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 };
   const created = await call('POST', '/api/locations', { ...input, mapPosition });
   assert.equal(created.status, 201);
-  const drawer = await created.json();
-  assert.equal(drawer.kind, 'drawer');
-  assert.deepEqual(drawer.mapPosition, mapPosition);
-  const moved = await call('PUT', '/api/locations/loc-bin', { ...input, mapPosition });
+  const cabinet = await created.json();
+  assert.equal(cabinet.kind, 'cabinet');
+  assert.deepEqual(cabinet.mapPosition, mapPosition);
+  const moved = await call('PUT', '/api/locations/loc-empty', { ...input, mapPosition });
   assert.equal(moved.status, 200);
-  assert.equal((await moved.json()).kind, 'drawer');
+  assert.equal((await moved.json()).kind, 'cabinet');
+});
+
+test('storage saves without placement and supplied legacy pins are removed', async () => {
+  const created = await call('POST', '/api/locations', { kind: 'drawer', parentId: 'loc-shelf' });
+  assert.equal(created.status, 201);
+  const drawer = await created.json() as Location;
+  assert.equal(drawer.mapPosition, undefined);
+  const legacyPin = { roomId: 'loc-room', mapId: 'common' as const, x: 0.7, y: 0.8 };
+  await repository.saveLocation({ ...drawer, mapPosition: legacyPin });
+  const catalog = await (await call('GET', '/api/catalog')).json() as { locations: Location[] };
+  assert.equal(catalog.locations.find((location) => location.id === drawer.id)?.mapPosition, undefined);
+  const edited = await call('PUT', `/api/locations/${drawer.id}`, { ...drawer, kind: 'bin', mapPosition: legacyPin });
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).mapPosition, undefined);
+  assert.equal((await repository.getLocations()).find((location) => location.id === drawer.id)?.mapPosition, undefined);
+  const forbidden = await call('POST', '/api/locations/markers', { markers: [
+    { id: drawer.id, roomId: 'loc-room', mapId: 'common', position: { x: 0.4, y: 0.5 } },
+  ] });
+  assert.equal(forbidden.status, 400);
+  assert.match((await forbidden.json()).error, /cannot have a separate pin/);
 });
 
 test('SVG-linked locations can save metadata without a pin, but cannot be moved by point-marker batches', async () => {
@@ -676,7 +696,7 @@ test('SVG-linked locations can save metadata without a pin, but cannot be moved 
   assert.equal((await response.json()).mapPosition, undefined);
   const original = structuredClone(await repository.getLocations());
   const batch = await call('POST', '/api/locations/markers', { markers: [
-    { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.2, y: 0.4 } },
+    { id: 'loc-shelf', roomId: 'loc-room', mapId: 'common', position: { x: 0.2, y: 0.4 } },
     { id: shape.id, roomId: 'loc-room', mapId: 'common', position: { x: 0.7, y: 0.8 } },
   ] });
   assert.equal(batch.status, 409);
@@ -788,12 +808,11 @@ test('legacy identity assignments persist so deleting one surface does not renum
 });
 
 test('a cross-room edit cannot reuse a stale marker even when coordinates were unchanged', async () => {
-  const original = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+  const original = { ...(await repository.getLocations()).find((location) => location.id === 'loc-empty')!, kind: 'cabinet' as const };
   const mapPosition = { roomId: 'loc-room', mapId: 'common' as const, x: 0.25, y: 0.4 };
   await repository.saveLocation({ ...original, mapPosition });
   const advanced = await repository.createLocation({ name: 'Advanced', parentId: null, kind: 'room', mapId: 'advanced' });
-  const table = await repository.createLocation({ name: 'Table Z', parentId: advanced.id, kind: 'table' });
-  const response = await call('PUT', '/api/locations/loc-bin', { ...original, parentId: table.id, mapPosition });
+  const response = await call('PUT', `/api/locations/${original.id}`, { ...original, parentId: advanced.id, mapPosition });
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /Advanced map before saving/);
   assert.equal((await repository.getLocations()).find((location) => location.id === original.id)?.parentId, original.parentId);
@@ -802,18 +821,18 @@ test('a cross-room edit cannot reuse a stale marker even when coordinates were u
 test('marker batches update multiple rooms atomically and preserve other location fields', async (t) => {
   const advanced = await repository.createLocation({ name: 'Advanced', kind: 'room', parentId: null, mapId: 'advanced' });
   const table = await repository.createLocation({ name: 'Table', kind: 'table', parentId: advanced.id });
-  const current = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
-  await repository.saveLocation({ ...current, name: 'Renamed bin' });
+  const current = (await repository.getLocations()).find((location) => location.id === 'loc-shelf')!;
+  await repository.saveLocation({ ...current, name: 'Renamed cabinet' });
   const save = t.mock.method(repository, 'saveLocations');
   const response = await call('POST', '/api/locations/markers', { markers: [
-    { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } },
+    { id: 'loc-shelf', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } },
     { id: table.id, roomId: advanced.id, mapId: 'advanced', position: { x: 0.8, y: 0.1 } },
   ] });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.updated, 2);
-  assert.equal(body.locations[0].name, 'Renamed bin');
-  assert.equal(body.locations[0].parentId, 'loc-shelf');
+  assert.equal(body.locations[0].name, 'Renamed cabinet');
+  assert.equal(body.locations[0].parentId, 'loc-room');
   assert.deepEqual(body.locations[1].mapPosition, { roomId: advanced.id, mapId: 'advanced', x: 0.8, y: 0.1 });
   assert.equal(save.mock.callCount(), 1);
   assert.equal(save.mock.calls[0]?.arguments[0].length, 2);
@@ -837,7 +856,7 @@ test('marker removal and movement share one batch and invalidate the catalog cac
 test('invalid, missing, stale, and duplicate marker changes reject the entire batch', async (t) => {
   const original = structuredClone(await repository.getLocations());
   const save = t.mock.method(repository, 'saveLocations');
-  const valid = { id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } };
+  const valid = { id: 'loc-shelf', roomId: 'loc-room', mapId: 'common', position: { x: 0.25, y: 0.4 } };
   for (const [invalid, status] of [
     [{ ...valid, id: 'loc-empty', position: { x: 2, y: 0.5 } }, 400],
     [{ ...valid, id: 'missing' }, 404],
@@ -855,7 +874,7 @@ test('invalid, missing, stale, and duplicate marker changes reject the entire ba
 });
 
 test('marker batches are staff-only and propagate storage failure without reporting success', async () => {
-  const body = { markers: [{ id: 'loc-bin', roomId: 'loc-room', mapId: 'common', position: { x: 0.1, y: 0.2 } }] };
+  const body = { markers: [{ id: 'loc-shelf', roomId: 'loc-room', mapId: 'common', position: { x: 0.1, y: 0.2 } }] };
   const anonymous = await fetch(`${baseUrl}/api/locations/markers`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
@@ -872,8 +891,8 @@ test('location map updates reject coordinates outside the image or on another ro
     { roomId: 'different-room', mapId: 'common', x: 0.2, y: 0.4 },
     { roomId: 'loc-room', mapId: 'advanced', x: 0.2, y: 0.4 },
   ]) {
-    const response = await call('PUT', '/api/locations/loc-bin', {
-      name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf', mapPosition,
+    const response = await call('PUT', '/api/locations/loc-shelf', {
+      name: 'Cabinet B', kind: 'cabinet', parentId: 'loc-room', mapPosition,
     });
     assert.equal(response.status, 400);
   }

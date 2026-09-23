@@ -74,7 +74,7 @@ test('both shipped SVG files expose every linked location through the shared geo
   }
 });
 
-test('native shapes take priority over stale pins, and unshaped descendants retain point fallback', () => {
+test('native surfaces take priority over stale pins and storage always inherits its enclosing surface', () => {
   const locations: Location[] = [
     { id: 'room', name: 'Room', parentId: null, kind: 'room', mapId: 'common' },
     { id: 'table', name: 'Table', parentId: 'room', kind: 'table',
@@ -86,7 +86,8 @@ test('native shapes take priority over stale pins, and unshaped descendants reta
   assert.equal(resolveMapTarget(locations, 'bin', ids)?.location.id, 'table');
   assert.equal(resolveMapTarget(locations, 'bin', ids)?.kind, 'shape');
   const point: Location = { ...locations[2]!, mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.3 } };
-  assert.equal(resolveMapTarget([...locations.slice(0, 2), point], 'bin', ids)?.kind, 'point');
+  assert.equal(resolveMapTarget([...locations.slice(0, 2), point], 'bin', ids)?.kind, 'shape');
+  assert.equal(resolveMapTarget([...locations.slice(0, 2), point], 'bin', new Set(['table', 'bin']))?.location.id, 'table');
   assert.equal(locationPlacementProblem({ id: 'table', parentId: 'room' }, locations, ids), null);
-  assert.match(locationPlacementProblem(locations[2]!, locations, ids) ?? '', /Place this location/);
+  assert.equal(locationPlacementProblem(locations[2]!, locations, ids), null);
 });

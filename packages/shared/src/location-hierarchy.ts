@@ -87,6 +87,7 @@ export function assignLocationIdentities(locations: Location[]): Location[] {
       numbers.add(number);
     }
     for (const location of storage) {
+      delete location.mapPosition;
       if (STORAGE_KINDS.some((kind) => kind === location.kind)) location.name = `${locationKindLabel(location.kind)} ${location.number}`;
     }
   }
@@ -143,6 +144,7 @@ export function prepareLocation(
       record.name = `${locationKindLabel(record.kind)} ${record.letter}`;
     }
   } else if (level === 'storage' && input.parentId) {
+    delete record.mapPosition;
     const sameSurface = previous && surfaceLocationId(locations, previous.id) === surfaceLocationId(locations, input.parentId);
     const moving = previous ? getDescendantLocationIds(locations, previous.id) : [id];
     let number = nextStorageNumber(locations, input.parentId, moving);
@@ -151,7 +153,8 @@ export function prepareLocation(
     if (previous && !sameSurface) {
       for (const child of locations.filter((child) => child.id !== id && moving.includes(child.id)).sort((a, b) => a.id.localeCompare(b.id))) {
         if (!Number.isSafeInteger(number)) throw new Error('The destination has exhausted its storage number range.');
-        descendants.push({ ...child, number, name: `${locationKindLabel(child.kind)} ${number++}` });
+        const { mapPosition: _oldPin, ...fields } = child;
+        descendants.push({ ...fields, number, name: `${locationKindLabel(child.kind)} ${number++}` });
       }
     }
   }

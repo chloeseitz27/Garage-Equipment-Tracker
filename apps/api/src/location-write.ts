@@ -23,7 +23,8 @@ export async function identifiedLocations(repository: CatalogRepository): Promis
   const locations = assignLocationIdentities(current);
   const changed = locations.filter((location, index) =>
     location.letter !== current[index]?.letter || location.number !== current[index]?.number ||
-    location.name !== current[index]?.name || location.kind !== current[index]?.kind);
+    location.name !== current[index]?.name || location.kind !== current[index]?.kind ||
+    location.mapPosition !== current[index]?.mapPosition);
   // Persist legacy assignments before new allocations so deletion or renaming cannot shift existing codes.
   for (let index = 0; index < changed.length; index += MARKER_BATCH_LIMIT) {
     await repository.saveLocations(changed.slice(index, index + MARKER_BATCH_LIMIT));
