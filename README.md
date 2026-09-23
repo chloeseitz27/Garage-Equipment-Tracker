@@ -313,6 +313,9 @@ staff-only storage, do not require a marker. Metadata and placement are saved
 together; no temporary location is created first. Save or cancel the highlighted
 location's draft before opening another tree form. While a tree form is open,
 the main map stays visible without displaying a second editable panel.
+The map remains selectable: choosing a location prompts before abandoning an
+unsaved tree form, including when clicking the already-highlighted parent.
+An untouched form closes immediately when you select another location.
 Unsaved forms also protect room switches and navigation.
 
 Each item belongs to **one or more categories**. In the item editor, open

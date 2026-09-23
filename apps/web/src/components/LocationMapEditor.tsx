@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { getDescendantLocationIds, resolveLocationMap, type Location } from '@garage/shared';
 import { LocationEditor } from './LocationEditor.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
@@ -7,6 +7,7 @@ import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 interface Props {
   locations: Location[];
   onChanged: (location: Location) => void;
+  /** A tree form owns editing; map selection still offers to leave that form. */
   disabled?: boolean;
   formDirty?: boolean;
   formBusy?: boolean;
@@ -19,11 +20,14 @@ export function LocationMapEditor({
   locations, onChanged, disabled = false, formDirty = false, formBusy = false, onDiscardForm, onDraftChange, onCreateChild,
 }: Props): JSX.Element {
   const [params, setParams] = useSearchParams();
+  const route = useLocation();
+  const previousRoute = useRef(route.key);
   const [savedLocations, setSavedLocations] = useState(locations);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<{ room: string; pin: string } | null>(null);
   const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
   const { blocker, markSaved } = useItemDraftGuard(dirty || formDirty, {
     allowSearchChanges: (current, next) => {
@@ -42,16 +46,30 @@ export function LocationMapEditor({
   useEffect(() => { onDraftChange?.(dirty || busy); }, [dirty, busy, onDraftChange]);
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
   useEffect(() => { setSavedLocations(locations); }, [locations]);
+  useEffect(() => {
+    if (previousRoute.current === route.key) return;
+    previousRoute.current = route.key;
+    if (disabled && !formDirty && !formBusy) onDiscardForm?.();
+  }, [route.key, disabled, formDirty, formBusy, onDiscardForm]);
 
   const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
   const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
   const choose = (id: string, targetRoom: Location): void => {
-    if (busy || disabled) return;
+    if (busy || formBusy) return;
     setNotice(null);
     // A draft can preview another room; navigation must target the saved hierarchy.
     const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
-    setParams({ room: savedRoom.id, pin: id });
+    const target = { room: savedRoom.id, pin: id };
+    if (disabled && formDirty) {
+      setPendingSelection(target);
+      return;
+    }
+    if (disabled) {
+      onDiscardForm?.();
+      markSaved();
+    }
+    setParams(target);
   };
   const clearDraft = (): void => {
     setDirty(false);
@@ -104,17 +122,23 @@ export function LocationMapEditor({
           }}
         />
       ) : <p className="muted">Assign a floor plan to a room to edit its locations on the map.</p>}
-      {blocker.state === 'blocked' ? (
+      {pendingSelection || blocker.state === 'blocked' ? (
         <UnsavedItemDialog
           subject="location"
           description="Save your location changes before selecting another location, switching rooms, or leaving, or discard them to continue."
           busy={busy || formBusy}
-          onStay={blocker.reset}
+          onStay={() => {
+            setPendingSelection(null);
+            if (blocker.state === 'blocked') blocker.reset();
+          }}
           onLeave={() => {
             if (busy || formBusy) return;
+            const target = pendingSelection;
+            setPendingSelection(null);
             clearDraft();
             onDiscardForm?.();
-            blocker.proceed();
+            if (blocker.state === 'blocked') blocker.proceed();
+            else if (target) setParams(target);
           }}
         />
       ) : null}

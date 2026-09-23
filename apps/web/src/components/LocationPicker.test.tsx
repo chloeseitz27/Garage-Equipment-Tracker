@@ -2641,7 +2641,9 @@ test('creating a child in a mapped room requires placement and saves metadata an
   assert.equal(writes.length, 0);
   const current = currentUrl();
   await chooseMarkerLocation('table-a');
-  assert.equal(currentUrl(), current, 'The saved-marker map stays inactive while the location form is open');
+  assert.equal(currentUrl(), current);
+  assert.ok(host.querySelector('[role="alertdialog"]'), 'Map selection must prompt instead of silently ignoring the click');
+  await click(button('Stay on page'));
   await placeMarker(25, 40, '.location-editor .room-map-stage');
   assert.equal(button('Save').disabled, false);
   assert.equal(host.querySelector<HTMLElement>('.location-editor .map-marker.selected')?.style.left, '25%');
@@ -2715,6 +2717,61 @@ test('unsaved child creation blocks room changes and explicit discard removes th
   assert.equal(writes.length, 0);
 });
 
+test('map clicks during child creation prompt even when the parent is already selected', async () => {
+  await render(createElement(LocationManager, { locations: markerLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  await click(button('Add child to Table A'));
+  await selectLocationType('drawer');
+  await placeMarker(25, 40, '.new-child-location .room-map-stage');
+  await chooseMarkerLocation('table-a');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  await click(button('Stay on page'));
+  assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="New location type"]')?.value, 'drawer');
+  assert.equal(host.querySelector<HTMLElement>('.new-child-location .map-marker.selected')?.style.left, '25%');
+  await chooseMarkerLocation('table-a');
+  await click(button('Discard changes'));
+  assert.equal(host.querySelector('[aria-label="New child location"]'), null);
+  assert.equal(mapLocationName().value, 'Table A');
+  await click(button('Add child to Table A'));
+  await selectLocationType('drawer');
+  await chooseMarkerLocation('bin-a');
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  await click(button('Discard changes'));
+  assert.equal(host.querySelector('[aria-label="New child location"]'), null);
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+  assert.equal(mapStorageName(), 'Bin 1');
+  assert.equal(unloadIsBlocked(), false);
+  assert.equal(writes.length, 0);
+});
+
+test('selecting a map location closes an untouched child form without a warning', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common');
+  await click(button('Add child to Common Makerspace'));
+  assert.ok(host.querySelector('[aria-label="New child location"]'));
+  await chooseMarkerLocation('table-a');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(host.querySelector('[aria-label="New child location"]'), null);
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.equal(mapLocationName().value, 'Table A');
+  assert.equal(writes.length, 0);
+});
+
+test('browser history closes a pristine tree form after an accepted location change', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
+    '/manage/locations?room=common&pin=table-a');
+  await click(link('Advanced Makerspace'));
+  await click(button('Add child to Common Makerspace'));
+  assert.ok(host.querySelector('[aria-label="New child location"]'));
+  await click(button('History back'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.equal(host.querySelector('[aria-label="New child location"]'), null);
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(mapLocationName().value, 'Table A');
+});
+
 test('failed location creation preserves fields and placement for retry', async () => {
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }));
   await click(button('Add child to Common Makerspace'));
@@ -2751,6 +2808,9 @@ test('pending location saves lock metadata, placement, and creation targets', as
   assert.equal(host.querySelector<HTMLFieldSetElement>('.location-editor fieldset')?.disabled, true);
   assert.equal(button('Cancel').matches(':disabled'), true);
   assert.equal(button('Add room').disabled, true);
+  await chooseMarkerLocation('table-a');
+  assert.equal(host.querySelector('[role="alertdialog"]'), null);
+  assert.equal(currentUrl(), '/manage/locations?room=common');
   await placeMarker(75, 80, '.location-editor .room-map-stage');
   assert.equal(host.querySelector<HTMLElement>('.location-editor .map-marker.selected')?.style.left, '25%');
   await click(link('Advanced Makerspace'));
