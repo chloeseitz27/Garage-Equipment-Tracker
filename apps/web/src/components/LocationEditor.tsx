@@ -177,7 +177,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
               else if (point) place(point);
               else if (!busy && !svgLinked) setError('Click a spot on the map to place this location.');
             }}
-            caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked ? 'SVG-linked location' : mapPanel
+            caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked ? '' : mapPanel
               ? 'Select a location, or click empty map space to place this location.'
               : 'Click to place this location. Its name, parent, and marker are saved together.'}
           />

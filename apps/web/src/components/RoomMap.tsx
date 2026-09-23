@@ -312,15 +312,17 @@ export function RoomMap({
         </div>
       </div>
       <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.</p>
-      <figcaption>
-        {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
-        {ready && target && target.location.id !== selectedLocationId ? (
-          <p className="hint">Approximate location: showing the nearest mapped location: {target.location.name}; the selected sub-location is not marked.</p>
-        ) : null}
-        {ready && selectedLocationId && resolved?.room.id === room.id && !target ? (
-          <p className="hint">Room shown; this location has no marker or linked SVG shape yet.</p>
-        ) : null}
-      </figcaption>
+      {caption !== '' || failed || (ready && selectedLocationId && resolved?.room.id === room.id && target?.location.id !== selectedLocationId) ? (
+        <figcaption>
+          {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
+          {ready && target && target.location.id !== selectedLocationId ? (
+            <p className="hint">Approximate location: showing the nearest mapped location: {target.location.name}; the selected sub-location is not marked.</p>
+          ) : null}
+          {ready && selectedLocationId && resolved?.room.id === room.id && !target ? (
+            <p className="hint">Room shown; this location has no marker or linked SVG shape yet.</p>
+          ) : null}
+        </figcaption>
+      ) : null}
     </figure>
   );
 }

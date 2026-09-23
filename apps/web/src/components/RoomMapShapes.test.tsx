@@ -162,6 +162,14 @@ test('unmarked descendants highlight the nearest table shape with an approximate
   assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Standalone bin');
 });
 
+test('suppressing a caption retains approximate-location and missing-placement notices', async () => {
+  await render(createElement(RoomMap, { room, locations, selectedLocationId: 'bin', caption: '', onSelect: () => {} }));
+  assert.match(host.querySelector('figcaption')?.textContent ?? '', /Approximate location/);
+  const unplaced = { id: 'unplaced', name: 'Unplaced bin', kind: 'bin' as const, parentId: room.id };
+  await render(createElement(RoomMap, { room, locations: [...locations, unplaced], selectedLocationId: unplaced.id, caption: '', onSelect: () => {} }));
+  assert.match(host.querySelector('figcaption')?.textContent ?? '', /no marker or linked SVG shape/);
+});
+
 test('shape links navigate normally, while excluded or cross-room locations are not interactive', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'table' }));
   const link = region().closest('a');
@@ -203,6 +211,8 @@ test('the selected SVG location has an edit panel instead of marker controls', a
   assert.ok(map.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(host.querySelector('.room-map-stage')?.classList.contains('placing'), false);
   assert.match(host.textContent ?? '', /follows its SVG shape/);
+  assert.doesNotMatch(host.textContent ?? '', /SVG-linked location/);
+  assert.equal(host.querySelector('.room-map figcaption'), null);
   assert.equal(writes.length, 0);
   const input = host.querySelector<HTMLInputElement>('[aria-label="Location name"]');
   assert.ok(input);
