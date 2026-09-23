@@ -22,6 +22,7 @@ const catalogFixture = (): CatalogResponse => ({
       mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.8 } },
     { id: 'table', name: 'Table', kind: 'table', parentId: 'room' },
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
+    { id: 'drawer', name: 'Drawer 1', kind: 'drawer', parentId: 'cabinet' },
   ],
   categories: [{ id: 'supplies', name: 'Supplies' }, { id: 'electronics', name: 'Electronics' }],
 });

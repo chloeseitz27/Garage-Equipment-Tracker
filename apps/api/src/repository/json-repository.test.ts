@@ -155,3 +155,13 @@ test('migration location IDs cannot overwrite existing JSON records', async (t) 
   await assert.rejects(repository.createLocation({ name: 'Duplicate', kind: 'room', parentId: null }, 'loc-shop'), /already exists/);
   assert.deepEqual(await repository.getLocations(), original);
 });
+
+test('drawer locations retain their type and parent through persistence and reload', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const drawer = await repository.createLocation({ name: 'Drawer 1', kind: 'drawer', parentId: 'loc-shop' });
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual((await reloaded.getLocations()).find((location) => location.id === drawer.id), drawer);
+  assert.equal(drawer.kind, 'drawer');
+});

@@ -91,7 +91,7 @@ interface Location {
   id: string;
   name: string;
   parentId: string | null;  // null = Room (root)
-  kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'bin';
+  kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'drawer' | 'bin';
   staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
   mapPosition?: {
@@ -200,6 +200,12 @@ Back/Forward, are blocked until edits are saved or explicitly discarded.
 Failed saves retain the draft, and pending saves lock selection and form
 actions. Metadata/parent edits preview on the same map; successful moves follow
 the saved room. Tree forms and the map panel do not edit simultaneously.
+The selection panel lists immediate children and offers a child-creation action.
+Creation reuses the fixed-parent tree form, expanding its full ancestor path.
+Successful location writes update the local location snapshot before the
+catalog refresh completes, so newly created children appear immediately.
+Child selection uses the saved hierarchy, not a pending parent-move preview,
+and retains the same unsaved-change guard as map selection.
 
 The legacy `POST /api/locations/markers` API remains available for compatibility,
 but is no longer driven by a UI toolbar. It accepts up to 100 distinct

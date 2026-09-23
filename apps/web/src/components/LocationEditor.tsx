@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  LOCATION_KINDS, ROOM_MAP_IDS, ROOM_MAPS, formatLocationPath, getDescendantLocationIds,
+  LOCATION_KINDS, ROOM_MAP_IDS, ROOM_MAPS, formatLocationPath, getChildLocations, getDescendantLocationIds,
   getLocationPath, isStaffOnlyLocation, locationPlacementProblem, resolveLocationMap,
   type Location, type LocationKind, type MapPosition, type RoomMapId,
 } from '@garage/shared';
@@ -23,6 +23,7 @@ interface Props {
     revision?: number;
     navigation: (room: Location) => ReactNode;
     onSelect: (id: string, room: Location) => void;
+    onCreateChild?: (location: Location) => void;
   };
 }
 
@@ -97,6 +98,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const canSave = editable && draft.name.trim() !== '' && draft.kind !== '' && parentExists && !placementProblem && !busy &&
     (rootRoom || !mapped || Boolean(source.map)) && (!mapPanel || dirty);
   const placementId = `${id}-placement`;
+  const children = location && mapPanel ? getChildLocations(locations, location.id) : [];
 
   const setParent = (nextParent: string | null): void => {
     const nextRoom = nextParent ? resolveLocationMap(locations, nextParent)?.room : undefined;
@@ -157,7 +159,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           {!mapPanel && editable ? placementHint : null}
           <RoomMap
             key={displayRoom.id} room={displayRoom} locations={preview}
-            selectedLocationId={editable ? placementProblem ? undefined : candidate.id : location?.id}
+            selectedLocationId={editable ? (!placementProblem || mapPanel ? candidate.id : undefined) : location?.id}
             onPlace={editable && mapped && !busy && !svgLinked ? place : undefined}
             onSelect={(selectedId, point) => {
               if (mapPanel) mapPanel.onSelect(selectedId, displayRoom);
@@ -165,7 +167,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
               else if (!busy && !svgLinked) setError('Click a spot on the map to place this location.');
             }}
             caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked ? 'SVG-linked location' : mapPanel
-              ? 'Select a location, or click empty map space to reposition this point.'
+              ? 'Select a location, or click empty map space to place this location.'
               : 'Click to place this location. Its name, parent, and marker are saved together.'}
           />
         </div>
@@ -243,6 +245,39 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           {mapPanel && !mapped && !rootRoom ? <p className="hint">The selected parent has no floor plan. A map marker is not required.</p> : null}
           {!parentExists ? <p className="error" role="alert">The parent location no longer exists. Cancel and choose a new parent.</p> : null}
           {error ? <p className="error" role="alert">{error}</p> : null}
+          {mapPanel && location ? (
+            <section className="location-children" aria-label="Child locations">
+              <div className="location-children-heading">
+                <h4>Child locations ({children.length})</h4>
+                {mapPanel.onCreateChild ? (
+                  <button
+                    type="button" className="icon-button"
+                    aria-label={`Add child to ${location.name}`} title={`Add child to ${location.name}`}
+                    disabled={busy} onClick={() => mapPanel.onCreateChild?.(location)}
+                  ><ActionIcon name="add" /></button>
+                ) : null}
+              </div>
+              {children.length ? (
+                <ul className="flat-list location-child-list">
+                  {children.map((child) => (
+                    <li key={child.id}>
+                      <button
+                        type="button" className="location-child-select"
+                        data-location-id={child.id}
+                        aria-label={`Edit child ${child.name}`} disabled={busy}
+                        onClick={() => mapPanel.onSelect(child.id, resolveLocationMap(locations, child.id)?.room ?? mapPanel.room)}
+                      >
+                        <span>{child.name}</span>
+                        <span className="kind">{child.kind}</span>
+                        {isStaffOnlyLocation(locations, child.id) ? <span className="kind">Staff only</span> : null}
+                        <ActionIcon name="chevron" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="hint">No child locations yet.</p>}
+            </section>
+          ) : null}
         </div>
       ) : null}
       {!mapPanel ? mapContent : null}

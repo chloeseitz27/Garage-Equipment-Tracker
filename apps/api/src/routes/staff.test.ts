@@ -648,7 +648,7 @@ test('location map updates preserve normalized coordinates', async () => {
 });
 
 test('creating or editing a child in a mapped room requires its own marker', async () => {
-  const input = { name: 'New drawer', parentId: 'loc-shelf', kind: 'bin' };
+  const input = { name: 'New drawer', parentId: 'loc-shelf', kind: 'drawer' };
   const original = structuredClone(await repository.getLocations());
   const refused = await call('POST', '/api/locations', input);
   assert.equal(refused.status, 400);
@@ -659,9 +659,12 @@ test('creating or editing a child in a mapped room requires its own marker', asy
   const mapPosition = { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 };
   const created = await call('POST', '/api/locations', { ...input, mapPosition });
   assert.equal(created.status, 201);
-  assert.deepEqual((await created.json()).mapPosition, mapPosition);
+  const drawer = await created.json();
+  assert.equal(drawer.kind, 'drawer');
+  assert.deepEqual(drawer.mapPosition, mapPosition);
   const moved = await call('PUT', '/api/locations/loc-bin', { ...input, mapPosition });
   assert.equal(moved.status, 200);
+  assert.equal((await moved.json()).kind, 'drawer');
 });
 
 test('SVG-linked locations can save metadata without a pin, but cannot be moved by point-marker batches', async () => {

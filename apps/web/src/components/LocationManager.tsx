@@ -1,5 +1,5 @@
-import { useCallback, useId, useMemo, useState } from 'react';
-import { getChildLocations, isStaffOnlyLocation, type Item, type Location } from '@garage/shared';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { getChildLocations, getLocationPath, isStaffOnlyLocation, type Item, type Location } from '@garage/shared';
 import { deleteLocation } from '../api.js';
 import { LocationEditor } from './LocationEditor.js';
 import { LocationMapEditor } from './LocationMapEditor.js';
@@ -16,8 +16,10 @@ type EditorTarget = { mode: 'edit'; id: string } | { mode: 'create'; parentId: s
 const targetKey = (target: EditorTarget): string => target.mode === 'edit'
   ? `edit:${target.id}` : target.parentId === null ? 'create-room' : `create-child:${target.parentId}`;
 
-export function LocationManager({ locations, items, onChanged }: Props): JSX.Element {
+export function LocationManager({ locations: catalogLocations, items, onChanged }: Props): JSX.Element {
   const treeId = useId();
+  const [locations, setLocations] = useState(catalogLocations);
+  useEffect(() => { setLocations(catalogLocations); }, [catalogLocations]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -46,8 +48,8 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     setEditorDirty(false);
     setError(null);
     if (target.mode === 'create' && target.parentId) {
-      const parentId = target.parentId;
-      setExpandedIds((current) => new Set([...current, parentId]));
+      const pathIds = getLocationPath(locations, target.parentId).map((location) => location.id);
+      setExpandedIds((current) => new Set([...current, ...pathIds]));
     }
   };
 
@@ -61,12 +63,20 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     setError(null);
     try {
       await deleteLocation(location.id);
+      setLocations((current) => current.filter((entry) => entry.id !== location.id));
       onChanged();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not delete the location.';
       setError(message);
       window.alert(`Cannot delete "${location.name}".\n\n${message}`);
     }
+  };
+
+  const locationSaved = (saved: Location): void => {
+    setLocations((current) => current.some((entry) => entry.id === saved.id)
+      ? current.map((entry) => entry.id === saved.id ? saved : entry)
+      : [...current, saved]);
+    onChanged();
   };
 
   const renderEditor = (location?: Location): JSX.Element | null => editor ? (
@@ -77,7 +87,10 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
       parentId={editor.mode === 'create' ? editor.parentId : location?.parentId ?? null}
       onStateChange={reportEditor}
       onCancel={closeEditor}
-      onSaved={() => { closeEditor(); onChanged(); }}
+      onSaved={(saved) => {
+        closeEditor();
+        locationSaved(saved);
+      }}
     />
   ) : null;
 
@@ -161,9 +174,10 @@ export function LocationManager({ locations, items, onChanged }: Props): JSX.Ele
     <div className="manager">
       {error ? <p className="error" role="alert">{error}</p> : null}
       <LocationMapEditor
-        locations={locations} onChanged={onChanged} disabled={editor !== null}
+        locations={locations} onChanged={locationSaved} disabled={editor !== null}
         formDirty={editorDirty} formBusy={editorBusy} onDiscardForm={closeEditor}
         onDraftChange={setMapEditDirty}
+        onCreateChild={(location) => openEditor({ mode: 'create', parentId: location.id })}
       />
       <ul className="tree">{getChildLocations(locations, null).map((root) => renderNode(root, 0))}</ul>
       <div className="add-row">

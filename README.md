@@ -194,6 +194,12 @@ location's edit panel directly below the same map. Edit its name, type, parent,
 and staff-only setting there. **Save** becomes available when the draft changes;
 **Cancel** discards the draft and clears the highlight. The old marker
 save/discard/delete/undo toolbar and batch count are no longer shown.
+**Child locations** lists the selected location's immediate children below its
+fields. Click a child to select and edit it, or use the **+** beside the list to
+open the existing child-creation form with this location as its fixed parent.
+The tree expands the full parent path so that form is visible, and the new
+child appears in the selection panel after saving. Save or cancel parent edits
+before adding a child; selecting a child also protects unsaved changes.
 Point-only locations can be repositioned by clicking empty space in the main
 map; their metadata and point are saved together. SVG-linked shapes continue
 to follow the SVG rather than accepting point edits.
@@ -255,6 +261,9 @@ Each location's **+** opens an inline form for a child of that location, without
 a parent picker. The **+** below the list creates a top-level room; there is no
 permanent creation form at the bottom. New child locations require an explicit
 **Type** selection, displayed in Title Case. Top-level room forms use **Room**.
+**Drawer** is available as its own location type; existing bins are not
+automatically reclassified. Deploy matching API and web versions before using
+new location types in a shared catalog.
 Editing retains the saved type and includes the parent picker, except for
 top-level rooms, whose parent and room type stay fixed.
 

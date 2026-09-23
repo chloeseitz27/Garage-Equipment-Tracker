@@ -6,16 +6,17 @@ import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
 interface Props {
   locations: Location[];
-  onChanged: () => void;
+  onChanged: (location: Location) => void;
   disabled?: boolean;
   formDirty?: boolean;
   formBusy?: boolean;
   onDiscardForm?: () => void;
   onDraftChange?: (dirty: boolean) => void;
+  onCreateChild?: (location: Location) => void;
 }
 
 export function LocationMapEditor({
-  locations, onChanged, disabled = false, formDirty = false, formBusy = false, onDiscardForm, onDraftChange,
+  locations, onChanged, disabled = false, formDirty = false, formBusy = false, onDiscardForm, onDraftChange, onCreateChild,
 }: Props): JSX.Element {
   const [params, setParams] = useSearchParams();
   const [savedLocations, setSavedLocations] = useState(locations);
@@ -48,7 +49,9 @@ export function LocationMapEditor({
   const choose = (id: string, targetRoom: Location): void => {
     if (busy || disabled) return;
     setNotice(null);
-    setParams({ room: targetRoom.id, pin: id });
+    // A draft can preview another room; navigation must target the saved hierarchy.
+    const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
+    setParams({ room: savedRoom.id, pin: id });
   };
   const clearDraft = (): void => {
     setDirty(false);
@@ -80,7 +83,7 @@ export function LocationMapEditor({
           location={selected}
           parentId={selected?.parentId ?? null}
           onStateChange={reportEditor}
-          mapPanel={{ room, navigation, onSelect: choose, readOnly: disabled, revision }}
+          mapPanel={{ room, navigation, onSelect: choose, onCreateChild, readOnly: disabled, revision }}
           onCancel={() => {
             clearDraft();
             setParams({ room: room.id });
@@ -97,7 +100,7 @@ export function LocationMapEditor({
             if (pendingNavigation.state === 'blocked') pendingNavigation.proceed();
             else if (!savedRoom) setParams({ room: room.id });
             else if (savedRoom.id !== room.id) setParams({ room: savedRoom.id, pin: saved.id });
-            onChanged();
+            onChanged(saved);
           }}
         />
       ) : <p className="muted">Assign a floor plan to a room to edit its locations on the map.</p>}
