@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createFlagSchema, getLocationPath, publicCatalog, type ItemDetail, type CatalogResponse } from '@garage/shared';
+import { assignLocationIdentities, createFlagSchema, getLocationPath, publicCatalog, type ItemDetail, type CatalogResponse } from '@garage/shared';
 import { isStaff } from '../auth.js';
 
 import { asyncHandler } from '../middleware.js';
@@ -19,7 +19,7 @@ export function publicRoutes(repository: CatalogRepository): Router {
         repository.getLocations(),
         repository.getCategories(),
       ]);
-      const catalog: CatalogResponse = { items, locations, categories, access: 'staff' };
+      const catalog: CatalogResponse = { items, locations: assignLocationIdentities(locations), categories, access: 'staff' };
       res.set('Cache-Control', 'private, no-store').vary('Cookie').json(isStaff(req) ? catalog : publicCatalog(catalog));
     }),
   );
@@ -33,7 +33,7 @@ export function publicRoutes(repository: CatalogRepository): Router {
         return;
       }
 
-      const locations = await repository.getLocations();
+      const locations = assignLocationIdentities(await repository.getLocations());
       const visible = isStaff(req) ? { items: [item], locations } : publicCatalog({ items: [item], locations, categories: [] });
       const visibleItem = visible.items[0]!;
       const detail: ItemDetail = { ...visibleItem, locationPath: getLocationPath(visible.locations, visibleItem.locationId) };

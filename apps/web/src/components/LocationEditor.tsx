@@ -1,7 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  LOCATION_KINDS, ROOM_MAP_IDS, ROOM_MAPS, formatLocationPath, getChildLocations, getDescendantLocationIds,
+  ROOM_MAP_IDS, ROOM_MAPS, assignLocationIdentities, childLocationKinds, formatLocationPath, getChildLocations, getDescendantLocationIds,
   getLocationPath, isStaffOnlyLocation, locationPlacementProblem, resolveLocationMap,
+  locationCodeFromPath, locationHierarchyProblem, locationKindLabel, locationLevel, prepareLocation,
   type Location, type LocationKind, type MapPosition, type RoomMapId,
 } from '@garage/shared';
 import { createLocation, updateLocation } from '../api.js';
@@ -38,7 +39,7 @@ interface LocationDraft {
 
 const toDraft = (location: Location | undefined, parentId: string | null, rootRoom: boolean): LocationDraft => ({
   name: location?.name ?? '',
-  kind: location?.kind ?? (rootRoom ? 'room' : ''),
+  kind: rootRoom ? 'room' : location?.kind ?? '',
   parentId: location?.parentId ?? parentId,
   mapId: location?.mapId ?? '',
   mapPosition: location?.mapPosition,
@@ -48,8 +49,10 @@ const toDraft = (location: Location | undefined, parentId: string | null, rootRo
 export function LocationEditor({ locations, location, parentId, onSaved, onCancel, onStateChange, mapPanel }: Props): JSX.Element {
   const id = useId();
   const editable = !mapPanel || Boolean(location && !mapPanel.readOnly);
-  const rootRoom = location ? location.parentId === null && location.kind === 'room' : !mapPanel && parentId === null;
-  const [baseline, setBaseline] = useState<LocationDraft>(() => toDraft(location, parentId, rootRoom));
+  const rootRoom = location ? location.parentId === null : !mapPanel && parentId === null;
+  const identified = useMemo(() => assignLocationIdentities(locations), [locations]);
+  const identity = location ? identified.find((entry) => entry.id === location.id) : undefined;
+  const [baseline, setBaseline] = useState<LocationDraft>(() => toDraft(identity, parentId, rootRoom));
   const [draft, setDraft] = useState(baseline);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,23 +71,27 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
     const targetChanged = previous.location?.id !== location?.id || (!location && previous.parentId !== parentId) ||
       previous.revision !== revision;
     if (!targetChanged && (dirty || busy)) return;
-    const next = toDraft(location, parentId, rootRoom);
+    const next = toDraft(identity, parentId, rootRoom);
     original.current = { location, parentId, revision };
     setBaseline(next);
     setDraft(next);
     setError(null);
-  }, [location, parentId, rootRoom, dirty, busy, revision]);
+  }, [location, parentId, rootRoom, dirty, busy, revision, identity]);
   useEffect(() => { onStateChange(dirty || busy, busy); }, [dirty, busy, onStateChange]);
   useEffect(() => () => onStateChange(false, false), [onStateChange]);
 
+  const allowedKinds = childLocationKinds(locations, draft.parentId);
+  const selectedKind = allowedKinds.includes(draft.kind as LocationKind) ? draft.kind : '';
+  const level = draft.parentId === null ? 'room' : locationLevel(locations, draft.parentId) === 'room' ? 'surface' : 'storage';
+  const previous = identity;
+  const prepared = prepareLocation({
+    ...draft, kind: selectedKind || allowedKinds[0]!, mapId: draft.mapId || undefined,
+  }, identified, location?.id ?? `new-location-${id}`, previous);
   const candidate: Location = {
+    ...prepared.location,
     id: location?.id ?? `new-location-${id}`,
-    name: draft.name.trim() || 'New location',
-    kind: draft.kind || 'bin',
-    parentId: draft.parentId,
+    name: prepared.location.name || 'New location',
     mapId: draft.kind === 'room' && draft.parentId === null ? draft.mapId || undefined : undefined,
-    mapPosition: draft.mapPosition,
-    staffOnly: draft.staffOnly,
   };
   const preview = editable ? [...locations.filter((entry) => entry.id !== candidate.id), candidate] : locations;
   const mapped = editable ? resolveLocationMap(preview, candidate.id) : null;
@@ -95,15 +102,18 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const placementProblem = locationPlacementProblem(candidate, locations, svgIds);
   const inherited = draft.parentId !== null && isStaffOnlyLocation(locations, draft.parentId);
   const parentExists = draft.parentId === null || locations.some((entry) => entry.id === draft.parentId);
-  const canSave = editable && draft.name.trim() !== '' && draft.kind !== '' && parentExists && !placementProblem && !busy &&
+  const hierarchyProblem = locationHierarchyProblem(candidate, locations);
+  const canSave = editable && (level !== 'room' || draft.name.trim() !== '') && selectedKind !== '' && parentExists &&
+    !hierarchyProblem && !placementProblem && !busy &&
     (rootRoom || !mapped || Boolean(source.map)) && (!mapPanel || dirty);
   const placementId = `${id}-placement`;
-  const children = location && mapPanel ? getChildLocations(locations, location.id) : [];
+  const children = location && mapPanel ? getChildLocations(identified, location.id) : [];
 
   const setParent = (nextParent: string | null): void => {
     const nextRoom = nextParent ? resolveLocationMap(locations, nextParent)?.room : undefined;
     setDraft((current) => ({
       ...current, parentId: nextParent,
+      kind: childLocationKinds(locations, nextParent).includes(current.kind as LocationKind) ? current.kind : '',
       mapPosition: current.mapPosition?.roomId === nextRoom?.id && current.mapPosition?.mapId === nextRoom?.mapId
         ? current.mapPosition : undefined,
     }));
@@ -120,7 +130,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const save = async (): Promise<void> => {
     if (busy) return;
     if (!canSave) {
-      setError(placementProblem ?? (!parentExists ? 'The parent location no longer exists.' : 'Name and type are required.'));
+      setError(hierarchyProblem ?? placementProblem ?? (!parentExists ? 'The parent location no longer exists.' : 'Name and type are required.'));
       return;
     }
     setBusy(true);
@@ -129,8 +139,9 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       let saved: Location;
       if (location) saved = await updateLocation(candidate);
       else {
-        const { id: _id, ...input } = candidate;
-        saved = await createLocation(input);
+        // Leave automatic defaults blank so the server allocates against the latest catalog.
+        const { id: _id, letter: _letter, number: _number, ...input } = candidate;
+        saved = await createLocation({ ...input, name: level === 'storage' ? undefined : draft.name.trim() || undefined });
       }
       if (!mounted.current) return;
       const next = toDraft(saved, saved.parentId, saved.kind === 'room' && saved.parentId === null);
@@ -186,29 +197,40 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       {editable ? (
         <div className="location-editor-fields">
           <fieldset className="location-fields" disabled={busy}>
-            <label className="location-name-field">Name
+            {level !== 'storage' ? <label className="location-name-field">Name
               <input
                 aria-label={location ? 'Location name' : 'New location name'}
                 autoFocus={!mapPanel}
-                required
+                required={level === 'room'}
                 placeholder={rootRoom ? 'Room name' : 'Location name'}
-                value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                value={draft.name || (level === 'surface' && draft.kind ? prepared.location.name : '')}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               />
-            </label>
+            </label> : <label className="location-name-field">Location
+              <output aria-label="Location name">{selectedKind ? prepared.location.name : 'Choose a type'}</output>
+            </label>}
             <label className="location-type-field">Type
               <select
                 aria-label={location ? 'Location type' : 'New location type'}
-                value={draft.kind} disabled={rootRoom} required
-                onChange={(event) => setDraft({ ...draft, kind: LOCATION_KINDS.find((kind) => kind === event.target.value) ?? '' })}
+                value={rootRoom ? 'room' : selectedKind} disabled={rootRoom} required
+                onChange={(event) => {
+                  const kind = allowedKinds.find((kind) => kind === event.target.value) ?? '';
+                  const automaticName = level === 'surface' && previous?.letter &&
+                    draft.name === `${locationKindLabel(previous.kind)} ${previous.letter}`;
+                  setDraft({ ...draft, kind, name: automaticName && kind ? `${locationKindLabel(kind)} ${previous.letter}` : draft.name });
+                }}
               >
                 <option value="" disabled>Select type...</option>
-                {LOCATION_KINDS.map((kind) => <option key={kind} value={kind}>{kind.charAt(0).toUpperCase() + kind.slice(1)}</option>)}
+                {allowedKinds.map((kind) => <option key={kind} value={kind}>{locationKindLabel(kind)}</option>)}
               </select>
             </label>
             {location && !rootRoom ? (
               <LocationPicker
-                label="Parent location" locations={locations} allowRoot value={draft.parentId} disabled={busy}
-                excludedIds={getDescendantLocationIds(locations, location.id)} onSelect={setParent}
+                label="Parent location" locations={locations} allowRoot rootSelectable={candidate.kind === 'room'}
+                value={draft.parentId} disabled={busy}
+                excludedIds={[...getDescendantLocationIds(locations, location.id),
+                  ...locations.filter((entry) => !childLocationKinds(locations, entry.id).includes(candidate.kind)).map((entry) => entry.id)]}
+                onSelect={setParent}
               />
             ) : null}
             {draft.parentId === null && draft.kind === 'room' ? (
@@ -239,12 +261,20 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                 <ActionIcon name="cancel" />
               </button>
             </div>
+            {level !== 'room' && selectedKind ? (
+              <p className="hint location-access-hint" role="status">
+                {level === 'storage' ? `${prepared.location.name} · ` : 'Location code: '}
+                <strong>{locationCodeFromPath(getLocationPath([...identified.filter((entry) => entry.id !== candidate.id), candidate], candidate.id))}</strong>
+                {!location ? ' (assigned when saved)' : ''}
+              </p>
+            ) : null}
             {inherited ? <p id={`${id}-access`} className="hint location-access-hint">Staff-only access is also required by the parent location.</p> : null}
           </fieldset>
           {mapPanel && mapped && !rootRoom ? placementHint : null}
           {mapPanel && !mapped && !rootRoom ? <p className="hint">The selected parent has no floor plan. A map marker is not required.</p> : null}
           {!parentExists ? <p className="error" role="alert">The parent location no longer exists. Cancel and choose a new parent.</p> : null}
           {error ? <p className="error" role="alert">{error}</p> : null}
+          {hierarchyProblem ? <p className="hint" role="status">{hierarchyProblem}</p> : null}
           {mapPanel && location ? (
             <section className="location-children" aria-label="Child locations">
               <div className="location-children-heading">
@@ -268,6 +298,9 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                         onClick={() => mapPanel.onSelect(child.id, resolveLocationMap(locations, child.id)?.room ?? mapPanel.room)}
                       >
                         <span>{child.name}</span>
+                        {locationCodeFromPath(getLocationPath(identified, child.id)) ? (
+                          <span className="location-code">{locationCodeFromPath(getLocationPath(identified, child.id))}</span>
+                        ) : null}
                         <span className="kind">{child.kind}</span>
                         {isStaffOnlyLocation(locations, child.id) ? <span className="kind">Staff only</span> : null}
                         <ActionIcon name="chevron" />

@@ -178,7 +178,7 @@ test('storage letters run clockwise from Common top-right and Advanced top-left'
   const allLetters: string[] = [];
   for (const { room, letters, ids } of sequences) {
     const svg = await readSvg(room);
-    const surfaces = seed.filter((l) => l.parentId === `loc-${room}-makerspace` && ['table', 'workbench'].includes(l.kind));
+    const surfaces = seed.filter((l) => l.parentId === `loc-${room}-makerspace` && ['table', 'desk', 'workbench'].includes(l.kind));
     assert.equal(surfaces.length, ids.length);
     let startAngle = 0;
     let previousAngle = -1;

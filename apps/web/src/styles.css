@@ -1186,6 +1186,12 @@ button:disabled {
   outline-offset: 4px;
 }
 
+.location-code {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .manager .location-fields > label:not(.staff-only-option) {
   flex: 1 1 9rem;
   min-width: 0;
@@ -1205,6 +1211,13 @@ button:disabled {
   flex: none;
   min-width: 0;
   height: 2.5rem;
+  font-size: 1rem;
+}
+
+.location-fields output {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
   font-size: 1rem;
 }
 

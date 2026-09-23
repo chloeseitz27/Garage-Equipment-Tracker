@@ -23,7 +23,7 @@ export function planMapSynchronization(current: Location[], seed: Location[]): M
     if (existing.parentId !== desired.parentId) {
       throw new Error(`${existing.id} has moved to a different parent; review before synchronizing its marker.`);
     }
-    const lettered = desired.kind === 'table' || desired.kind === 'workbench';
+    const lettered = desired.kind === 'table' || desired.kind === 'desk' || desired.kind === 'workbench';
     const next = locationSchema.parse({
       ...existing, name: lettered ? desired.name : existing.name, mapPosition: desired.mapPosition,
     });

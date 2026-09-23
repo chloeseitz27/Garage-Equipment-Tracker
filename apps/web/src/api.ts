@@ -1,5 +1,6 @@
 import type {
   BulkUpdateMarkersInput,
+  CreateLocationInput,
   CatalogResponse,
   Category,
   CreateFlagInput,
@@ -84,7 +85,7 @@ export const bulkRetireItems = (
 ): Promise<{ updated: number; retired: boolean; items: Item[] }> =>
   request('/api/items/bulk-retire', { method: 'POST', body: JSON.stringify({ ids, retired }) });
 
-export const createLocation = (input: Omit<Location, 'id'>): Promise<Location> =>
+export const createLocation = (input: CreateLocationInput): Promise<Location> =>
   request('/api/locations', { method: 'POST', body: JSON.stringify(input) });
 
 export const updateLocation = (location: Location): Promise<Location> =>

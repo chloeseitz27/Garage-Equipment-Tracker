@@ -173,6 +173,14 @@ the lower and left portions of the room. The six central Common tables are share
 not storage destinations; draw them without individual labels or map markers.
 Drawers use numbers appended to the surface letter, such as D2.
 
+Only rooms are top-level. Rooms contain tables, stations, desks, workbenches,
+or cabinets; those locations contain drawers, bins, or shelves. Storage may
+nest but all its numbers are unique within the enclosing room-level location.
+Room-level locations have editable names defaulted from the next available
+letter, with a separate stable letter code for custom names such as Roland.
+Storage names are generated from type and number, not entered by users.
+For example, Desk A / Drawer 3 has the short code A3.
+
 ### 5.3 Category
 
 A flat, staff-managed list used for browsing and filtering. Categories are for

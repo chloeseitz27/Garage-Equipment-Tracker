@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createContext, createElement, useContext, useState, type FormEvent, type ReactElement } from 'react';
 import type { Root } from 'react-dom/client';
-import { EQUIPMENT_STATUSES, STOCK_LEVELS, formatLocationPath, getLocationPath, type Item, type Location, type RecommendResponse } from '@garage/shared';
+import { EQUIPMENT_STATUSES, STOCK_LEVELS, assignLocationIdentities, createLocationSchema, prepareLocation, formatLocationPath, getLocationPath, type Item, type Location, type RecommendResponse } from '@garage/shared';
 import { RoomMapSourcesContext } from '../room-map-source.js';
 import { pointMapSources } from './map-test-sources.js';
 
@@ -40,7 +40,7 @@ const TestElementContext = createContext<ReactElement | null>(null);
 
 const locations: Location[] = [
   { id: 'room', name: 'Main Shop', parentId: null, kind: 'room' },
-  { id: 'bench', name: 'Electronics Bench', parentId: 'room', kind: 'zone' },
+  { id: 'bench', name: 'Electronics Bench', parentId: 'room', kind: 'station' },
   { id: 'cabinet', name: 'Cabinet B', parentId: 'bench', kind: 'shelf' },
   ...Array.from({ length: 20 }, (_, index): Location => ({
     id: `bin-${index}`,
@@ -78,6 +78,10 @@ beforeEach(() => {
     assert.ok(typeof text === 'string', 'Unexpected request: tests must not access a real API');
     const body: Record<string, unknown> = JSON.parse(text);
     writes.push({ url: String(url), body });
+    if (url === '/api/locations') {
+      const input = createLocationSchema.parse(body);
+      return jsonResponse(prepareLocation(input, assignLocationIdentities([...locations, ...mapLocations]), 'saved').location);
+    }
     return new Response(JSON.stringify({ ...body, id: typeof body.id === 'string' ? body.id : 'saved', created: 1, updated: 1, items: [] }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -308,7 +312,7 @@ test('bulk-entry location defaults are retained and used for every submitted row
   assert.equal(input.value, path('destination'));
 });
 
-test('parent selectors support null, filter self and descendants, and keep full ancestor paths', async () => {
+test('parent selectors filter self, descendants, and invalid parent levels while retaining full paths', async () => {
   await render(createElement(LocationManager, { locations, items: [item], onChanged: () => {} }));
   await click(button('Expand Main Shop'));
   await click(button('Expand Electronics Bench'));
@@ -316,18 +320,20 @@ test('parent selectors support null, filter self and descendants, and keep full 
   const input = combobox('Parent location');
   assert.equal(input.value, path('bench'));
   await focus(input);
-  assert.equal(options().length, 5); // Four ancestors/unrelated locations and top level.
+  assert.equal(options().length, 2); // Only surface parents outside the selected subtree.
   assert.equal(options().some((node) => /Cabinet B|Bin B/.test(node.textContent ?? '')), false);
   await type(input, 'electronics');
   assert.equal(options().length, 1);
   assert.match(options()[0]?.textContent ?? '', /Main Shop.*Electronics Bench/);
   await type(input, 'top');
+  assert.equal(options().length, 0);
+  await type(input, 'spare');
   await key(input, 'Enter');
-  assert.equal(input.value, 'Top level (no parent)');
+  assert.equal(input.value, path('destination'));
   assert.equal(writes.length, 0);
   await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations/cabinet');
-  assert.equal(writes[0]?.body.parentId, null);
+  assert.equal(writes[0]?.body.parentId, 'destination');
 });
 
 const selectLocationType = async (kind: string, editing = false): Promise<void> => {
@@ -350,7 +356,7 @@ test('each plus opens a child form with a fixed parent and no preselected type',
   assert.equal(select.value, '');
   assert.equal(select.selectedOptions[0]?.textContent, 'Select type...');
   assert.deepEqual([...select.options].slice(1).map((option) => option.textContent),
-    ['Room', 'Zone', 'Table', 'Workbench', 'Cabinet', 'Shelf', 'Drawer', 'Bin']);
+    ['Table', 'Station', 'Desk', 'Workbench', 'Cabinet']);
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
   assert.match(host.querySelector('.new-child-location')?.textContent ?? '', /New child of Main Shop/);
   assert.equal(locationChildren(button('Collapse Main Shop')).hidden, false);
@@ -358,16 +364,57 @@ test('each plus opens a child form with a fixed parent and no preselected type',
   assert.equal(button('Save').disabled, true);
   await click(button('Save'));
   assert.equal(writes.length, 0);
-  await selectLocationType('shelf');
+  await selectLocationType('cabinet');
   assert.equal(button('Save').disabled, false);
   assert.equal(host.querySelector('.location-editor .staff-only-option')?.textContent?.trim(), 'Staff-only');
   await click(button('Save'));
-  assert.equal(writes[0]?.body.kind, 'shelf');
+  assert.equal(writes[0]?.body.kind, 'cabinet');
   assert.equal(writes[0]?.body.parentId, 'room');
   assert.equal(host.querySelector('.location-editor'), null);
   await click(button('Add child to Main Shop'));
   assert.equal(host.querySelector<HTMLSelectElement>('select[aria-label="New location type"]')?.value, '');
   assert.equal(button('Save').disabled, true);
+});
+
+test('new surfaces suggest the next available letter but keep custom names editable', async () => {
+  await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }));
+  await click(button('Add child to Common Makerspace'));
+  await selectLocationType('desk');
+  const input = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
+  assert.ok(input);
+  assert.equal(input.value, 'Desk C');
+  await selectLocationType('station');
+  assert.equal(input.value, 'Station C');
+  await type(input, 'Roland');
+  await selectLocationType('cabinet');
+  assert.equal(input.value, 'Roland');
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /Location code: C/);
+  await placeMarker(25, 40, '.new-child-location .room-map-stage');
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.name, 'Roland');
+  assert.equal(writes[0]?.body.kind, 'cabinet');
+  assert.equal(writes[0]?.body.letter, undefined);
+});
+
+test('container forms offer only storage types and display generated names and table-wide codes', async () => {
+  const withNumbers: Location[] = [...mapLocations.map((location) => location.id === 'bin-a'
+    ? { ...location, name: 'Bin 3', number: 3 } : location), {
+    id: 'shelf-a', name: 'Shelf 2', parentId: 'table-a', kind: 'shelf', number: 2,
+  }];
+  await render(createElement(LocationManager, { locations: withNumbers, items: [], onChanged: () => {} }));
+  await click(button('Expand Common Makerspace'));
+  await click(button('Add child to Table A'));
+  const typeSelect = host.querySelector<HTMLSelectElement>('[aria-label="New location type"]');
+  assert.ok(typeSelect);
+  assert.equal(typeSelect.value, '');
+  assert.deepEqual([...typeSelect.options].slice(1).map((option) => option.textContent), ['Drawer', 'Bin', 'Shelf']);
+  assert.equal(host.querySelector('input[aria-label="New location name"]'), null);
+  await selectLocationType('drawer');
+  assert.equal(host.querySelector('output[aria-label="Location name"]')?.textContent, 'Drawer 4');
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /A4/);
+  await selectLocationType('bin');
+  assert.equal(host.querySelector('output[aria-label="Location name"]')?.textContent, 'Bin 4');
+  assert.equal(writes.length, 0);
 });
 
 test('editing keeps the stored type, while saving a new type still uses its canonical lowercase value', async () => {
@@ -376,15 +423,15 @@ test('editing keeps the stored type, while saving a new type still uses its cano
   await click(button('Rename or move Electronics Bench'));
   const select = host.querySelector<HTMLSelectElement>('select[aria-label="Location type"]');
   assert.ok(select);
-  assert.equal(select.value, 'zone');
-  assert.equal(select.selectedOptions[0]?.textContent, 'Zone');
+  assert.equal(select.value, 'station');
+  assert.equal(select.selectedOptions[0]?.textContent, 'Station');
   assert.deepEqual([...select.options].slice(1).map((option) => option.textContent),
-    ['Room', 'Zone', 'Table', 'Workbench', 'Cabinet', 'Shelf', 'Drawer', 'Bin']);
+    ['Table', 'Station', 'Desk', 'Workbench', 'Cabinet']);
   assert.equal(combobox('Parent location').value, path('room'));
   assert.equal(host.querySelector('.location-editor .staff-only-option')?.textContent?.trim(), 'Staff-only');
-  await selectLocationType('shelf', true);
+  await selectLocationType('desk', true);
   await click(button('Save'));
-  assert.equal(writes[0]?.body.kind, 'shelf');
+  assert.equal(writes[0]?.body.kind, 'desk');
 });
 
 test('the bottom plus creates a top-level room and root-room edits cannot change its parent', async () => {
@@ -413,7 +460,7 @@ test('the bottom plus creates a top-level room and root-room edits cannot change
 test('location management creates staff-only storage and retains the flag through a rename', async () => {
   const privateLocations: Location[] = [...locations, {
     id: 'closet', name: 'Storage Closet', kind: 'room', parentId: null, staffOnly: true,
-  }, { id: 'private-bin', name: 'Private bin', kind: 'bin', parentId: 'closet' }];
+  }, { id: 'private-bin', name: 'Private bin', kind: 'cabinet', parentId: 'closet' }];
   await render(createElement(LocationManager, { locations: privateLocations, items: [], onChanged: () => {} }));
   const row = [...host.querySelectorAll('.tree-node')].find((node) =>
     node.querySelector('.tree-name')?.textContent?.startsWith('Storage Closet'));
@@ -2584,9 +2631,7 @@ test('creating a child in a mapped room requires placement and saves metadata an
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => { changed++; } }));
   await click(button('Expand Common Makerspace'));
   await click(button('Add child to Table A'));
-  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
-  assert.ok(name);
-  await type(name, 'Drawer A1');
+  assert.equal(host.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('bin');
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
   assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
@@ -2603,7 +2648,7 @@ test('creating a child in a mapped room requires placement and saves metadata an
   await click(button('Save'));
   assert.equal(writes.length, 1);
   assert.equal(writes[0]?.url, '/api/locations');
-  assert.equal(writes[0]?.body.name, 'Drawer A1');
+  assert.equal(writes[0]?.body.name, undefined, 'The server generates storage names');
   assert.equal(writes[0]?.body.parentId, 'table-a');
   assert.equal(writes[0]?.body.kind, 'bin');
   assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 });
@@ -2620,10 +2665,10 @@ test('children of unmapped staff storage need no marker and retain their fixed p
   const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'Private shelf');
-  await selectLocationType('shelf');
+  await selectLocationType('cabinet');
   assert.equal(host.querySelector('.location-editor .room-map'), null);
   assert.match(host.querySelector('.location-editor')?.textContent ?? '', /A map marker is not required/);
-  assert.match(host.querySelector('.location-access-hint')?.textContent ?? '', /required by the parent/);
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /required by the parent/);
   assert.equal(button('Save').disabled, false);
   await click(button('Save'));
   assert.equal(writes[0]?.body.parentId, storage.id);
@@ -2653,7 +2698,7 @@ test('unsaved child creation blocks room changes and explicit discard removes th
   const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'Unsaved shelf');
-  await selectLocationType('shelf');
+  await selectLocationType('cabinet');
   await placeMarker(25, 40, '.location-editor .room-map-stage');
   assert.equal(unloadIsBlocked(), true);
   await click(link('Advanced Makerspace'));
@@ -2676,7 +2721,7 @@ test('failed location creation preserves fields and placement for retry', async 
   const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'New shelf');
-  await selectLocationType('shelf');
+  await selectLocationType('cabinet');
   await placeMarker(25, 40, '.location-editor .room-map-stage');
   const succeed = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save unavailable' }), { status: 503 });
@@ -2699,7 +2744,7 @@ test('pending location saves lock metadata, placement, and creation targets', as
   const name = host.querySelector<HTMLInputElement>('[aria-label="New location name"]');
   assert.ok(name);
   await type(name, 'New shelf');
-  await selectLocationType('shelf');
+  await selectLocationType('cabinet');
   await placeMarker(25, 40, '.location-editor .room-map-stage');
   globalThis.fetch = () => pending;
   await click(button('Save'));
@@ -2712,7 +2757,7 @@ test('pending location saves lock metadata, placement, and creation targets', as
   assert.equal(currentUrl(), '/manage/locations?room=common');
   await act(async () => {
     finish(jsonResponse({
-      id: 'new-shelf', name: 'New shelf', parentId: 'common', kind: 'shelf',
+      id: 'new-shelf', name: 'New shelf', parentId: 'common', kind: 'cabinet',
       mapPosition: { roomId: 'common', mapId: 'common', x: 0.25, y: 0.4 },
     }));
     await pending;
@@ -2755,21 +2800,19 @@ test('location management excludes self and descendants on the map and requires 
   await click(button('Parent location: choose on map'));
   assert.equal(mapDialog().querySelector('.map-marker'), null);
   await click(panelButton(mapDialog(), 'Advanced Makerspace'));
-  await click(pickerMarker('Table 3'));
-  assert.equal(combobox('Parent location').value, 'Advanced Makerspace → Table 3');
+  await click(panelButton(mapDialog(), 'Choose entire room: Advanced Makerspace'));
+  assert.equal(combobox('Parent location').value, 'Advanced Makerspace');
   assert.equal(writes.length, 0);
   assert.equal(button('Save').disabled, true);
   assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
   await placeMarker(30, 40, '.location-editor .room-map-stage');
   await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations/table-a');
-  assert.equal(writes[0]?.body.parentId, 'table-3');
+  assert.equal(writes[0]?.body.parentId, 'advanced');
   assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'advanced', mapId: 'advanced', x: 0.3, y: 0.4 });
   await click(button('Add child to Table A'));
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
-  const name = host.querySelector<HTMLInputElement>('input[aria-label="New location name"]');
-  assert.ok(name);
-  await type(name, 'New drawer');
+  assert.equal(host.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('bin');
   assert.equal(button('Save').disabled, true);
   await placeMarker(25, 40, '.location-editor .room-map-stage');
@@ -2798,7 +2841,7 @@ test('map selection populates the location edit panel without recreating the map
   await click(button('Zoom in'));
   assert.equal(writes.length, 0);
   await chooseMarkerLocation('bin-a');
-  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(mapStorageName(), 'Bin 1');
   assert.equal(editor.querySelector('.room-map-stage'), stage);
   assert.match((stage as HTMLElement).style.transform, /scale\(1.25\)/);
   await placeMarker(25, 40);
@@ -2927,9 +2970,9 @@ test('the selection panel lists direct children and opens an unplaced child for 
     ['bin-a', 'bin-b']);
   assert.match(children.querySelector('[data-location-id="bin-b"]')?.textContent ?? '', /Staff only/);
   assert.doesNotMatch(children.textContent ?? '', /Inner drawer|Table 3/);
-  await click(button('Edit child Bin A'));
+  await click(button('Edit child Bin 1'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(mapStorageName(), 'Bin 1');
   assert.match(combobox('Parent location').value, /Table A/);
   assert.equal(host.querySelector('.location-map-editor .map-marker.selected')?.getAttribute('data-location-id'), 'table-a');
   assert.match(host.querySelector('.location-map-editor')?.textContent ?? '', /Approximate location/);
@@ -2954,9 +2997,7 @@ test('the selection-panel plus opens a visible child form with a fixed parent an
   assert.equal(editor.closest('ul[hidden]'), null, 'All ancestors must expand for a child created from the map panel');
   assert.match(editor.textContent ?? '', /New child of Common Makerspace.*Table A/);
   assert.equal(editor.querySelector('[role="combobox"]'), null);
-  const name = editor.querySelector<HTMLInputElement>('[aria-label="New location name"]');
-  assert.ok(name);
-  await type(name, 'New drawer');
+  assert.equal(editor.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('drawer');
   assert.equal(button('Save').disabled, true);
   await placeMarker(25, 40, '.new-child-location .room-map-stage');
@@ -2969,9 +3010,9 @@ test('the selection-panel plus opens a visible child form with a fixed parent an
   assert.equal(mapLocationName().value, 'Table A');
   assert.deepEqual([...host.querySelectorAll<HTMLButtonElement>('.location-child-select')].map((row) => row.dataset.locationId),
     ['bin-a', 'saved']);
-  await click(button('Edit child New drawer'));
+  await click(button('Edit child Drawer 2'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=saved');
-  assert.equal(mapLocationName().value, 'New drawer');
+  assert.equal(mapStorageName(), 'Drawer 2');
   assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.value, 'drawer');
   assert.match(host.querySelector('.location-children')?.textContent ?? '', /No child locations yet/);
 });
@@ -2988,32 +3029,32 @@ test('child creation and child selection do not discard an unsaved parent edit',
   assert.match(message, /Save or cancel the highlighted location/);
   assert.equal(host.querySelector('[aria-label="New child location"]'), null);
   assert.equal(mapLocationName().value, 'Unsaved parent');
-  await click(button('Edit child Bin A'));
+  await click(button('Edit child Bin 1'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
   await click(button('Stay on page'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
   assert.equal(mapLocationName().value, 'Unsaved parent');
-  await click(button('Edit child Bin A'));
+  await click(button('Edit child Bin 1'));
   await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(mapStorageName(), 'Bin 1');
   assert.equal(writes.length, 0);
 });
 
 test('child navigation uses the saved room when a parent move is discarded', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await choose(combobox('Parent location'), 'table 3');
+  await choose(combobox('Parent location'), 'advanced');
   await placeMarker(30, 40);
   assert.equal(link('Advanced Makerspace').className, 'active');
   await chooseMarkerLocation('table-a');
   assert.equal(host.querySelector('[role="alertdialog"]'), null, 'Clicking the same location must not navigate to its draft room');
   assert.match(combobox('Parent location').value, /Advanced Makerspace/);
-  await click(button('Edit child Bin A'));
+  await click(button('Edit child Bin 1'));
   assert.ok(host.querySelector('[role="alertdialog"]'));
   await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(mapStorageName(), 'Bin 1');
   assert.match(combobox('Parent location').value, /Common Makerspace/);
   assert.equal(writes.length, 0);
 });
@@ -3029,12 +3070,12 @@ test('child controls stay disabled until a pending parent save finishes', async 
   const add = host.querySelector<HTMLButtonElement>('.location-children-heading button');
   assert.ok(add);
   assert.equal(add.disabled, true);
-  assert.equal(button('Edit child Bin A').disabled, true);
-  await click(button('Edit child Bin A'));
+  assert.equal(button('Edit child Bin 1').disabled, true);
+  await click(button('Edit child Bin 1'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
   await act(async () => { finish(jsonResponse({ ...mapLocations[2], name: 'Saved parent' })); await pending; });
   assert.equal(mapLocationName().value, 'Saved parent');
-  assert.equal(button('Edit child Bin A').disabled, false);
+  assert.equal(button('Edit child Bin 1').disabled, false);
   assert.equal(add.disabled, false);
   assert.equal(add.getAttribute('aria-label'), 'Add child to Saved parent');
 });
@@ -3133,6 +3174,11 @@ const mapLocationName = (): HTMLInputElement => {
   assert.ok(input);
   return input;
 };
+const mapStorageName = (): string => {
+  const output = host.querySelector<HTMLOutputElement>('.location-map-editor output[aria-label="Location name"]');
+  assert.ok(output, 'Storage location name must be displayed, not editable');
+  return output.value;
+};
 
 const markerPercent = (axis: 'X' | 'Y'): number => {
   const marker = host.querySelector<HTMLElement>('.location-map-editor .map-marker.selected');
@@ -3174,7 +3220,7 @@ test('selecting another location requires saving or explicitly discarding the cu
   await chooseMarkerLocation('bin-a');
   await click(button('Discard changes'));
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
-  assert.equal(mapLocationName().value, 'Bin A');
+  assert.equal(mapStorageName(), 'Bin 1');
   await chooseMarkerLocation('table-a');
   assert.equal(mapLocationName().value, 'Table A');
   assert.equal(markerPercent('X'), 50);
@@ -3285,14 +3331,14 @@ test('a failed panel save preserves metadata and placement for retry', async () 
 test('changing the selected location parent requires remapping and follows the saved room', async () => {
   await render(createElement(LocationMapEditor, { locations: markerLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
-  await choose(combobox('Parent location'), 'table 3');
+  await choose(combobox('Parent location'), 'advanced');
   assert.equal(button('Save').disabled, true);
   assert.equal(host.querySelector('.location-map-editor img')?.getAttribute('data-map-src'), '/maps/advanced-makerspace.svg');
   assert.equal(link('Advanced Makerspace').className, 'active');
   assert.equal(writes.length, 0);
   await placeMarker(30, 40);
   await click(button('Save'));
-  assert.equal(writes[0]?.body.parentId, 'table-3');
+  assert.equal(writes[0]?.body.parentId, 'advanced');
   assert.deepEqual(writes[0]?.body.mapPosition, { roomId: 'advanced', mapId: 'advanced', x: 0.3, y: 0.4 });
   assert.equal(currentUrl(), '/manage/locations?room=advanced&pin=table-a');
   assert.equal(mapLocationName().value, 'Table A');

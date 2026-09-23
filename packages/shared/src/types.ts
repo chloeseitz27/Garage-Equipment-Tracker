@@ -5,6 +5,7 @@ import type {
   consumableSchema,
   createFlagSchema,
   createItemSchema,
+  createLocationSchema,
   equipmentSchema,
   equipmentStatusSchema,
   flagSchema,
@@ -32,6 +33,7 @@ export type Category = z.infer<typeof categorySchema>;
 export type Flag = z.infer<typeof flagSchema>;
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;
+export type CreateLocationInput = z.infer<typeof createLocationSchema>;
 export type CreateFlagInput = z.infer<typeof createFlagSchema>;
 export type BulkUpdateMarkersInput = z.infer<typeof bulkUpdateMarkersSchema>;
 

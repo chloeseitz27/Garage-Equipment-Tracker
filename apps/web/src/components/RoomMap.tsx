@@ -1,6 +1,6 @@
 import { createElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ROOM_MAPS, resolveLocationMap, resolveMapTarget, roomMapMarkers, type Location, type SvgMapGeometry } from '@garage/shared';
+import { ROOM_MAPS, getLocationPath, locationCodeFromPath, resolveLocationMap, resolveMapTarget, roomMapMarkers, type Location, type SvgMapGeometry } from '@garage/shared';
 import { useSvgMap } from '../room-map-source.js';
 
 interface Props {
@@ -66,6 +66,7 @@ export function RoomMap({
   const resolved = selectedLocationId ? resolveLocationMap(locations, selectedLocationId) : null;
   const target = selectedLocationId && resolved?.room.id === room.id ? resolveMapTarget(locations, selectedLocationId, svgIds) : null;
   const highlighted = target?.location.id;
+  const highlightedCode = target ? locationCodeFromPath(getLocationPath(locations, target.location.id)) : undefined;
   const highlightedX = target?.kind === 'shape' ? shapeCenter?.x : target?.position?.x;
   const highlightedY = target?.kind === 'shape' ? shapeCenter?.y : target?.position?.y;
   const regionCenter = (id: string): { x: number; y: number } | undefined => {
@@ -312,7 +313,7 @@ export function RoomMap({
       </div>
       <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.</p>
       <figcaption>
-        {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
+        {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
         {ready && target && target.location.id !== selectedLocationId ? (
           <p className="hint">Approximate location: showing the nearest mapped location: {target.location.name}; the selected sub-location is not marked.</p>
         ) : null}

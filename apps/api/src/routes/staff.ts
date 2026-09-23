@@ -10,6 +10,9 @@ import {
   itemSchema,
   locationMapProblem,
   locationPlacementProblem,
+  locationHierarchyProblem,
+  prepareLocation,
+  MARKER_BATCH_LIMIT,
   resolveFlagSchema,
   resolveLocationMap,
   updateCategorySchema,
@@ -24,6 +27,8 @@ import {
 import { requireStaff } from '../auth.js';
 import { asyncHandler } from '../middleware.js';
 import { svgLocationIds } from '../room-map-source.js';
+import { identifiedLocations, serializeLocationWrite } from '../location-write.js';
+import { randomUUID } from 'node:crypto';
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 
 /**
@@ -255,32 +260,38 @@ export function staffRoutes(repository: CatalogRepository): Router {
 
   router.post(
     '/locations',
-    asyncHandler(async (req, res) => {
+    asyncHandler(async (req, res) => serializeLocationWrite(repository, async () => {
       const parsed = createLocationSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: 'Invalid location', details: parsed.error.issues });
         return;
       }
 
-      const locations = await repository.getLocations();
+      const locations = await identifiedLocations(repository);
       const { parentId } = parsed.data;
       if (parentId !== null && !locations.some((location) => location.id === parentId)) {
         res.status(400).json({ error: `Unknown parentId: ${parentId}` });
         return;
       }
 
-      const mapProblem = locationMapProblem(parsed.data, locations) ?? locationPlacementProblem(parsed.data, locations);
+      const id = `loc-${randomUUID()}`;
+      const hierarchyProblem = locationHierarchyProblem({ ...parsed.data, id }, locations);
+      if (hierarchyProblem) { res.status(400).json({ error: hierarchyProblem }); return; }
+      const { location } = prepareLocation(parsed.data, locations, id);
+      if (!location.name) { res.status(400).json({ error: 'Room name is required.' }); return; }
+      const mapProblem = locationMapProblem(location, locations) ?? locationPlacementProblem(location, locations);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;
       }
-      res.status(201).json(await repository.createLocation(parsed.data));
-    }),
+      const { id: _id, ...input } = location;
+      res.status(201).json(await repository.createLocation(input, id));
+    })),
   );
 
   router.post(
     '/locations/markers',
-    asyncHandler(async (req, res) => {
+    asyncHandler(async (req, res) => serializeLocationWrite(repository, async () => {
       const parsed = bulkUpdateMarkersSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: 'Invalid marker batch', details: parsed.error.issues });
@@ -314,12 +325,12 @@ export function staffRoutes(repository: CatalogRepository): Router {
       }
       await repository.saveLocations(updated);
       res.json({ updated: updated.length, locations: updated });
-    }),
+    })),
   );
 
   router.put(
     '/locations/:id',
-    asyncHandler(async (req, res) => {
+    asyncHandler(async (req, res) => serializeLocationWrite(repository, async () => {
       const id = req.params.id ?? '';
       const parsed = updateLocationSchema.safeParse({ ...req.body, id });
       if (!parsed.success) {
@@ -327,7 +338,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
-      const locations = await repository.getLocations();
+      const locations = await identifiedLocations(repository);
       if (!locations.some((location) => location.id === id)) {
         res.status(404).json({ error: 'Location not found' });
         return;
@@ -346,25 +357,34 @@ export function staffRoutes(repository: CatalogRepository): Router {
         return;
       }
 
+      const previous = locations.find((location) => location.id === id)!;
+      const hierarchyProblem = locationHierarchyProblem(parsed.data, locations);
+      if (hierarchyProblem) { res.status(400).json({ error: hierarchyProblem }); return; }
+      const prepared = prepareLocation(parsed.data, locations, id, previous);
+      if (!prepared.location.name) { res.status(400).json({ error: 'Room name is required.' }); return; }
+      if (prepared.descendants.length + 1 > MARKER_BATCH_LIMIT) {
+        res.status(400).json({ error: 'Move fewer than 100 storage locations at once to keep numbering changes atomic.' });
+        return;
+      }
       const room = parsed.data.parentId ? resolveLocationMap(locations, parsed.data.parentId)?.room : undefined;
       const shapes = room?.mapId ? await svgLocationIds(room.mapId) : new Set<string>();
-      const mapProblem = locationMapProblem(parsed.data, locations, locations.find((location) => location.id === id)) ??
-        locationPlacementProblem(parsed.data, locations, shapes);
+      const mapProblem = locationMapProblem(prepared.location, locations, previous) ??
+        locationPlacementProblem(prepared.location, locations, shapes);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;
       }
-      await repository.saveLocation(parsed.data);
-      res.json(parsed.data);
-    }),
+      await repository.saveLocations([prepared.location, ...prepared.descendants]);
+      res.json(prepared.location);
+    })),
   );
 
   router.delete(
     '/locations/:id',
-    asyncHandler(async (req, res) => {
+    asyncHandler(async (req, res) => serializeLocationWrite(repository, async () => {
       const id = req.params.id ?? '';
       const [locations, items] = await Promise.all([
-        repository.getLocations(),
+        identifiedLocations(repository),
         repository.getItems(),
       ]);
 
@@ -391,7 +411,7 @@ export function staffRoutes(repository: CatalogRepository): Router {
 
       await repository.deleteLocation(id);
       res.status(204).end();
-    }),
+    })),
   );
 
   router.post(

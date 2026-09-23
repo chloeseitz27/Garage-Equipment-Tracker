@@ -267,6 +267,41 @@ new location types in a shared catalog.
 Editing retains the saved type and includes the parent picker, except for
 top-level rooms, whose parent and room type stay fixed.
 
+Location types follow a hierarchy:
+
+| Level | Allowed types | Naming |
+|---|---|---|
+| Top level | Room | Editable room name |
+| Directly inside a room | Table, Station, Desk, Workbench, Cabinet | Editable name, defaulting to the type plus the next available letter |
+| Inside a room-level location or another storage container | Drawer, Bin, Shelf | Generated type and number; no name input |
+
+Rooms cannot contain other rooms or loose storage containers. Stations cover
+named equipment areas such as Roland, Laser, and sinks. Each room-level
+location has a unique letter code separate from its editable name: a custom
+name such as **Roland** does not lose its code. Existing table letters are
+preserved; new codes fill unused letters, then continue with AA, AB, and so on.
+
+Drawers, bins, and shelves share one number sequence across their enclosing
+table/station, including nested containers. **Desk A → Drawer 3** is **A3**,
+and a bin elsewhere under Desk A cannot also use 3. Codes appear in the tree,
+child lists, location paths, search, and item details. Storage names are
+generated on both create and edit; submitting a custom name or number does not
+override the server assignment. Same-table moves retain their number; moving
+a subtree under another table assigns new destination numbers together.
+
+Legacy records remain readable. Location reads assign missing code metadata
+deterministically, preserve existing letter labels and valid numbers, and
+display storage as `Type Number`. The next location write persists those legacy
+assignments before allocating new codes. Legacy room-level **Zone** becomes
+**Station**, and a `Desk <letter>` previously stored as Table becomes Desk.
+Other legacy invalid type/parent combinations must be corrected before saving.
+Locations, parents, maps, and item assignments keep their IDs.
+
+Number allocation is serialized with hierarchy writes on the app's single API
+instance. Do not run multiple API writers or edit location code fields directly
+in Cosmos while the app is writing. Moving more than 100 storage records as one
+subtree is refused to keep renumbering within a single storage transaction.
+
 In a mapped room, create/edit forms include a placement map and **Save** remains
 disabled until the location has its own valid point marker or linked SVG shape.
 For a point-only location, click the map or a spot on a drawn surface to place

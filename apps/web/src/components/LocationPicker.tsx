@@ -9,6 +9,7 @@ interface CommonProps {
   placeholder?: string;
   label?: string;
   showMapButton?: boolean;
+  rootSelectable?: boolean;
 }
 
 type Props = CommonProps & (
@@ -56,11 +57,11 @@ export function LocationPicker(props: Props): JSX.Element {
       .filter((option) => !excludedIds?.includes(option.id));
     const tokens = (query ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
     const rootWords = ['top', 'level', 'no', 'parent'];
-    if (props.allowRoot && tokens.every((token) => rootWords.some((word) => word.startsWith(token)))) {
+    if (props.allowRoot && props.rootSelectable !== false && tokens.every((token) => rootWords.some((word) => word.startsWith(token)))) {
       results.unshift({ id: null, label: ROOT_LABEL });
     }
     return results;
-  }, [locations, query, excludedIds, props.allowRoot]);
+  }, [locations, query, excludedIds, props.allowRoot, props.rootSelectable]);
 
   const expanded = open && !disabled;
   const activeIndex = Math.min(Math.max(highlight, 0), matches.length - 1);
@@ -95,7 +96,7 @@ export function LocationPicker(props: Props): JSX.Element {
   }, []);
 
   const choose = (locationId: string | null): void => {
-    if (disabled) return;
+    if (disabled || (locationId === null && props.rootSelectable === false)) return;
     if (props.allowRoot) props.onSelect(locationId);
     else if (locationId !== null) props.onSelect(locationId);
     close();
@@ -220,7 +221,7 @@ export function LocationPicker(props: Props): JSX.Element {
           selectedIds={value ? [value] : []}
           rootSelected={props.allowRoot && value === null}
           onSelect={(id) => { closeMap(); choose(id); }}
-          onSelectRoot={props.allowRoot ? () => { closeMap(); choose(null); } : undefined}
+          onSelectRoot={props.allowRoot && props.rootSelectable !== false ? () => { closeMap(); choose(null); } : undefined}
           onClose={closeMap}
           onSearch={() => {
             setMapOpen(false);

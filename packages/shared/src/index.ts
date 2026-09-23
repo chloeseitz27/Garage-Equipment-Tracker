@@ -1,6 +1,7 @@
 export * from './schema.js';
 export * from './types.js';
 export * from './location.js';
+export * from './location-hierarchy.js';
 export * from './integrity.js';
 export * from './bulk.js';
 export * from './retirement.js';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { getChildLocations, getLocationPath, isStaffOnlyLocation, type Item, type Location } from '@garage/shared';
+import { assignLocationIdentities, getChildLocations, getLocationPath, isStaffOnlyLocation, locationCodeFromPath, type Item, type Location } from '@garage/shared';
 import { deleteLocation } from '../api.js';
 import { LocationEditor } from './LocationEditor.js';
 import { LocationMapEditor } from './LocationMapEditor.js';
@@ -58,6 +58,7 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
     for (const item of items) counts.set(item.locationId, (counts.get(item.locationId) ?? 0) + 1);
     return counts;
   }, [items]);
+  const identified = useMemo(() => assignLocationIdentities(locations), [locations]);
 
   const remove = async (location: Location): Promise<void> => {
     setError(null);
@@ -124,6 +125,9 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
                   ><ActionIcon name="chevron" /></button>
                 ) : <span className="tree-toggle-space" aria-hidden="true" />}
                 {location.name}
+                {locationCodeFromPath(getLocationPath(identified, location.id)) ? (
+                  <span className="location-code">{locationCodeFromPath(getLocationPath(identified, location.id))}</span>
+                ) : null}
                 <span className="kind">{location.kind}</span>
                 {isStaffOnlyLocation(locations, location.id) ? <span className="kind">Staff only</span> : null}
                 {held > 0 ? <span className="muted small">{held} item(s)</span> : null}

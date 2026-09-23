@@ -91,7 +91,9 @@ interface Location {
   id: string;
   name: string;
   parentId: string | null;  // null = Room (root)
-  kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'drawer' | 'bin';
+  kind: 'room' | 'station' | 'desk' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'drawer' | 'bin' | 'zone'; // zone is legacy-only
+  letter?: string; // stable room-level code, A..Z, AA...
+  number?: number; // storage number unique across one enclosing surface subtree
   staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
   mapPosition?: {
@@ -278,6 +280,32 @@ explicitly using `npm run update:locations -- --apply` after deploying the code.
 ---
 
 ## 4. Storage
+
+### Location hierarchy and code allocation
+
+New and edited locations must follow room -> surface -> storage. Surface types
+are table/station/desk/workbench/cabinet; storage types are drawer/bin/shelf and
+can nest, but share their enclosing surface's number space. Only rooms can be
+roots. Type choices and parent choices follow the same shared rules in
+`location-hierarchy.ts` and on the API.
+
+`assignLocationIdentities` supplies missing legacy letters/numbers without
+changing IDs or hierarchy. Existing named letter labels are reserved before
+custom stations receive available codes. Explicit duplicates are errors, never
+silently reassigned. Legacy numbered storage retains unique valid numbers;
+other storage gets a deterministic number and generated name. Location reads
+include this metadata and names; before mutation the API persists missing legacy
+identity metadata so subsequent deletions or renames cannot shift codes.
+
+`prepareLocation` owns automatic names, letters, and numbers. Creates ignore
+client identity fields; storage updates retain the current number within a
+surface and regenerate the name. Cross-surface storage-subtree moves allocate
+destination numbers in one `saveLocations` transaction (at most 100 records).
+Location write requests are serialized per repository instance, covering the
+read/allocate/write interval. This follows the existing single-API deployment
+contract; it is not a distributed lock for multiple processes or direct Cosmos
+writes. Location paths append the derived short code, e.g. `A3`, independently
+of the editable parent display name.
 
 **Cosmos DB or local JSON files, behind the same repository interface.**
 `STORAGE=cosmos` selects the implemented Cosmos backend; `STORAGE=json` remains

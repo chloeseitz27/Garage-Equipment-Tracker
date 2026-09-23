@@ -3,6 +3,7 @@ import {
   indexLocations,
   isRetired,
   publicCatalog,
+  assignLocationIdentities,
   type AssistantProvider,
   type Item,
   type RecommendResponse,
@@ -32,7 +33,8 @@ export async function recommendForProject(
     repository.getCategories(),
   ]);
 
-  const visible = staff ? { items, locations, categories } : publicCatalog({ items, locations, categories });
+  const identified = { items, locations: assignLocationIdentities(locations), categories };
+  const visible = staff ? identified : publicCatalog(identified);
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
 
   // [1] Deterministic, server-side, from the catalog.
