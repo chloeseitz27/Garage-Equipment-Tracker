@@ -384,7 +384,9 @@ test('new surfaces suggest the next available letter but keep custom names edita
   assert.ok(input);
   assert.equal(input.value, 'Desk C');
   await selectLocationType('station');
-  assert.equal(input.value, 'Station C');
+  assert.equal(input.value, '');
+  assert.equal(input.required, true);
+  assert.doesNotMatch(host.querySelector('.location-editor')?.textContent ?? '', /Location code:/);
   await type(input, 'Roland');
   await selectLocationType('cabinet');
   assert.equal(input.value, 'Roland');
@@ -394,6 +396,32 @@ test('new surfaces suggest the next available letter but keep custom names edita
   assert.equal(writes[0]?.body.name, 'Roland');
   assert.equal(writes[0]?.body.kind, 'cabinet');
   assert.equal(writes[0]?.body.letter, undefined);
+});
+
+test('stations use a required name without a code and keep numbered child locations', async () => {
+  const station: Location = {
+    id: 'station', name: 'Roland', kind: 'station', parentId: 'common', letter: 'Z',
+    mapPosition: { roomId: 'common', mapId: 'common', x: 0.3, y: 0.4 },
+  };
+  const drawer: Location = { id: 'station-drawer', name: 'Drawer 3', kind: 'drawer', parentId: station.id, number: 3 };
+  await render(createElement(LocationManager, {
+    locations: [...mapLocations, station, drawer], items: [], onChanged: () => {},
+  }), '/manage/locations?room=common&pin=station');
+  assert.equal(mapLocationName().value, 'Roland');
+  assert.equal(mapLocationName().required, true);
+  const panel = host.querySelector('.location-map-editor');
+  assert.ok(panel);
+  assert.doesNotMatch(panel.textContent ?? '', /Location code:|Z3/);
+  assert.equal(panel.querySelector('.location-code'), null);
+  await type(mapLocationName(), '');
+  assert.equal(button('Save').disabled, true);
+  await type(mapLocationName(), 'Printing station');
+  await click(button('Save'));
+  assert.equal(writes[0]?.body.letter, undefined);
+  assert.equal(writes[0]?.body.name, 'Printing station');
+  await click(button('Edit child Drawer 3'));
+  assert.equal(mapStorageName(), 'Drawer 3');
+  assert.doesNotMatch(panel.textContent ?? '', /Location code:|Z3|undefined/);
 });
 
 test('container forms offer only storage types and display generated names and table-wide codes', async () => {

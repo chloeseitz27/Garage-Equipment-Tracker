@@ -92,7 +92,7 @@ interface Location {
   name: string;
   parentId: string | null;  // null = Room (root)
   kind: 'room' | 'station' | 'desk' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'drawer' | 'bin' | 'zone'; // zone is legacy-only
-  letter?: string; // stable room-level code, A..Z, AA...
+  letter?: string; // stable table/desk/workbench/cabinet code, A..Z, AA...; never stations
   number?: number; // storage number unique across one enclosing surface subtree
   staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
@@ -291,7 +291,9 @@ roots. Type choices and parent choices follow the same shared rules in
 
 `assignLocationIdentities` supplies missing legacy letters/numbers without
 changing IDs or hierarchy. Existing named letter labels are reserved before
-custom stations receive available codes. Explicit duplicates are errors, never
+other lettered surfaces receive available codes. Stations are name-only and
+consume no letters; legacy station letters are removed during normalization.
+Explicit duplicates among lettered surfaces are errors, never
 silently reassigned. Legacy numbered storage retains unique valid numbers;
 other storage gets a deterministic number and generated name. Location reads
 include this metadata and names; before mutation the API persists missing legacy
@@ -305,7 +307,8 @@ Location write requests are serialized per repository instance, covering the
 read/allocate/write interval. This follows the existing single-API deployment
 contract; it is not a distributed lock for multiple processes or direct Cosmos
 writes. Location paths append the derived short code, e.g. `A3`, independently
-of the editable parent display name.
+of the editable parent display name. Station children keep their unique storage
+numbers but use the station name in the path rather than a letter-based code.
 
 **Cosmos DB or local JSON files, behind the same repository interface.**
 `STORAGE=cosmos` selects the implemented Cosmos backend; `STORAGE=json` remains

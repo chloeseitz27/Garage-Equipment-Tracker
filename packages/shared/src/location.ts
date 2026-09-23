@@ -1,4 +1,5 @@
 import type { Location } from './types.js';
+import { isStationKind } from './schema.js';
 
 /**
  * Location paths are derived, never stored (technical-spec.md §3.1).
@@ -45,7 +46,7 @@ export function formatLocationPath(path: Location[]): string {
 
 export function locationCodeFromPath(path: Location[]): string | undefined {
   const surface = path[1];
-  if (!surface?.letter) return undefined;
+  if (!surface?.letter || isStationKind(surface.kind)) return undefined;
   return path.length === 2 ? surface.letter : path.at(-1)?.number ? `${surface.letter}${path.at(-1)!.number}` : undefined;
 }
 /** Direct children of a node; pass `null` for the roots. */

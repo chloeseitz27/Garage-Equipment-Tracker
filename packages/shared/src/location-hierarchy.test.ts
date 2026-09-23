@@ -4,7 +4,8 @@ import {
   assignLocationIdentities, childLocationKinds, locationHierarchyProblem,
   nextLocationLetter, prepareLocation, surfaceLocationId,
 } from './location-hierarchy.js';
-import { formatLocationPath, getLocationPath } from './location.js';
+import { formatLocationPath, getLocationPath, locationCodeFromPath } from './location.js';
+import { findCatalogProblems } from './integrity.js';
 import type { Location } from './types.js';
 
 const base: Location[] = [
@@ -30,12 +31,12 @@ test('levels restrict root, room, and container children without allowing nested
 
 test('surface names default from type and next available letter but allow custom names', () => {
   const table = prepareLocation({ kind: 'table', parentId: 'room' }, base, 'new').location;
-  assert.equal(table.name, 'Table C');
-  assert.equal(table.letter, 'C');
+  assert.equal(table.name, 'Table B');
+  assert.equal(table.letter, 'B');
   const named = prepareLocation({ name: 'Laser', kind: 'station', parentId: 'room' }, base, 'new').location;
   assert.equal(named.name, 'Laser');
-  assert.equal(named.letter, 'C');
-  assert.equal(formatLocationPath(getLocationPath([...base, named], 'new')), 'Common → Laser (C)');
+  assert.equal(named.letter, undefined);
+  assert.equal(formatLocationPath(getLocationPath([...base, named], 'new')), 'Common → Laser');
   const changedType = prepareLocation({ ...base[1]!, kind: 'cabinet' }, base, 'desk', base[1]).location;
   assert.equal(changedType.name, 'Cabinet A');
   assert.equal(changedType.letter, 'A');
@@ -79,12 +80,31 @@ test('legacy identity assignment preserves table letters, honors generated names
   ];
   const result = assignLocationIdentities(legacy);
   assert.equal(result.find((location) => location.id === 'desk')?.letter, 'A');
-  assert.equal(result.find((location) => location.id === 'roland')?.letter, 'B');
+  assert.equal(result.find((location) => location.id === 'roland')?.letter, undefined);
   assert.equal(result.find((location) => location.id === 'drawer')?.number, 3);
   assert.equal(result.find((location) => location.id === 'bin')?.name, 'Bin 1');
   assert.deepEqual(assignLocationIdentities(result), result);
   assert.equal(legacy[4]?.name, 'My bin');
   assert.equal(nextLocationLetter(Array.from({ length: 26 }, (_, i) => ({ ...base[1]!, id: String(i), letter: String.fromCharCode(65 + i) }))), 'AA');
+});
+
+test('stations release legacy letters without changing names, child numbers, or other surface letters', () => {
+  const child: Location = { id: 'station-drawer', name: 'Drawer 3', kind: 'drawer', parentId: 'station', number: 3 };
+  const nextDesk: Location = { id: 'desk-b', name: 'Desk B', kind: 'desk', parentId: 'room', letter: 'B' };
+  const original = [...base, child, nextDesk];
+  assert.deepEqual(findCatalogProblems({ items: [], categories: [], locations: original }), []);
+  const identified = assignLocationIdentities(original);
+  assert.equal(identified.find((location) => location.id === 'station')?.name, 'Roland');
+  assert.equal(identified.find((location) => location.id === 'station')?.letter, undefined);
+  assert.equal(identified.find((location) => location.id === 'station-drawer')?.number, 3);
+  assert.equal(identified.find((location) => location.id === 'desk-b')?.letter, 'B');
+  assert.equal(locationCodeFromPath(getLocationPath(original, 'station-drawer')), undefined, 'Old cached station letters are not displayed');
+  assert.equal(formatLocationPath(getLocationPath(identified, 'station-drawer')), 'Common → Roland → Drawer 3');
+  assert.equal(prepareLocation({ kind: 'bin', parentId: 'station' }, identified, 'new-bin').location.number, 4);
+  assert.equal(base[2]?.letter, 'B', 'Normalization does not mutate input records');
+  const converted = prepareLocation({ ...base[1]!, kind: 'station', name: 'Soldering station' }, base, 'desk', base[1]).location;
+  assert.equal(converted.letter, undefined);
+  assert.equal(converted.name, 'Soldering station');
 });
 
 test('explicit duplicate letters or numbers are rejected, not silently reassigned', () => {

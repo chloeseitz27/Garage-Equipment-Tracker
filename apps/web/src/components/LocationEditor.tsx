@@ -103,7 +103,9 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const inherited = draft.parentId !== null && isStaffOnlyLocation(locations, draft.parentId);
   const parentExists = draft.parentId === null || locations.some((entry) => entry.id === draft.parentId);
   const hierarchyProblem = locationHierarchyProblem(candidate, locations);
-  const canSave = editable && (level !== 'room' || draft.name.trim() !== '') && selectedKind !== '' && parentExists &&
+  const nameRequired = level === 'room' || selectedKind === 'station';
+  const code = locationCodeFromPath(getLocationPath([...identified.filter((entry) => entry.id !== candidate.id), candidate], candidate.id));
+  const canSave = editable && (!nameRequired || draft.name.trim() !== '') && selectedKind !== '' && parentExists &&
     !hierarchyProblem && !placementProblem && !busy &&
     (rootRoom || !mapped || Boolean(source.map)) && (!mapPanel || dirty);
   const placementId = `${id}-placement`;
@@ -201,8 +203,8 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
               <input
                 aria-label={location ? 'Location name' : 'New location name'}
                 autoFocus={!mapPanel}
-                required={level === 'room'}
-                placeholder={rootRoom ? 'Room name' : 'Location name'}
+                required={nameRequired}
+                placeholder={rootRoom ? 'Room name' : selectedKind === 'station' ? 'Station name' : 'Location name'}
                 value={draft.name || (level === 'surface' && draft.kind ? prepared.location.name : '')}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               />
@@ -217,7 +219,9 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                   const kind = allowedKinds.find((kind) => kind === event.target.value) ?? '';
                   const automaticName = level === 'surface' && previous?.letter &&
                     draft.name === `${locationKindLabel(previous.kind)} ${previous.letter}`;
-                  setDraft({ ...draft, kind, name: automaticName && kind ? `${locationKindLabel(kind)} ${previous.letter}` : draft.name });
+                  setDraft({ ...draft, kind, name: automaticName && kind
+                    ? kind === 'station' ? '' : `${locationKindLabel(kind)} ${previous.letter}`
+                    : draft.name });
                 }}
               >
                 <option value="" disabled>Select type...</option>
@@ -261,11 +265,13 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                 <ActionIcon name="cancel" />
               </button>
             </div>
-            {level !== 'room' && selectedKind ? (
+            {level !== 'room' && selectedKind && (code || (level === 'storage' && !location)) ? (
               <p className="hint location-access-hint" role="status">
-                {level === 'storage' ? `${prepared.location.name} · ` : 'Location code: '}
-                <strong>{locationCodeFromPath(getLocationPath([...identified.filter((entry) => entry.id !== candidate.id), candidate], candidate.id))}</strong>
-                {!location ? ' (assigned when saved)' : ''}
+                {code ? <>
+                  {level === 'storage' ? `${prepared.location.name} · ` : 'Location code: '}
+                  <strong>{code}</strong>
+                  {!location ? ' (assigned when saved)' : ''}
+                </> : 'Number assigned when saved.'}
               </p>
             ) : null}
             {inherited ? <p id={`${id}-access`} className="hint location-access-hint">Staff-only access is also required by the parent location.</p> : null}

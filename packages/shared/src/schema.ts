@@ -21,6 +21,7 @@ export const TRAINING_LEVELS = ['none', 'orientation', 'supervised', 'certified'
 export const LOCATION_KINDS = ['room', 'station', 'desk', 'table', 'workbench', 'cabinet', 'shelf', 'drawer', 'bin', 'zone'] as const;
 export const SURFACE_KINDS = ['table', 'station', 'desk', 'workbench', 'cabinet'] as const;
 export const STORAGE_KINDS = ['drawer', 'bin', 'shelf'] as const;
+export const isStationKind = (kind: typeof LOCATION_KINDS[number]): boolean => kind === 'station' || kind === 'zone';
 export const FLAG_TYPES = ['not-here', 'low', 'out'] as const;
 
 export const itemKindSchema = z.enum(ITEM_KINDS);

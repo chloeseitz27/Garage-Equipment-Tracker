@@ -176,8 +176,9 @@ Drawers use numbers appended to the surface letter, such as D2.
 Only rooms are top-level. Rooms contain tables, stations, desks, workbenches,
 or cabinets; those locations contain drawers, bins, or shelves. Storage may
 nest but all its numbers are unique within the enclosing room-level location.
-Room-level locations have editable names defaulted from the next available
-letter, with a separate stable letter code for custom names such as Roland.
+Room-level tables, desks, workbenches, and cabinets have editable names defaulted
+from the next available letter, with a separate stable letter code. Stations
+have required names such as Roland or Laser and do not receive letter codes.
 Storage names are generated from type and number, not entered by users.
 For example, Desk A / Drawer 3 has the short code A3.
 

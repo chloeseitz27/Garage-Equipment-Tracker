@@ -720,7 +720,27 @@ test('room-level locations receive the next available letter and keep it when re
   assert.equal(station.status, 201);
   const record = await station.json();
   assert.equal(record.name, 'Laser');
-  assert.equal(record.letter, 'D');
+  assert.equal(record.letter, undefined);
+  const next = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'cabinet', mapPosition });
+  assert.equal((await next.json()).letter, 'D', 'Stations do not consume letter codes');
+});
+
+test('station names are required and old station letters are removed without renumbering storage', async () => {
+  const mapPosition = { roomId: 'loc-room', mapId: 'common', x: 0.2, y: 0.3 };
+  const missingName = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'station', mapPosition });
+  assert.equal(missingName.status, 400);
+  assert.equal((await missingName.json()).error, 'Station name is required.');
+  const station = await repository.createLocation({ name: 'Roland', kind: 'station', parentId: 'loc-room', letter: 'Z' });
+  const existing = await repository.createLocation({ name: 'Drawer 3', kind: 'drawer', parentId: station.id, number: 3 });
+  const renamed = await call('PUT', `/api/locations/${station.id}`, { ...station, name: 'Roland station', letter: 'Y', mapPosition });
+  assert.equal(renamed.status, 200);
+  assert.equal((await renamed.json()).letter, undefined);
+  const locations = await repository.getLocations();
+  assert.equal(locations.find((location) => location.id === station.id)?.letter, undefined);
+  assert.equal(locations.find((location) => location.id === existing.id)?.number, 3);
+  const created = await call('POST', '/api/locations', { parentId: station.id, kind: 'bin', mapPosition });
+  assert.equal(created.status, 201);
+  assert.equal((await created.json()).number, 4);
 });
 
 test('concurrent drawer/bin/shelf creates share a unique table-wide number sequence', async () => {

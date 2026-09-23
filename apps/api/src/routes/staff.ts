@@ -278,7 +278,10 @@ export function staffRoutes(repository: CatalogRepository): Router {
       const hierarchyProblem = locationHierarchyProblem({ ...parsed.data, id }, locations);
       if (hierarchyProblem) { res.status(400).json({ error: hierarchyProblem }); return; }
       const { location } = prepareLocation(parsed.data, locations, id);
-      if (!location.name) { res.status(400).json({ error: 'Room name is required.' }); return; }
+      if (!location.name) {
+        res.status(400).json({ error: location.kind === 'station' ? 'Station name is required.' : 'Room name is required.' });
+        return;
+      }
       const mapProblem = locationMapProblem(location, locations) ?? locationPlacementProblem(location, locations);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
@@ -361,7 +364,10 @@ export function staffRoutes(repository: CatalogRepository): Router {
       const hierarchyProblem = locationHierarchyProblem(parsed.data, locations);
       if (hierarchyProblem) { res.status(400).json({ error: hierarchyProblem }); return; }
       const prepared = prepareLocation(parsed.data, locations, id, previous);
-      if (!prepared.location.name) { res.status(400).json({ error: 'Room name is required.' }); return; }
+      if (!prepared.location.name) {
+        res.status(400).json({ error: prepared.location.kind === 'station' ? 'Station name is required.' : 'Room name is required.' });
+        return;
+      }
       if (prepared.descendants.length + 1 > MARKER_BATCH_LIMIT) {
         res.status(400).json({ error: 'Move fewer than 100 storage locations at once to keep numbering changes atomic.' });
         return;

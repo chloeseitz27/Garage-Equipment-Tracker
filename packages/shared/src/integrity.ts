@@ -1,5 +1,6 @@
 import { getLocationPath, indexLocations } from './location.js';
 import type { Category, Flag, Item, Location } from './types.js';
+import { isStationKind } from './schema.js';
 
 /**
  * Referential integrity for the catalog. Schema validation proves each record
@@ -53,7 +54,7 @@ export function findCatalogProblems(data: CatalogData): string[] {
     if (!root || root.parentId !== null) {
       problems.push(`Location ${location.id} does not resolve to a root (cycle in the tree?)`);
     }
-    if (path.length === 2 && location.letter) {
+    if (path.length === 2 && location.letter && !isStationKind(location.kind)) {
       if (letters.has(location.letter)) problems.push(`Location letter ${location.letter} is used by both ${letters.get(location.letter)} and ${location.id}`);
       letters.set(location.letter, location.id);
     }

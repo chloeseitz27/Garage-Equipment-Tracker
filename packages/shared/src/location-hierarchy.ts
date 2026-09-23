@@ -1,5 +1,5 @@
 import { getLocationPath, getDescendantLocationIds, indexLocations } from './location.js';
-import { STORAGE_KINDS, SURFACE_KINDS } from './schema.js';
+import { STORAGE_KINDS, SURFACE_KINDS, isStationKind } from './schema.js';
 import type { Location, LocationKind } from './types.js';
 
 export type LocationLevel = 'room' | 'surface' | 'storage';
@@ -23,7 +23,7 @@ const letterAt = (index: number): string => {
   return result;
 };
 export const nextLocationLetter = (locations: Location[]): string => {
-  const used = new Set(locations.map((location) => location.letter).filter(Boolean));
+  const used = new Set(locations.filter((location) => !isStationKind(location.kind)).map((location) => location.letter).filter(Boolean));
   for (let index = 0; ; index++) {
     const letter = letterAt(index);
     if (!used.has(letter)) return letter;
@@ -42,20 +42,24 @@ export function assignLocationIdentities(locations: Location[]): Location[] {
     .sort((a, b) => a.id.localeCompare(b.id));
   const usedLetters = new Set<string>();
   for (const surface of surfaces) {
+    if (surface.kind === 'zone') surface.kind = 'station';
+    if (surface.kind === 'table' && /^Desk\b/i.test(surface.name)) surface.kind = 'desk';
+    if (surface.kind === 'station') {
+      delete surface.letter;
+      continue;
+    }
     if (!surface.letter) continue;
     if (usedLetters.has(surface.letter)) throw new Error(`Duplicate location letter: ${surface.letter}`);
     usedLetters.add(surface.letter);
   }
-  // Preserve existing physical labels before assigning letters to custom-named stations.
+  // Preserve existing physical labels before assigning letters to other surfaces.
   for (const surface of surfaces) {
-    if (surface.kind === 'zone') surface.kind = 'station';
-    if (surface.kind === 'table' && /^Desk\b/i.test(surface.name)) surface.kind = 'desk';
-    if (surface.letter) continue;
-    const letter = /^(?:Desk|Table|Corner table|Workbench|Cabinet|Station) ([A-Z]+)$/i.exec(surface.name)?.[1]?.toUpperCase();
+    if (surface.letter || surface.kind === 'station') continue;
+    const letter = /^(?:Desk|Table|Corner table|Workbench|Cabinet) ([A-Z]+)$/i.exec(surface.name)?.[1]?.toUpperCase();
     if (letter && !usedLetters.has(letter)) { surface.letter = letter; usedLetters.add(letter); }
   }
   for (const surface of surfaces) {
-    if (surface.letter) continue;
+    if (surface.letter || surface.kind === 'station') continue;
     surface.letter = nextLocationLetter(result);
   }
   for (const surface of surfaces) {
@@ -64,7 +68,7 @@ export function assignLocationIdentities(locations: Location[]): Location[] {
     const numbers = new Set<number>();
     for (const location of storage) {
       if (!location.number) continue;
-      if (numbers.has(location.number)) throw new Error(`Duplicate storage number ${surface.letter}${location.number}`);
+      if (numbers.has(location.number)) throw new Error(`Duplicate storage number ${surface.letter ?? `${surface.name} / `}${location.number}`);
       numbers.add(location.number);
     }
     for (const location of storage) {
@@ -131,7 +135,7 @@ export function prepareLocation(
   const { letter: _ignoredLetter, number: _ignoredNumber, ...fields } = input;
   const record: Location = { ...fields, id, name: input.name?.trim() ?? '' };
   const descendants: Location[] = [];
-  if (level === 'surface') {
+  if (level === 'surface' && record.kind !== 'station') {
     record.letter = previous?.letter ?? nextLocationLetter(locations);
     if (!record.name) record.name = `${locationKindLabel(record.kind)} ${record.letter}`;
     else if (previous && record.kind !== previous.kind &&
