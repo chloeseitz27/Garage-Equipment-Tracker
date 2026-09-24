@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { publicCatalog } from '@garage/shared';
 import { fetchCatalog } from './api.js';
 import {
   BrowserCatalogCache,
@@ -7,39 +8,44 @@ import {
   type CatalogSnapshot,
 } from './catalog-cache.js';
 
-export function useCatalog(editing: boolean) {
+export function useCatalog(editing: boolean, staff = false, enabled = true) {
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
   const [deferred, setDeferred] = useState<CatalogSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [verified, setVerified] = useState(false);
+  const verifiedStaff = useRef(staff);
   const [now, setNow] = useState(Date.now);
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const mounted = useRef(false);
   const requestId = useRef(0);
-  const [cache] = useState(() => new BrowserCatalogCache({
-    fetchCatalog,
+  const cache = useMemo(() => new BrowserCatalogCache({
+    fetchCatalog: async () => {
+      const catalog = await fetchCatalog();
+      return staff ? catalog : publicCatalog(catalog);
+    },
     onCacheError: ({ operation, error: cause }) => {
       console.warn(`[catalog cache] ${operation} failed`, cause);
       if (mounted.current) {
         setStorageWarning('Local catalog storage is unavailable or invalid. Saved browsing data may be missing or out of date.');
       }
     },
-  }));
+  }), [staff]);
 
   const receive = useCallback((next: CatalogSnapshot) => {
-    if (editingRef.current) {
+    if (editingRef.current && !(staff && next.catalog.access === 'public')) {
       setDeferred(next);
     } else {
       setSnapshot(next);
       setDeferred(null);
     }
     setNow(Date.now());
-  }, []);
+  }, [staff]);
 
-  const refresh = useCallback(async (invalidate = false): Promise<void> => {
+  const refresh = useCallback(async (invalidate = false, persist = true): Promise<void> => {
+    if (!enabled) return;
     const id = ++requestId.current;
     if (invalidate) {
       cache.invalidate();
@@ -48,10 +54,11 @@ export function useCatalog(editing: boolean) {
     }
     setRefreshing(true);
     try {
-      const next = await cache.refresh();
+      const next = await cache.refresh(persist);
       if (!mounted.current || id !== requestId.current) return;
       receive(next);
       setError(null);
+      verifiedStaff.current = staff;
       setVerified(true);
     } catch (cause) {
       if (!mounted.current || id !== requestId.current) return;
@@ -61,12 +68,15 @@ export function useCatalog(editing: boolean) {
     } finally {
       if (mounted.current && id === requestId.current) setRefreshing(false);
     }
-  }, [cache, receive]);
+  }, [cache, receive, enabled]);
 
   useEffect(() => {
     mounted.current = true;
+    setDeferred(null);
+    setVerified(false);
     const saved = cache.read();
-    if (saved) receive(saved);
+    setSnapshot(saved);
+    setError(null);
     void refresh();
     const revalidate = (): void => { void refresh(); };
     const storageChanged = (event: StorageEvent): void => {
@@ -76,13 +86,12 @@ export function useCatalog(editing: boolean) {
       const saved = cache.reloadFromStorage();
       setVerified(false);
       setRefreshing(false);
-      if (saved) receive(saved);
+      if (saved && !staff) receive(saved);
       else {
         setDeferred(null);
-        void refresh();
+        void refresh(false, false);
       }
-      // A saved snapshot from another tab needs no echoing fetch/write, which
-      // would otherwise cause the tabs to revalidate one another indefinitely.
+      // Staff revalidate for private data without echoing another storage event.
     };
     window.addEventListener('focus', revalidate);
     window.addEventListener('online', revalidate);
@@ -96,7 +105,7 @@ export function useCatalog(editing: boolean) {
       window.removeEventListener('storage', storageChanged);
       window.clearInterval(timer);
     };
-  }, [cache, receive, refresh]);
+  }, [cache, receive, refresh, staff]);
 
   useEffect(() => {
     if (!editing && deferred) {
@@ -107,13 +116,13 @@ export function useCatalog(editing: boolean) {
 
   const age = snapshot ? now - snapshot.fetchedAt : 0;
   return {
-    catalog: snapshot?.catalog ?? null,
+    catalog: snapshot ? (staff ? snapshot.catalog : publicCatalog(snapshot.catalog)) : null,
     fetchedAt: snapshot?.fetchedAt ?? null,
     stale: age < 0 || age >= CATALOG_MAX_AGE_MS,
     error,
     storageWarning,
     refreshing,
-    verified,
+    verified: verified && verifiedStaff.current === staff,
     updatePending: deferred !== null,
     refresh,
   };

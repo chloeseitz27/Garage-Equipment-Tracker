@@ -3,8 +3,10 @@ import { after, afterEach, beforeEach, test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createElement } from 'react';
 import type { Root } from 'react-dom/client';
-import type { CatalogResponse } from '@garage/shared';
+import { publicCatalog, type CatalogResponse } from '@garage/shared';
 import { CATALOG_CACHE_KEY } from '../catalog-cache.js';
+import { RoomMapSourcesContext } from '../room-map-source.js';
+import { pointMapSources } from './map-test-sources.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -23,6 +25,7 @@ const { createMemoryRouter, RouterProvider } = await import('react-router-dom');
 const { App } = await import('../App.js');
 
 const catalogFixture = (): CatalogResponse => ({
+  access: 'staff',
   items: [{
     id: 'camera', name: 'Inspection camera', kind: 'equipment', status: 'available',
     categoryIds: ['tools', 'electronics'], locationId: 'bench', quantity: 1, trainingRequired: 'orientation',
@@ -79,12 +82,13 @@ afterEach(async () => {
 });
 after(() => dom.window.close());
 
-const render = async (path = '/'): Promise<void> => {
-  router = createMemoryRouter([{ path: '*', element: createElement(App) }], { initialEntries: [path] });
-  await act(() => root.render(createElement(RouterProvider, { router })));
+const render = async (path = '/', development = true): Promise<void> => {
+  router = createMemoryRouter([{ path: '*', element: createElement(App, { development }) }], { initialEntries: [path] });
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+    createElement(RouterProvider, { router }))));
 };
 const saveSnapshot = (catalog: CatalogResponse, fetchedAt = Date.now()): string => {
-  const value = JSON.stringify({ version: 2, fetchedAt, catalog });
+  const value = JSON.stringify({ version: 3, fetchedAt, catalog: publicCatalog(catalog) });
   dom.window.localStorage.setItem(CATALOG_CACHE_KEY, value);
   return value;
 };
@@ -137,7 +141,7 @@ test('saved data renders while loading; failure leaves browsing visible and a re
 
 test('a failed first visit displays an actionable error and clears it after retry', async () => {
   respond = async () => { throw new Error('No connection'); };
-  await render();
+  await render('/', false);
   assert.match(host.textContent ?? '', /No saved catalog is available/);
   respond = async () => Response.json(remote);
   await click(button('Retry catalog'));
@@ -145,8 +149,27 @@ test('a failed first visit displays an actionable error and clears it after retr
   assert.doesNotMatch(host.textContent ?? '', /No connection|No saved catalog/);
 });
 
+for (const staff of [false, true]) {
+  test(`production hides the refresh icon for ${staff ? 'staff' : 'visitors'} without disabling automatic refresh`, async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (url, options) => url === '/api/auth/session'
+      ? Promise.resolve(Response.json({ staff })) : original(url, options);
+    await render('/', false);
+    assert.equal(host.querySelector('header button[aria-label="Refresh catalog"]'), null);
+    assert.equal(host.querySelector('header .action-icon-refresh'), null);
+    assert.ok(host.querySelector('.staff-bar'));
+    remote.items[0]!.name = 'Automatically refreshed camera';
+    await event('focus');
+    assert.match(host.textContent ?? '', /Automatically refreshed camera/);
+    assert.equal(reads, 2);
+    assert.equal(host.querySelector('header .action-icon-refresh'), null);
+  });
+}
+
 test('the refresh icon is labelled, indicates progress, and updates the saved catalog', async () => {
   await render();
+  assert.equal(host.querySelector('.brand h1')?.textContent, 'GET IT');
+  assert.equal(host.querySelector('.brand p')?.textContent, 'Garage Equipment Tracker & Inventory Tool');
   const refreshButton = button('Refresh catalog');
   assert.ok(refreshButton.closest('header .header-actions'));
   assert.ok(refreshButton.parentElement?.querySelector('.staff-bar'));
@@ -182,7 +205,7 @@ test('the refresh icon is labelled, indicates progress, and updates the saved ca
   assert.equal(persisted.catalog.items[0].name, 'Refreshed camera');
 });
 
-test('cached staff pages warn about connectivity and never queue or pretend to save offline', async () => {
+test('public cached snapshots cannot be used for staff edits until an authenticated refresh succeeds', async () => {
   saveSnapshot(catalogFixture());
   respond = async () => { throw new Error('Offline'); };
   const fetch = globalThis.fetch;
@@ -190,16 +213,15 @@ test('cached staff pages warn about connectivity and never queue or pretend to s
     ? Promise.reject(new Error('Save failed: offline')) : fetch(url, options);
   await render('/manage/items/camera/edit');
   assert.match(host.textContent ?? '', /nothing is queued offline/);
-  await typeName('Offline draft');
-  await click(button('Save changes'));
-  assert.match(host.textContent ?? '', /Save failed: offline/);
-  assert.equal(host.querySelector<HTMLInputElement>('.editor input')?.value, 'Offline draft');
+  assert.match(host.textContent ?? '', /Staff catalog unavailable/);
+  assert.equal(host.querySelector('.editor'), null);
   const saved = JSON.parse(dom.window.localStorage.getItem(CATALOG_CACHE_KEY)!);
   assert.equal(saved.catalog.items[0].name, 'Inspection camera');
   respond = async () => Response.json(remote);
   await click(button('Refresh catalog'));
   assert.doesNotMatch(host.textContent ?? '', /nothing is queued offline/);
   assert.equal(writes, 0);
+  assert.ok(host.querySelector('.editor'));
 });
 
 test('saving an item invalidates persisted data and repopulates it with the updated response', async () => {
@@ -236,22 +258,148 @@ test('focus and reconnection refresh, but a remote retirement cannot destroy an 
   assert.equal(host.querySelector('a[href="/manage/recycle-bin"] .badge')?.textContent, '1');
 });
 
-test('cross-tab snapshots update the page without triggering a fetch/write feedback loop', async () => {
+test('cross-tab public snapshots trigger an authenticated refresh for staff', async () => {
   await render('/maps');
   remote.locations[1]!.name = 'Other tab bench';
   const newValue = saveSnapshot(remote);
   await act(() => window.dispatchEvent(new dom.window.StorageEvent('storage', {
     key: CATALOG_CACHE_KEY, newValue, storageArea: dom.window.localStorage,
   })));
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
+  assert.equal(dom.window.localStorage.getItem(CATALOG_CACHE_KEY), newValue, 'Authenticated reload must not echo a storage write');
   const marker = host.querySelector<HTMLElement>('.map-marker[title="Other tab bench"]');
   assert.ok(marker);
   assert.equal(marker.style.left, '40%');
   assert.equal(marker.style.top, '60%');
-  assert.match(host.textContent ?? '', /Showing saved catalog data/);
-  await click(button('Refresh catalog'));
-  assert.equal(reads, 2);
   assert.doesNotMatch(host.textContent ?? '', /Showing saved catalog data/);
+  await click(button('Refresh catalog'));
+  assert.equal(reads, 3);
+  assert.doesNotMatch(host.textContent ?? '', /Showing saved catalog data/);
+});
+
+const restrictCatalog = (): void => {
+  remote.locations[0] = { ...remote.locations[0]!, name: 'Storage Closet', staffOnly: true };
+  remote.locations[1] = { ...remote.locations[1]!, name: 'Hidden Shelf' };
+};
+
+test('staff see actual locations while storage, sign-out, and subsequent offline browsing show Ask Staff', async () => {
+  restrictCatalog();
+  let staff = true;
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => {
+    if (url === '/api/auth/session') return Promise.resolve(Response.json({ staff }));
+    if (url === '/api/auth/logout') { staff = false; return Promise.resolve(Response.json({ staff })); }
+    return original(url, options);
+  };
+  respond = async () => Response.json(staff ? remote : publicCatalog(remote));
+  await render('/?item=camera');
+  assert.match(host.querySelector('.item-detail .breadcrumb')?.textContent ?? '', /Storage Closet.*Hidden Shelf/);
+  const saved = dom.window.localStorage.getItem(CATALOG_CACHE_KEY)!;
+  assert.doesNotMatch(saved, /Storage Closet|Hidden Shelf/);
+  assert.match(saved, /Ask Staff/);
+  respond = async () => { throw new Error('Offline after sign-out'); };
+  await click(button('Sign out'));
+  assert.equal(host.querySelector('.item-detail .breadcrumb')?.textContent, 'Ask Staff');
+  assert.equal(host.querySelector('.item-detail .room-map'), null);
+  assert.doesNotMatch(host.textContent ?? '', /Storage Closet|Hidden Shelf/);
+  assert.match(host.textContent ?? '', /Inspection camera/);
+});
+
+test('signing in refetches actual location assignments before allowing edits', async () => {
+  restrictCatalog();
+  let staff = false;
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => {
+    if (url === '/api/auth/session') return Promise.resolve(Response.json({ staff }));
+    if (url === '/api/auth/login') { staff = true; return Promise.resolve(Response.json({ staff })); }
+    return original(url, options);
+  };
+  respond = async () => Response.json(staff ? remote : publicCatalog(remote));
+  await render('/manage/items/camera/edit');
+  assert.equal(host.querySelector('.editor'), null);
+  await click(button('Staff sign in'));
+  const input = host.querySelector<HTMLInputElement>('input[type="password"]');
+  assert.ok(input);
+  await typeInput(input, 'test-only');
+  await click(button('Sign in'));
+  assert.equal(reads, 2);
+  const location = host.querySelector<HTMLInputElement>('.editor-location [role="combobox"]');
+  assert.equal(location?.value, 'Storage Closet → Hidden Shelf');
+  assert.doesNotMatch(dom.window.localStorage.getItem(CATALOG_CACHE_KEY)!, /Storage Closet|Hidden Shelf/);
+});
+
+test('a revoked staff response replaces a private draft instead of deferring redaction', async () => {
+  restrictCatalog();
+  await render('/manage/items/camera/edit');
+  await typeName('Private draft');
+  respond = async () => Response.json(publicCatalog(remote));
+  await click(button('Refresh catalog'));
+  assert.equal(host.querySelector('.editor'), null);
+  assert.match(host.textContent ?? '', /Staff sign-in required/);
+  assert.doesNotMatch(host.textContent ?? '', /Storage Closet|Hidden Shelf/);
+});
+
+test('a sign-out in another tab revokes private viewing even when its session recheck is offline', async () => {
+  restrictCatalog();
+  await render('/?item=camera');
+  assert.match(host.textContent ?? '', /Storage Closet/);
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => url === '/api/auth/session'
+    ? Promise.reject(new Error('Offline')) : original(url, options);
+  respond = async () => { throw new Error('Offline'); };
+  await act(() => window.dispatchEvent(new dom.window.StorageEvent('storage', {
+    key: 'garage-inventory:session-change', newValue: `${Date.now()}:false`, storageArea: dom.window.localStorage,
+  })));
+  assert.equal(host.querySelector('.item-detail .breadcrumb')?.textContent, 'Ask Staff');
+  assert.doesNotMatch(host.textContent ?? '', /Storage Closet|Hidden Shelf/);
+});
+
+test('sign-out clears staff assistant results instead of leaving their private location paths visible', async () => {
+  restrictCatalog();
+  let staff = true;
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => {
+    if (url === '/api/auth/session') return Promise.resolve(Response.json({ staff }));
+    if (url === '/api/auth/logout') { staff = false; return Promise.resolve(Response.json({ staff })); }
+    if (url === '/api/assistant/recommend') return Promise.resolve(Response.json({
+      understoodAs: 'Inspect a project', notInGarage: [],
+      garageItems: [{ id: 'camera', name: 'Inspection camera', kind: 'equipment',
+        reason: 'For inspection', locationPath: remote.locations }],
+    }));
+    return original(url, options);
+  };
+  respond = async () => Response.json(staff ? remote : publicCatalog(remote));
+  await render('/');
+  const query = host.querySelector<HTMLInputElement>('.search');
+  assert.ok(query);
+  await typeInput(query, 'Inspect a project');
+  await click(button('Ask'));
+  assert.match(host.querySelector('.assistant .path')?.textContent ?? '', /Storage Closet/);
+  await click(button('Sign out'));
+  assert.equal(host.querySelector('.assistant .path'), null);
+  assert.doesNotMatch(host.textContent ?? '', /Storage Closet|Hidden Shelf/);
+});
+
+test('a late staff catalog response cannot restore private locations after sign-out', async () => {
+  restrictCatalog();
+  let staff = true;
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => {
+    if (url === '/api/auth/session') return Promise.resolve(Response.json({ staff }));
+    if (url === '/api/auth/logout') { staff = false; return Promise.resolve(Response.json({ staff })); }
+    return original(url, options);
+  };
+  await render('/?item=camera');
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  respond = () => staff ? pending : Promise.resolve(Response.json(publicCatalog(remote)));
+  await click(button('Refresh catalog'));
+  await click(button('Sign out'));
+  assert.equal(host.querySelector('.item-detail .breadcrumb')?.textContent, 'Ask Staff');
+  await act(async () => { finish(Response.json(remote)); await pending; });
+  assert.equal(host.querySelector('.item-detail .breadcrumb')?.textContent, 'Ask Staff');
+  assert.doesNotMatch(host.textContent ?? '', /Storage Closet|Hidden Shelf/);
+  assert.doesNotMatch(dom.window.localStorage.getItem(CATALOG_CACHE_KEY)!, /Storage Closet|Hidden Shelf/);
 });
 
 test('background refresh preserves a category rename until it is cancelled', async () => {

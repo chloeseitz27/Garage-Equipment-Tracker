@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 
 import { JsonCatalogRepository } from './json-repository.js';
+import { locationsFileSchema } from '@garage/shared';
+import { updateLocationCatalog } from './location-updates.js';
 
 const legacy = {
   id: 'itm-saw', name: 'Saw', kind: 'equipment', categoryId: 'cat-tools',
@@ -80,4 +82,86 @@ test('JSON loading rejects unknown secondary references on retired items', async
     ...multi, categoryIds: ['cat-tools', 'cat-missing'], retiredAt: '2026-09-18T12:00:00.000Z',
   }]);
   await assert.rejects(repository.load(), /itm-tape has unknown categoryId: cat-missing/);
+});
+
+test('JSON location batches persist every marker and reload with stable ids', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const first = await repository.createLocation({ name: 'A', kind: 'table', parentId: 'loc-shop' });
+  const second = await repository.createLocation({ name: 'B', kind: 'table', parentId: 'loc-shop' });
+  const updated = [first, second].map((location, index) => ({
+    ...location, mapPosition: { roomId: 'loc-shop', mapId: 'common' as const, x: 0.2 + index * 0.1, y: 0.5 },
+  }));
+  await repository.saveLocations(updated);
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual((await reloaded.getLocations()).filter((location) => location.id !== 'loc-shop'), updated);
+  await repository.saveLocations([first, second]);
+  assert.ok((await repository.getLocations()).every((location) => !location.mapPosition));
+});
+
+test('JSON batch validation and disk failures leave all in-memory and persisted locations unchanged', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const original = await repository.getLocations();
+  const location = original[0]!;
+  await assert.rejects(repository.saveLocations([
+    { ...location, name: 'Changed' }, { ...location, id: 'missing' },
+  ]), /Unknown location/);
+  assert.deepEqual(await repository.getLocations(), original);
+  const offline = `${dataDir}-offline`;
+  await rename(dataDir, offline);
+  try {
+    await assert.rejects(repository.saveLocations([{ ...location, name: 'Changed' }]), /ENOENT/);
+    assert.deepEqual(await repository.getLocations(), original);
+    assert.deepEqual(JSON.parse(await readFile(join(offline, 'locations.json'), 'utf8')), original);
+  } finally {
+    await rename(offline, dataDir);
+  }
+});
+
+test('location upgrades use permanent seed IDs despite relabeling, without resetting inventory or custom markers', async (t) => {
+  const seed = locationsFileSchema.parse(JSON.parse(await readFile(
+    new URL('../../../../data/seed/locations.json', import.meta.url), 'utf8',
+  )));
+  const { repository, dataDir } = await fixture(t, []);
+  const original = seed.filter((location) => !['loc-table-u', 'loc-storage-closet', 'loc-basement-storage'].includes(location.id))
+    .map((location) => location.id === 'loc-advanced-table-20'
+      ? { ...location, name: 'Table Z', mapPosition: { roomId: 'loc-advanced-makerspace', mapId: 'advanced' as const, x: 0.1, y: 0.2 } }
+      : location);
+  original.push({ id: 'custom-closet', name: 'Storage Closet', kind: 'room', parentId: null });
+  await writeFile(join(dataDir, 'locations.json'), JSON.stringify(original));
+  await repository.load();
+  const preview = await updateLocationCatalog(repository, seed, false);
+  assert.equal(preview.length, 4);
+  assert.deepEqual(await repository.getLocations(), original);
+  await updateLocationCatalog(repository, seed, true);
+  const updated = await repository.getLocations();
+  const table = updated.find((location) => location.id === 'loc-advanced-table-20')!;
+  assert.equal(table.name, 'Table Y');
+  assert.deepEqual(table.mapPosition, { roomId: 'loc-advanced-makerspace', mapId: 'advanced', x: 0.1, y: 0.2 });
+  assert.equal(updated.find((location) => location.id === 'custom-closet')?.staffOnly, true);
+  assert.equal(updated.filter((location) => location.name === 'Storage Closet').length, 1);
+  assert.equal(updated.find((location) => location.id === 'loc-basement-storage')?.staffOnly, true);
+  assert.equal(updated.find((location) => location.id === 'loc-table-u')?.name, 'Table X');
+  assert.deepEqual(await updateLocationCatalog(repository, seed, true), []);
+  assert.deepEqual(await repository.getItems(), []);
+});
+
+test('migration location IDs cannot overwrite existing JSON records', async (t) => {
+  const { repository } = await fixture(t, []);
+  await repository.load();
+  const original = await repository.getLocations();
+  await assert.rejects(repository.createLocation({ name: 'Duplicate', kind: 'room', parentId: null }, 'loc-shop'), /already exists/);
+  assert.deepEqual(await repository.getLocations(), original);
+});
+
+test('drawer locations retain their type and parent through persistence and reload', async (t) => {
+  const { repository, dataDir } = await fixture(t, []);
+  await repository.load();
+  const drawer = await repository.createLocation({ name: 'Drawer 1', kind: 'drawer', parentId: 'loc-shop' });
+  const reloaded = new JsonCatalogRepository(dataDir);
+  await reloaded.load();
+  assert.deepEqual((await reloaded.getLocations()).find((location) => location.id === drawer.id), drawer);
+  assert.equal(drawer.kind, 'drawer');
 });

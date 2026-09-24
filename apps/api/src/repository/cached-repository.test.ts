@@ -39,6 +39,7 @@ function setup() {
     saveItems: () => write('saveItems', undefined),
     createLocation: (input) => write('createLocation', { ...input, id: 'new-location' }),
     saveLocation: () => write('saveLocation', undefined),
+    saveLocations: () => write('saveLocations', undefined),
     deleteLocation: () => write('deleteLocation', undefined),
     createCategory: (input) => write('createCategory', { ...input, id: 'new-category' }),
     saveCategory: () => write('saveCategory', undefined),
@@ -105,6 +106,7 @@ const mutations: Array<{ name: string; run: (cache: CatalogRepository) => Promis
   { name: 'saveItems', run: (cache) => cache.saveItems(catalogFixture().items) },
   { name: 'createLocation', run: (cache) => cache.createLocation({ name: 'Table', parentId: 'room', kind: 'table' }) },
   { name: 'saveLocation', run: (cache) => cache.saveLocation(catalogFixture().locations[1]!) },
+  { name: 'saveLocations', run: (cache) => cache.saveLocations(catalogFixture().locations) },
   { name: 'deleteLocation', run: (cache) => cache.deleteLocation('unused') },
   { name: 'createCategory', run: (cache) => cache.createCategory({ name: 'New' }) },
   { name: 'saveCategory', run: (cache) => cache.saveCategory({ id: 'tools', name: 'Updated' }) },
@@ -143,6 +145,15 @@ test('a rejected write invalidates potentially committed data and propagates the
   assert.equal((await cache.getItem('camera'))?.name, 'Partial write');
 });
 
+test('location creation forwards explicit migration IDs through the cache', async () => {
+  const { repository } = setup();
+  repository.createLocation = async (input, id) => {
+    assert.equal(id, 'permanent-id');
+    return { ...input, id };
+  };
+  const cache = new CachedCatalogRepository(repository);
+  assert.equal((await cache.createLocation({ name: 'Table X', kind: 'table', parentId: 'room' }, 'permanent-id')).id, 'permanent-id');
+});
 test('a write fences an older in-flight query while concurrent new readers share a replacement', async () => {
   const { repository, state } = setup();
   const old = deferred<Item[]>();

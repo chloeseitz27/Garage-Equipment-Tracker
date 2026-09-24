@@ -18,7 +18,10 @@ export const ITEM_KINDS = ['equipment', 'consumable'] as const;
 export const EQUIPMENT_STATUSES = ['available', 'in-use', 'out-for-repair'] as const;
 export const STOCK_LEVELS = ['in-stock', 'low', 'out'] as const;
 export const TRAINING_LEVELS = ['none', 'orientation', 'supervised', 'certified'] as const;
-export const LOCATION_KINDS = ['room', 'zone', 'table', 'workbench', 'cabinet', 'shelf', 'bin'] as const;
+export const LOCATION_KINDS = ['room', 'station', 'desk', 'table', 'workbench', 'cabinet', 'shelf', 'drawer', 'bin', 'zone'] as const;
+export const SURFACE_KINDS = ['table', 'station', 'desk', 'workbench', 'cabinet'] as const;
+export const STORAGE_KINDS = ['drawer', 'bin', 'shelf'] as const;
+export const isStationKind = (kind: typeof LOCATION_KINDS[number]): boolean => kind === 'station' || kind === 'zone';
 export const FLAG_TYPES = ['not-here', 'low', 'out'] as const;
 
 export const itemKindSchema = z.enum(ITEM_KINDS);
@@ -101,6 +104,9 @@ export const locationSchema = z.object({
   name: z.string().min(1),
   parentId: idSchema.nullable(),
   kind: locationKindSchema,
+  staffOnly: z.boolean().optional(),
+  letter: z.string().regex(/^[A-Z]+$/).optional(),
+  number: z.number().int().positive().safe().optional(),
   mapId: z.enum(ROOM_MAP_IDS).optional(),
   mapPosition: z.object({
     roomId: idSchema,
@@ -140,11 +146,26 @@ export const createItemSchema = z.preprocess(
 
 export const updateItemSchema = itemSchema;
 
-export const createLocationSchema = locationSchema.omit({ id: true });
+export const createLocationSchema = locationSchema.omit({ id: true, letter: true, number: true }).extend({
+  name: z.string().optional(),
+});
 export const createCategorySchema = categorySchema.omit({ id: true });
 
 export const updateLocationSchema = locationSchema;
 export const updateCategorySchema = categorySchema;
+
+export const MARKER_BATCH_LIMIT = 100;
+export const bulkUpdateMarkersSchema = z.object({
+  markers: z.array(z.object({
+    id: idSchema,
+    roomId: idSchema,
+    mapId: z.enum(ROOM_MAP_IDS),
+    position: locationSchema.shape.mapPosition.unwrap().pick({ x: true, y: true }).nullable(),
+  })).min(1).max(MARKER_BATCH_LIMIT).refine(
+    (markers) => new Set(markers.map((marker) => marker.id)).size === markers.length,
+    'Each location can appear only once',
+  ),
+});
 
 /**
  * Bulk item creation (product-spec.md §6.5). Cataloging a shelf one modal at a

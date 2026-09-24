@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { BulkOperationType, type ReplaceOperationInput } from '@azure/cosmos';
+import type { Location } from '@garage/shared';
 
 import { CosmosCatalogRepository, nextId } from './cosmos-repository.js';
 
@@ -147,6 +149,46 @@ test('Cosmos list and point reads validate category lists rather than casting ra
 test('Cosmos missing item reads still return null', async () => {
   const { repository } = makeRepository([]);
   assert.equal(await repository.getItem('missing'), null);
+});
+
+test('Cosmos location migrations preserve the supplied stable ID rather than deriving it from a renamed label', async () => {
+  const { repository, documents } = makeRepository([]);
+  const location = await repository.createLocation({ name: 'Table X', kind: 'table', parentId: 'room' }, 'loc-table-u');
+  assert.equal(location.id, 'loc-table-u');
+  assert.deepEqual(documents.get('loc-table-u'), { ...location, type: 'location' });
+});
+test('Cosmos saves marker batches in one location-partition replacement transaction', async () => {
+  const locations: Location[] = [
+    { id: 'a', name: 'A', parentId: 'room', kind: 'table', mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.3 } },
+    { id: 'b', name: 'B', parentId: 'room', kind: 'bin' },
+  ];
+  const repository = new CosmosCatalogRepository({ endpoint: 'https://unused.invalid', database: 'test', container: 'test' });
+  let calls = 0;
+  let code = 200;
+  let results: Array<{ statusCode: number }> | undefined = [{ statusCode: 200 }, { statusCode: 200 }];
+  Object.assign(repository, { container: { items: {
+    batch: async (operations: ReplaceOperationInput[], partition: string) => {
+      calls++;
+      assert.equal(partition, 'location');
+      assert.deepEqual(operations, locations.map((location) => ({
+        operationType: BulkOperationType.Replace, id: location.id, resourceBody: { ...location, type: 'location' },
+      })));
+      return { code, result: results };
+    },
+  } } });
+  await repository.saveLocations(locations);
+  assert.equal(calls, 1);
+  code = 429;
+  await assert.rejects(repository.saveLocations(locations), /status 429/);
+  code = 200;
+  results = [{ statusCode: 424 }, { statusCode: 404 }];
+  await assert.rejects(repository.saveLocations(locations), /no locations were changed/);
+  results = undefined;
+  await assert.rejects(repository.saveLocations(locations), /Could not confirm/);
+  const before = calls;
+  await assert.rejects(repository.saveLocations(Array.from({ length: 101 }, () => locations[0]!)), /at most 100/);
+  await repository.saveLocations([]);
+  assert.equal(calls, before);
 });
 
 test('generated ids are slugged and stable', () => {

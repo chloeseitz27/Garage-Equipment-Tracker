@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import {
   bulkUpdateItemsSchema,
+  bulkUpdateMarkersSchema,
+  MARKER_BATCH_LIMIT,
   consumableSchema,
   createItemSchema,
   equipmentSchema,
@@ -16,6 +18,22 @@ const variants = [
   { ...base, kind: 'equipment', status: 'available', quantity: 1, trainingRequired: 'none' },
   { ...base, kind: 'consumable', stockLevel: 'in-stock' },
 ];
+
+test('marker batches require distinct locations, valid normalized points, and at most 100 changes', () => {
+  const marker = { id: 'bin', roomId: 'room', mapId: 'common', position: { x: 0, y: 1 } };
+  assert.equal(MARKER_BATCH_LIMIT, 100);
+  assert.deepEqual(bulkUpdateMarkersSchema.parse({ markers: [marker] }).markers, [marker]);
+  assert.equal(bulkUpdateMarkersSchema.safeParse({ markers: [{ ...marker, position: null }] }).success, true);
+  const full = Array.from({ length: 100 }, (_, index) => ({ ...marker, id: `bin-${index}` }));
+  assert.equal(bulkUpdateMarkersSchema.safeParse({ markers: full }).success, true);
+  for (const markers of [
+    [], [marker, marker], [...full, marker],
+    [{ ...marker, position: undefined }], [{ ...marker, roomId: '' }],
+    [{ ...marker, position: { x: -0.1, y: 0.5 } }],
+    [{ ...marker, position: { x: 0.5, y: 1.1 } }],
+    [{ ...marker, position: { x: Infinity, y: NaN } }],
+  ]) assert.equal(bulkUpdateMarkersSchema.safeParse({ markers }).success, false);
+});
 
 test('item and create schemas migrate legacy categories for both kinds', () => {
   for (const variant of variants) {

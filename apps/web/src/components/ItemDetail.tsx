@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PATH_SEPARATOR, resolveLocationMap, type FlagType, type Location } from '@garage/shared';
+import { formatLocationPath, resolveLocationMap, type FlagType, type Location } from '@garage/shared';
 
 import { createFlag } from '../api.js';
 import type { SearchRecord } from '../search.js';
@@ -54,13 +54,10 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
       </p>
 
       {/* The breadcrumb is prominent and legible from a step back (product-spec.md §6.3). */}
-      <div className="breadcrumb">{locationPath.map((node) => node.name).join(PATH_SEPARATOR)}</div>
+      <div className="breadcrumb">{formatLocationPath(locationPath)}</div>
       {mapped ? (
         <>
           <RoomMap room={mapped.room} locations={locations} selectedLocationId={item.locationId} />
-          {mapped.marker?.location.id !== item.locationId ? (
-            <p className="muted small">{mapped.marker ? `Shown at ${mapped.marker.location.name}; this item's exact location is not marked.` : 'Room shown; this location has no marker yet.'}</p>
-          ) : null}
         </>
       ) : null}
 

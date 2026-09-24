@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isRetired, type CatalogResponse } from '@garage/shared';
+import { ASK_STAFF_LOCATION, isRetired, publicCatalog, type CatalogResponse } from '@garage/shared';
 import {
   BrowserCatalogCache,
   CATALOG_CACHE_KEY,
@@ -10,6 +10,7 @@ import {
 } from './catalog-cache.js';
 
 const catalogFixture = (): CatalogResponse => ({
+  access: 'public',
   items: [{
     id: 'ties', name: 'Cable ties', kind: 'consumable', stockLevel: 'low',
     categoryIds: ['supplies', 'electronics'], locationId: 'cabinet', tags: [], goodFor: [],
@@ -21,6 +22,7 @@ const catalogFixture = (): CatalogResponse => ({
       mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.8 } },
     { id: 'table', name: 'Table', kind: 'table', parentId: 'room' },
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
+    { id: 'drawer', name: 'Drawer 1', kind: 'drawer', parentId: 'cabinet' },
   ],
   categories: [{ id: 'supplies', name: 'Supplies' }, { id: 'electronics', name: 'Electronics' }],
 });
@@ -59,6 +61,22 @@ test('cold and warm loads preserve retirement, all location kinds, floor plans, 
   assert.equal(isRetired(restarted.read()!.catalog.items[0]!), true);
 });
 
+test('staff catalogs remain in memory only; saved and hydrated snapshots contain public locations', async () => {
+  const { options, values } = setup();
+  const privateCatalog = catalogFixture();
+  privateCatalog.access = 'staff';
+  privateCatalog.locations[1] = { ...privateCatalog.locations[1]!, name: 'Storage Closet', staffOnly: true };
+  values.set('garage-inventory:catalog:v2', JSON.stringify({ version: 2, fetchedAt: 1_000, catalog: privateCatalog }));
+  const cache = new BrowserCatalogCache({ ...options, fetchCatalog: async () => privateCatalog });
+  assert.equal(cache.read(), null);
+  assert.equal(values.has('garage-inventory:catalog:v2'), false);
+  const fresh = await cache.refresh();
+  assert.equal(fresh.catalog.access, 'staff');
+  assert.ok(fresh.catalog.locations.some((location) => location.name === 'Storage Closet'));
+  assert.doesNotMatch(values.get(cache.key)!, /Storage Closet/);
+  assert.equal(JSON.parse(values.get(cache.key)!).catalog.items[0].locationId, ASK_STAFF_LOCATION.id);
+  assert.deepEqual(new BrowserCatalogCache(options).read()?.catalog, publicCatalog(privateCatalog));
+});
 test('legacy cached and network categories normalize without losing the saved catalog', async () => {
   const { options, values, issues } = setup();
   const original = catalogFixture();
@@ -69,7 +87,7 @@ test('legacy cached and network categories normalize without losing the saved ca
   const expected = {
     ...original, items: original.items.map((item) => ({ ...item, categoryIds: ['supplies'] })),
   };
-  values.set(CATALOG_CACHE_KEY, JSON.stringify({ version: 2, fetchedAt: 1_000, catalog: legacy }));
+  values.set(CATALOG_CACHE_KEY, JSON.stringify({ version: 3, fetchedAt: 1_000, catalog: legacy }));
   const cache = new BrowserCatalogCache({ ...options, fetchCatalog: async () => legacy });
   assert.deepEqual(cache.read()?.catalog, expected);
   assert.deepEqual((await cache.refresh()).catalog, expected);
@@ -138,9 +156,9 @@ test('corrupt, old-version, future-dated, or dangling persisted data is reported
   for (const raw of [
     '{broken',
     JSON.stringify({ version: 1, fetchedAt: 1_000, catalog: catalogFixture() }),
-    JSON.stringify({ version: 2, fetchedAt: 1_001, catalog: catalogFixture() }),
-    JSON.stringify({ version: 2, fetchedAt: -1, catalog: catalogFixture() }),
-    JSON.stringify({ version: 2, fetchedAt: 1_000, catalog: { ...catalogFixture(), locations: [] } }),
+    JSON.stringify({ version: 3, fetchedAt: 1_001, catalog: catalogFixture() }),
+    JSON.stringify({ version: 3, fetchedAt: -1, catalog: catalogFixture() }),
+    JSON.stringify({ version: 3, fetchedAt: 1_000, catalog: { ...catalogFixture(), locations: [] } }),
   ]) {
     const { options, values, issues } = setup();
     values.set(CATALOG_CACHE_KEY, raw);
@@ -210,7 +228,7 @@ test('only catalog fields are persisted, with keys isolating different catalogs'
   });
   await cache.refresh();
   assert.deepEqual(JSON.parse(values.get(cache.key)!), {
-    version: 2, fetchedAt: 1_000, catalog: catalogFixture(),
+    version: 3, fetchedAt: 1_000, catalog: catalogFixture(),
   });
   assert.equal(new BrowserCatalogCache(options).read(), null);
   new BrowserCatalogCache(options).invalidate();

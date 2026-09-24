@@ -1,133 +1,147 @@
-import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { getDescendantLocationIds, type Location, type MapPosition } from '@garage/shared';
-import { updateLocation } from '../api.js';
-import { LocationPicker } from './LocationPicker.js';
-import { RoomMap } from './RoomMap.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { getDescendantLocationIds, resolveLocationMap, type Location } from '@garage/shared';
+import { LocationEditor } from './LocationEditor.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
 interface Props {
   locations: Location[];
-  onChanged: () => void;
+  onChanged: (location: Location) => void;
+  /** A tree form owns editing; map selection still offers to leave that form. */
+  disabled?: boolean;
+  formDirty?: boolean;
+  formBusy?: boolean;
+  onDiscardForm?: () => void;
+  onDraftChange?: (dirty: boolean) => void;
+  onCreateChild?: (location: Location) => void;
 }
 
-export function LocationMapEditor({ locations, onChanged }: Props): JSX.Element {
+export function LocationMapEditor({
+  locations, onChanged, disabled = false, formDirty = false, formBusy = false, onDiscardForm, onDraftChange, onCreateChild,
+}: Props): JSX.Element {
   const [params, setParams] = useSearchParams();
-  const rooms = locations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
-  const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
-  if (!room) return <p className="muted">Assign a floor plan to a room to place location markers.</p>;
-  const descendants = getDescendantLocationIds(locations, room.id).filter((id) => id !== room.id);
-  const selected = locations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
-  const choose = (id: string): void => { setParams({ room: room.id, pin: id }); };
-  return (
-    <section className="location-map-editor">
-      <h4>Room maps and markers</h4>
-      <nav className="tabs sub-tabs" aria-label="Map to edit">
-        {rooms.map((candidate) => (
-          <Link key={candidate.id} to={`?${new URLSearchParams({ room: candidate.id })}`} className={candidate.id === room.id ? 'active' : ''}>
-            {candidate.name}
-          </Link>
-        ))}
-      </nav>
-      <LocationPicker
-        label="Location to place"
-        locations={locations}
-        excludedIds={locations.filter((location) => !descendants.includes(location.id)).map((location) => location.id)}
-        value={selected?.id ?? ''}
-        onSelect={choose}
-      />
-      <PinEditor key={`${room.id}:${selected?.id ?? ''}`} room={room} location={selected} locations={locations} onSelect={choose} onChanged={onChanged} />
-    </section>
-  );
-}
-
-interface PinProps extends Props {
-  room: Location;
-  location?: Location;
-  onSelect: (id: string) => void;
-}
-function PinEditor({ room, location, locations, onSelect, onChanged }: PinProps): JSX.Element {
-  const initial = (): { x: string; y: string } => {
-    const pin = location?.mapPosition;
-    return pin?.roomId === room.id && pin.mapId === room.mapId
-      ? { x: (pin.x * 100).toFixed(1), y: (pin.y * 100).toFixed(1) }
-      : { x: '', y: '' };
-  };
-  const [baseline, setBaseline] = useState(initial);
-  const [point, setPoint] = useState(baseline);
-  const [remove, setRemove] = useState(false);
+  const route = useLocation();
+  const previousRoute = useRef(route.key);
+  const [savedLocations, setSavedLocations] = useState(locations);
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const dirty = JSON.stringify(point) !== JSON.stringify(baseline) || remove;
-  const { blocker, dirtyRef, markSaved } = useItemDraftGuard(dirty);
+  const [pendingSelection, setPendingSelection] = useState<{ room: string; pin: string } | null>(null);
+  const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
+  const { blocker, markSaved } = useItemDraftGuard(dirty || formDirty, {
+    allowSearchChanges: (current, next) => {
+      const from = new URLSearchParams(current), to = new URLSearchParams(next);
+      return (from.get('room') ?? rooms[0]?.id) === (to.get('room') ?? rooms[0]?.id) &&
+        from.get('pin') === to.get('pin');
+    },
+  });
+  const blockerRef = useRef(blocker);
+  blockerRef.current = blocker;
+  const reportEditor = useCallback((dirty: boolean, busy: boolean): void => {
+    setDirty(dirty);
+    setBusy(busy);
+    if (dirty) setNotice(null);
+  }, []);
+  useEffect(() => { onDraftChange?.(dirty || busy); }, [dirty, busy, onDraftChange]);
+  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
+  useEffect(() => { setSavedLocations(locations); }, [locations]);
   useEffect(() => {
-    if (dirtyRef.current) return;
-    const next = initial();
-    setBaseline(next);
-    setPoint(next);
-    setRemove(false);
-  }, [location, room, dirtyRef]);
+    if (previousRoute.current === route.key) return;
+    previousRoute.current = route.key;
+    if (disabled && !formDirty && !formBusy) onDiscardForm?.();
+  }, [route.key, disabled, formDirty, formBusy, onDiscardForm]);
 
-  const x = Number(point.x), y = Number(point.y);
-  const valid = point.x !== '' && point.y !== '' && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 100 && y >= 0 && y <= 100;
-  const pin: MapPosition | undefined = valid && room.mapId && !remove
-    ? { roomId: room.id, mapId: room.mapId, x: x / 100, y: y / 100 } : undefined;
-  const preview = dirty && location ? locations.map((candidate) => candidate.id === location.id
-    ? { ...candidate, mapPosition: pin } : candidate) : locations;
-
-  const save = async (): Promise<void> => {
-    if (!location || busy) return;
-    if (!remove && !valid) { setError('Enter X and Y percentages between 0 and 100.'); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      const { mapPosition: _old, ...record } = location;
-      await updateLocation(pin ? { ...record, mapPosition: pin } : record);
-      setBaseline(point);
-      setRemove(false);
-      markSaved();
-      setNotice('Map marker saved.');
-      onChanged();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save the marker.');
-    } finally {
-      setBusy(false);
+  const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
+  const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
+  const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
+  const choose = (id: string, targetRoom: Location): void => {
+    if (busy || formBusy) return;
+    setNotice(null);
+    // A draft can preview another room; navigation must target the saved hierarchy.
+    const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
+    const target = { room: savedRoom.id, pin: id };
+    if (disabled && formDirty) {
+      setPendingSelection(target);
+      return;
     }
+    if (disabled) {
+      onDiscardForm?.();
+      markSaved();
+    }
+    setParams(target);
   };
+  const clearDraft = (): void => {
+    setDirty(false);
+    setBusy(false);
+    setRevision((current) => current + 1);
+    setNotice(null);
+    markSaved();
+  };
+  const navigation = (displayRoom: Location): JSX.Element => (
+    <nav className="tabs sub-tabs" aria-label="Map to edit">
+      {rooms.map((candidate) => (
+        <Link
+          key={candidate.id}
+          to={`?${new URLSearchParams({ room: candidate.id })}`}
+          className={candidate.id === displayRoom.id ? 'active' : ''}
+          aria-disabled={busy || formBusy}
+          onClick={(event) => { if (busy || formBusy) event.preventDefault(); }}
+        >{candidate.name}</Link>
+      ))}
+    </nav>
+  );
+
   return (
-    <>
-      <p className="hint">Choose a location, then click its spot on the map or enter percentages from the top-left corner. Drag to pan when zoomed; dragging does not place a marker. Changes are a preview until saved.</p>
-      <RoomMap
-        room={room}
-        locations={preview}
-        selectedLocationId={location?.id}
-        onSelect={onSelect}
-        onPlace={location && !busy ? ({ x, y }) => {
-          setPoint({ x: (x * 100).toFixed(1), y: (y * 100).toFixed(1) });
-          setRemove(false);
-          setNotice(null);
-        } : undefined}
-      />
-      {location ? (
-        <div className="map-pin-controls">
-          <label>X (%)
-            <input aria-label="Marker X percent" type="number" min={0} max={100} step="0.1" value={point.x} disabled={busy}
-              onChange={(event) => { setPoint({ ...point, x: event.target.value }); setRemove(false); }} />
-          </label>
-          <label>Y (%)
-            <input aria-label="Marker Y percent" type="number" min={0} max={100} step="0.1" value={point.y} disabled={busy}
-              onChange={(event) => { setPoint({ ...point, y: event.target.value }); setRemove(false); }} />
-          </label>
-          <button type="button" disabled={busy || !dirty} onClick={() => void save()}>Save marker</button>
-          <button type="button" disabled={busy || (!location.mapPosition && !pin)} onClick={() => {
-            setPoint({ x: '', y: '' }); setRemove(true); setNotice(null);
-          }}>Remove marker</button>
-        </div>
-      ) : null}
-      {error ? <p className="error" role="alert">{error}</p> : null}
+    <section className="location-map-editor" aria-label="Maps and locations">
       {notice ? <p role="status">{notice}</p> : null}
-      {blocker.state === 'blocked' ? <UnsavedItemDialog subject="location marker" busy={busy} onStay={blocker.reset} onLeave={blocker.proceed} /> : null}
-    </>
+      {room ? (
+        <LocationEditor
+          locations={savedLocations}
+          location={selected}
+          parentId={selected?.parentId ?? null}
+          onStateChange={reportEditor}
+          mapPanel={{ room, navigation, onSelect: choose, onCreateChild, readOnly: disabled, revision }}
+          onCancel={() => {
+            clearDraft();
+            setParams({ room: room.id });
+          }}
+          onSaved={(saved) => {
+            const next = savedLocations.map((location) => location.id === saved.id ? saved : location);
+            setSavedLocations(next);
+            setDirty(false);
+            setBusy(false);
+            markSaved();
+            setNotice('Location saved.');
+            const savedRoom = resolveLocationMap(next, saved.id)?.room;
+            const pendingNavigation = blockerRef.current;
+            if (pendingNavigation.state === 'blocked') pendingNavigation.proceed();
+            else if (!savedRoom) setParams({ room: room.id });
+            else if (savedRoom.id !== room.id) setParams({ room: savedRoom.id, pin: saved.id });
+            onChanged(saved);
+          }}
+        />
+      ) : <p className="muted">Assign a floor plan to a room to edit its locations on the map.</p>}
+      {pendingSelection || blocker.state === 'blocked' ? (
+        <UnsavedItemDialog
+          subject="location"
+          description="Save your location changes before selecting another location, switching rooms, or leaving, or discard them to continue."
+          busy={busy || formBusy}
+          onStay={() => {
+            setPendingSelection(null);
+            if (blocker.state === 'blocked') blocker.reset();
+          }}
+          onLeave={() => {
+            if (busy || formBusy) return;
+            const target = pendingSelection;
+            setPendingSelection(null);
+            clearDraft();
+            onDiscardForm?.();
+            if (blocker.state === 'blocked') blocker.proceed();
+            else if (target) setParams(target);
+          }}
+        />
+      ) : null}
+    </section>
   );
 }

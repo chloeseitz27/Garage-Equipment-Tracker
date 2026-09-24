@@ -1,4 +1,6 @@
-# Garage Inventory — Product Specification
+# GET IT — Product Specification
+
+Garage Equipment Tracker & Inventory Tool
 
 **Status:** Draft
 **Last updated:** 2026-09-15
@@ -155,19 +157,31 @@ Rules:
   valid.
 - Locations are browsable in their own right: "show me everything in Cabinet B."
 
-Room maps use the supplied Common Makerspace and Advanced Makerspace plans.
-Locations can carry map markers; items inherit them through their location path.
-Selecting a map marker lists active items at or beneath that location. Item
-details highlight the closest mapped location, stating when it is a parent
-rather than the exact bin. Staff can position or remove markers with an explicit
-save. Floor plans do not imply any tool availability or unverified item placement.
+Maps use the supplied Common Makerspace and Advanced Makerspace plans.
+Drawn locations link directly to SVG shapes by stable location ID. Selecting a
+table highlights its full shape, and SVG moves, rotations, and resizing update
+the mapping without pin repositioning. Other room-level locations can keep point markers. Drawers, bins, shelves, and
+deeper locations do not have separate map pins; they inherit their enclosing
+table, station, desk, workbench, or cabinet.
+Selecting a map shape or marker lists active items at or beneath that location. Item
+details highlight that enclosing location for storage. Staff can position or remove surface point markers with an
+explicit save; SVG-linked shapes are edited in the drawing. Floor plans do not imply any tool availability or unverified item placement.
 
-Table/bench letters are unique across rooms. Common starts with A at the
-upper-left desk and proceeds down the left wall around the perimeter. Advanced
-starts with Z at the lower-left table and proceeds up the left wall, decreasing
-through the alphabet. The six central Common tables are shared work surfaces,
+Table/bench letters are unique across rooms. Common runs A-M clockwise from the
+top-right table. Advanced runs S-Z clockwise from the top-left workbench,
+continuing left to right across the top, down the right side, and back around
+the lower and left portions of the room. The six central Common tables are shared work surfaces,
 not storage destinations; draw them without individual labels or map markers.
-Drawers use numbers appended to the surface letter, such as C2.
+Drawers use numbers appended to the surface letter, such as D2.
+
+Only rooms are top-level. Rooms contain tables, stations, desks, workbenches,
+or cabinets; those locations contain drawers, bins, or shelves. Storage may
+nest but all its numbers are unique within the enclosing room-level location.
+Room-level tables, desks, workbenches, and cabinets have editable names defaulted
+from the next available letter, with a separate stable letter code. Stations
+have required names such as Roland or Laser and do not receive letter codes.
+Storage names are generated from type and number, not entered by users.
+For example, Desk A / Drawer 3 has the short code A3.
 
 ### 5.3 Category
 

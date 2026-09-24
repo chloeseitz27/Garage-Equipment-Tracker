@@ -101,10 +101,12 @@ export class JsonCatalogRepository implements CatalogRepository {
     return [...this.locations];
   }
 
-  async createLocation(input: Omit<Location, 'id'>): Promise<Location> {
-    const location: Location = { ...input, id: this.nextId('loc', input.name, this.locations) };
-    this.locations.push(location);
-    await this.persist('locations.json', this.locations);
+  async createLocation(input: Omit<Location, 'id'>, migrationId?: string): Promise<Location> {
+    const location: Location = { ...input, id: migrationId ?? this.nextId('loc', input.name, this.locations) };
+    if (this.locations.some((existing) => existing.id === location.id)) throw new Error(`Location already exists: ${location.id}`);
+    const next = [...this.locations, location];
+    await this.persist('locations.json', next);
+    this.locations = next;
     return location;
   }
 
@@ -118,6 +120,16 @@ export class JsonCatalogRepository implements CatalogRepository {
   async deleteLocation(id: string): Promise<void> {
     this.locations = this.locations.filter((location) => location.id !== id);
     await this.persist('locations.json', this.locations);
+  }
+
+  async saveLocations(locations: Location[]): Promise<void> {
+    const updates = new Map(locations.map((location) => [location.id, location]));
+    for (const id of updates.keys()) {
+      if (!this.locations.some((location) => location.id === id)) throw new Error(`Unknown location: ${id}`);
+    }
+    const next = this.locations.map((location) => updates.get(location.id) ?? location);
+    await this.persist('locations.json', next);
+    this.locations = next;
   }
 
   async getCategories(): Promise<Category[]> {

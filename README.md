@@ -1,4 +1,6 @@
-# Garage Inventory
+# GET IT
+
+**Garage Equipment Tracker & Inventory Tool**
 
 Inventory organization and tracking tool for the Microsoft Garage in Reston.
 
@@ -69,6 +71,8 @@ request automatically.
 | `npm run dev` | API and web dev servers together |
 | `npm run seed` | Copy `data/seed` to `data/runtime` if runtime is empty |
 | `npm run seed:cosmos` | Import `data/seed` into Cosmos (validates first, upserts by id) |
+| `npm run update:locations` | Preview additive location updates; pass `-- --apply` to apply to the configured backend |
+| `npm run sync:maps:cosmos` | Preview drawn location names/markers; apply with `-- --apply --backup <absolute-path>` |
 | `npm run reset` | Overwrite `data/runtime` from seed — the "put the demo back" button |
 | `npm test` | Grounding, safety, and location-path tests, plus seed validation |
 | `npm run validate:seed` | Schema + referential integrity check on `data/seed` |
@@ -97,36 +101,79 @@ validator can't drift apart.
 
 ## Demo data
 
-`data/seed` holds two rooms and 26 storage/station locations from the supplied
-floor plans (28 location nodes total), plus 10 starter categories. The previous
+`data/seed` holds two mapped rooms, 27 storage/station locations from the edited
+floor plans, and two staff-only storage rooms (31 location nodes total), plus 10 starter categories. The previous
 fictional inventory and room structure have been replaced; `items.json` and
 `flags.json` are empty. Tables and named stations are locations, not assertions
 that any particular tool or material is available.
 
-## Room maps
+## Maps
 
 - **Common Makerspace:** 13 lettered tables/desks/workbenches, **A–M**, starting
-  at the upper-left desk and going down the left wall, across the bottom, up the
-  right wall, then along the top. The six center work tables stay visible but
+  at the **top-right table**, then clockwise down the right wall, across the bottom
+  from right to left, up the left wall, and along the top. The six center work tables stay visible but
   have no individual labels or storage locations: keep them clear.
-- **Advanced Makerspace:** seven lettered tables/workbenches, **Z–T**, starting
-  at the lower-left table and going up the left wall, across the top, down the
-  right wall, then along the bottom. The Toolbox remains in the former coat-rack
-  area.
+- **Advanced Makerspace:** eight lettered tables/workbenches, **S–Z**, starting
+  at the **top-left workbench** and continuing clockwise: Workbench S, Tables T/U
+  across the top, V on the right, W at the center, X/Y along the bottom-left, and
+  Z at left-center. The Toolbox remains in the former coat-rack area.
 
-Letters are unique across rooms. **N–S** are unused, leaving room to expand.
+Letters are unique across rooms. **N–R** are unused, leaving room to expand.
 Cabinets, the Toolbox, and named stations retain descriptive names outside the
 table/bench sequence. Storage-location IDs are not renamed, so existing links
 and item assignments follow the new display names. The center work tables are
 not in location pickers or map markers and cannot receive item assignments.
 Drawer labels use the table letter followed by the drawer number (for example,
-**C2** means Table C, Drawer 2); drawers are not pre-populated without their
+**D2** means Table D, Drawer 2); drawers are not pre-populated without their
 actual counts and positions.
 
 The app uses clean SVG schematics in `apps/web/public/maps`, with horizontal,
 high-contrast labels and no dimension clutter. The original PNGs remain there
-as source references. Both redraws retain the original coordinate system so
-existing markers still align; these are schematics, not scale drawings.
+as source references. Both redraws retain the original coordinate system, and
+**SVG geometry is now the source of truth for drawn locations**. Clicking a
+table selects its whole surface, and selection highlights the full outline
+rather than a dot. Rectangles, paths, polygons, circles, ellipses, and nested
+SVG transforms stay aligned while zooming or panning. Room-level locations not
+drawn in the SVG can use point markers. Drawers, bins, shelves, and deeper
+locations do not get their own pins: they inherit their enclosing table,
+station, desk, workbench, or cabinet's map location.
+
+Each drawn location is linked by `data-location-id="<database location id>"`.
+Keep that attribute when moving, resizing, rotating, or reshaping a table in
+Inkscape. The app reads the updated SVG on map load and when the tab regains
+focus or reconnects; development asset changes also reload through Vite.
+**No database coordinate update or marker Save is needed for SVG-linked shapes.**
+The background image and hit areas come from the same fetched SVG version.
+Renaming SVG text does not rename database records, and adding SVG groups does
+not create inventory locations automatically.
+
+Use `.surface`, `.station`, or `.cabinet` on the location geometry, or mark
+specific pieces with `data-location-shape="true"` for multipart shapes. Without
+these, the first supported shape in the location group is used. Keep geometry
+in SVG attributes; expand linked clones, clipping/masks, and CSS transforms
+into ordinary shapes and SVG transform attributes. Invalid XML, duplicate
+location IDs, or unsupported region geometry produces a visible map error
+instead of silently using misaligned hit targets.
+
+SVG-linked geometry is read-only in the location editor: edit the SVG to change
+its outline or position. Location metadata remains editable. Existing database coordinates are retained for
+compatibility but ignored while a matching SVG shape exists. If the SVG link
+is removed, a valid stored point can be used as a fallback; no catalog record
+is deleted by editing an SVG.
+
+These are schematics, not scale drawings. Existing staff-positioned points are
+not overwritten by the additive location update. The legacy coordinate/name
+synchronizer remains available, but is not needed for SVG geometry changes.
+To explicitly realign the live
+Cosmos catalog with these drawings, preview `npm run sync:maps:cosmos`, then run
+`npm run sync:maps:cosmos -- --apply --backup <absolute-path>`. This backs up the
+catalog, uses one ETag-guarded transaction to change mapped surface names and
+coordinates, creates missing drawn surfaces with stable IDs, and verifies that
+other fields and item assignments are unchanged. Named stations/cabinets keep
+their names; unmapped locations are untouched. Existing API processes may need
+a restart to clear their catalog cache after this out-of-band update.
+In PowerShell, use `npm.cmd run sync:maps:cosmos -- --apply --backup <absolute-path>`
+so npm receives both flags unchanged.
 Equipment areas are labeled **Roland** and **Laser**. The **Work Tables** label
 sits within the central table formation, and the fire cabinet is drawn with its
 back against Advanced's left wall and its doors facing into the room. The area
@@ -138,24 +185,64 @@ when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
 Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.
-Open **Room maps** to switch rooms and click a marker to
+Open **Maps** to switch rooms and click a shape or point marker to
 see its active items (including sub-locations). Item details highlight their
-location on the same map, falling back to the nearest mapped ancestor, explicitly
-labeled as an approximate location.
+location on the same map. For smaller storage locations, the map highlights
+their enclosing room-level location and labels that mapping as inherited.
 
-In **Manage catalog → Locations**, select a location in the map editor, click
-its spot or enter X/Y percentages, then **Save marker**. **Remove marker** is
-also staged until saved. Unsaved marker moves warn before navigation.
+In **Manage → Locations**, clicking a shape or point opens that
+location's edit panel directly below the same map. Edit its name, type, parent,
+and staff-only setting there. **Save** becomes available when the draft changes;
+**Cancel** discards the draft and clears the highlight. The old marker
+save/discard/delete/undo toolbar and batch count are no longer shown.
+**Child locations** lists the selected location's immediate children below its
+fields. Click a child to select and edit it, or use the **+** beside the list to
+open the existing child-creation form with this location as its fixed parent.
+The tree expands the full parent path so that form is visible, and the new
+child appears in the selection panel after saving. Save or cancel parent edits
+before adding a child; selecting a child also protects unsaved changes.
+Point-only room-level locations can be repositioned by clicking empty space in
+the main map; their metadata and point are saved together. SVG-linked shapes continue
+to follow the SVG rather than accepting point edits.
+
+Selecting a different location, switching rooms, browser Back/Forward, or
+leaving the page prompts when there are unsaved edits. Failed saves preserve
+the draft for retry. Selection and cancellation keep the current map zoom.
+The map section has room tabs and the map, without a separate location picker.
+Use the tree's edit form to place an existing location that has no marker or
+SVG shape, or to place a point directly on a drawn surface.
 Renaming a location retains its marker. A cross-room move, or changing a room's
 floor plan, makes old coordinates inactive until the location is remapped.
 Existing item and location IDs remain stable during normal edits.
+
+### Staff-only storage
+
+**Storage Closet** and **Basement Storage** are top-level, unmapped, staff-only
+locations. Staff can assign items to them with location search and see their
+actual names and sub-location paths. Visitors can still find those items, but
+their location is **Ask Staff**, with no private map or breadcrumb.
+
+**Manage → Locations** has a **Staff-only** checkbox for new
+and existing locations. The restriction includes all descendants; unchecking a
+child does not override a restricted parent. Catalog responses, item details,
+and assistant recommendations redact restricted location metadata on the server.
+This protects location metadata, not arbitrary staff-written descriptions or
+notes, which remain public.
+
+For an existing catalog, deploy this code before creating restricted records.
+Then run `npm run update:locations` to preview changes and
+`npm run update:locations -- --apply` to add the two rooms and the missing drawn
+table (now Table X), and align known old table labels with the drawing. The script uses the configured JSON
+or Cosmos backend, is safe to rerun, and preserves inventory, existing IDs,
+custom location names, parent links, and saved marker positions. It is not a
+reset and does not run automatically on startup.
 
 `seed:cosmos` upserts seed records; it does **not** delete existing data or migrate
 an old demo automatically. Back up an existing catalog before replacing a demo.
 
 ## Staff editing
 
-Sign in with the staff passphrase and a **Manage catalog** tab appears.
+Sign in with the staff passphrase and a **Manage** tab appears.
 Its sections share one navigation bar with slim separators:
 
 | Section | Does |
@@ -165,6 +252,79 @@ Its sections share one navigation bar with slim separators:
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
+
+In **Locations**, each branch of the tree below the map starts collapsed.
+Use its chevron to expand or collapse children; collapsing keeps any draft edit.
+Rename/move, delete, save, cancel, and add use icons with tooltips and accessible
+labels. Clicking Delete on a location that holds items or children opens a popup
+explaining what must be moved or removed first; it does not attempt deletion.
+Each location's **+** opens an inline form for a child of that location, without
+a parent picker. The **+** below the list creates a top-level room; there is no
+permanent creation form at the bottom. New child locations require an explicit
+**Type** selection, displayed in Title Case. Top-level room forms use **Room**.
+**Drawer** is available as its own location type; existing bins are not
+automatically reclassified. Deploy matching API and web versions before using
+new location types in a shared catalog.
+Editing retains the saved type and includes the parent picker, except for
+top-level rooms, whose parent and room type stay fixed.
+
+Location types follow a hierarchy:
+
+| Level | Allowed types | Naming |
+|---|---|---|
+| Top level | Room | Editable room name |
+| Directly inside a room | Table, Desk, Workbench, Cabinet | Editable name, defaulting to the type plus the next available letter |
+| Directly inside a room | Station | Required editable name, with no letter |
+| Inside a room-level location or another storage container | Drawer, Bin, Shelf | Generated type and number; no name input |
+
+Rooms cannot contain other rooms or loose storage containers. Stations cover
+named equipment areas such as Roland, Laser, and sinks. Each room-level
+table, desk, workbench, or cabinet has a unique letter code separate from its
+editable name. **Stations such as Roland or Laser do not have letter codes**
+and do not consume letters from the available pool. Existing table letters are
+preserved; new codes fill unused letters, then continue with AA, AB, and so on.
+
+Drawers, bins, and shelves share one number sequence across their enclosing
+table/station, including nested containers. **Desk A → Drawer 3** is **A3**,
+and a bin elsewhere under Desk A cannot also use 3. Codes appear in the tree,
+child lists, location paths, search, and item details. Storage names are
+generated on both create and edit; submitting a custom name or number does not
+override the server assignment. Same-table moves retain their number; moving
+a subtree under another table assigns new destination numbers together.
+Station storage retains its numbers and uses the station name in its path,
+such as **Roland → Drawer 3**, without a letter-based short code.
+
+Legacy records remain readable. Location reads assign missing code metadata
+deterministically, preserve existing letter labels and valid numbers, and
+display storage as `Type Number`. The next location write persists those legacy
+assignments before allocating new codes. Legacy room-level **Zone** becomes
+**Station**, and a `Desk <letter>` previously stored as Table becomes Desk.
+Old station letters are omitted from reads and removed when legacy metadata is
+next persisted; station names and child numbers are preserved.
+Other legacy invalid type/parent combinations must be corrected before saving.
+Locations, parents, maps, and item assignments keep their IDs.
+
+Number allocation is serialized with hierarchy writes on the app's single API
+instance. Do not run multiple API writers or edit location code fields directly
+in Cosmos while the app is writing. Moving more than 100 storage records as one
+subtree is refused to keep renumbering within a single storage transaction.
+
+In a mapped room, room-level tables, stations, desks, workbenches, and cabinets
+require their own point marker or linked SVG shape before saving. For a point-only
+surface, click the map to place it; SVG-linked surfaces follow the drawing.
+Smaller locations only require their type and generated number. Their creation
+form has no placement map, and selecting one highlights its enclosing surface
+rather than a separate pin. Existing storage-level pins are ignored on display
+and removed from normalized reads and subsequent location writes. Surface
+locations in unmapped rooms and top-level rooms do not require placement.
+Metadata and any surface placement are saved
+together; no temporary location is created first. Save or cancel the highlighted
+location's draft before opening another tree form. While a tree form is open,
+the main map stays visible without displaying a second editable panel.
+The map remains selectable: choosing a location prompts before abandoning an
+unsaved tree form, including when clicking the already-highlighted parent.
+An untouched form closes immediately when you select another location.
+Unsaved forms also protect room switches and navigation.
 
 Each item belongs to **one or more categories**. In the item editor, open
 **Categories** and toggle every applicable category; all selected names remain
@@ -211,9 +371,34 @@ rows; filtered-out items are unchecked, while sorting preserves the selection.
 The recycle bin also has a sortable deletion-date column (newest first by default).
 Headers stay visible while scrolling through the grid.
 
-Location editing fields use the same single-choice searchable picker: **Move to**, the item
-editor, bulk-entry defaults, and the parent fields for new or existing locations.
-It matches on the full breadcrumb, so
+Location editing fields use the same single-choice picker: **Move to**, the item
+editor, bulk-entry defaults, and parent fields when editing non-root-room locations.
+Outside the item editor, click
+**Choose on map**, switch rooms,
+and click a location marker to select it without using the dropdown. The picker
+opens on the selected location's room; switching rooms, zooming, or closing the
+map does not change the selection. **Choose entire room** selects the room itself.
+Selections remain drafts until the form's normal Save/Add action. Clicking a
+marker in the marker editor selects it without changing its coordinates.
+Parent restrictions also apply on the map, and **Top level (no parent)** remains
+available. Locations without a valid marker stay searchable with **Use search
+instead**. Selecting storage highlights its enclosing surface without changing
+the selected sub-location.
+
+In the item editor, the location picker and a live map sit to the right of the
+item fields (stacked below them on smaller screens). The map follows the draft
+location, including room changes and inherited surface locations. Room tabs
+above the map let you browse another room without changing the item. Click a
+marker to change the draft location; location search also switches the map to
+the chosen location's room. There is no separate **Choose on map** button in the
+item editor. Changes are only saved with **Save changes** or **Create item**.
+
+The location column filter also offers **Choose on map**. Click markers to toggle
+multiple locations, including across rooms, then **Close map**. Like the existing
+filter list, changes apply immediately and include sub-locations; they never move
+items. This works in both Items and the recycle bin.
+
+The searchable picker matches on the full breadcrumb, so
 `electronics` reaches every bin under that bench, and every token must match the
 start of a word — `bin b3` and `b3 bin` find the same node, while `bin` doesn't
 drag in every Cabinet. Arrows move the highlight, Enter picks, Escape closes.
@@ -253,7 +438,7 @@ Navigation uses real URLs and browser history:
 | `/?mode=ask&q=Build+a+planter` | Shared input ready to Ask about a project |
 | `/assistant` | Legacy link; redirects to the shared interface in Ask mode, preserving query parameters |
 | `/maps?room=loc-common-makerspace` | Common Makerspace floor plan |
-| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table V selected (stable location ID) |
+| `/maps?room=loc-advanced-makerspace&location=loc-advanced-table-3` | Advanced Makerspace with Table U selected (stable location ID) |
 | `/manage/items` | Items grid |
 | `/manage/items/new` | New item form |
 | `/manage/items/<id>/edit` | Edit an item |
@@ -385,30 +570,38 @@ cross-process invalidation. For JSON resets or direct file edits, restart the
 API to reload its in-memory data.
 
 The browser shows saved data immediately, then revalidates on page load, window
-focus, reconnect, and **Refresh catalog** (the circular-arrow icon beside staff
-sign-in in the header, which spins while refreshing unless reduced motion is
-preferred). Connection notices below the header appear only when needed.
+focus, and reconnect. In development, **Refresh catalog** is also available as
+the circular-arrow icon beside staff sign-in in the header; it spins while
+refreshing unless reduced motion is preferred. The header icon is omitted from
+production builds for staff and visitors. Automatic refreshes and the **Retry
+catalog** action after an initial load failure remain available in production.
+Connection notices below the header appear only when needed.
 Successful staff catalog mutations
 invalidate the saved snapshot and refetch. Another tab's saved catalog is
-adopted without an echoing network request; cross-tab invalidation triggers a
-refresh. Incoming updates wait while staff have unsaved catalog forms, bulk
-drafts, or map edits.
+adopted by visitors without an echoing network request; staff re-fetch their
+authenticated view without writing another storage event. Cross-tab invalidation
+triggers a refresh. Incoming updates wait while staff have unsaved catalog forms,
+bulk drafts, or map edits, except that revoked access immediately hides staff data.
 
-Failed refreshes keep the current view and display a warning and retry button
-instead of replacing the app with an error screen. Cached locations, status,
+Failed refreshes keep the current view and display a warning instead of replacing
+the app with an error screen. An initial load failure with no saved data offers
+**Retry catalog**. Cached locations, status,
 and safety/training data are explicitly labelled as potentially outdated.
-Writes still require the API: there is no offline write queue or simulated
+Staff editing requires an authenticated network catalog, never a redacted cached
+snapshot. Writes still require the API: there is no offline write queue or simulated
 success. The displayed timestamp is when the browser fetched the catalog,
 **not** when the database was last changed; a server response may already be up
 to the server TTL old.
 
-Both caches use `@garage/shared` validation and preserve `retiredAt`, all
-location kinds, map metadata, and verbatim safety text. The browser key is
-`garage-inventory:catalog:v2`; incompatible earlier drafts are not reused.
+Both caches use `@garage/shared` validation and preserve `retiredAt`, public
+location kinds, public map metadata, and verbatim safety text. The browser key is
+`garage-inventory:catalog:v3`; the old v2 snapshot is removed on load.
 Malformed saved data is reported and removed; blocked storage or quota failures
 are reported while network-backed use can continue in memory. Only public
-catalog data is persisted, not staff sessions, searches, flags, or assistant
-inputs/responses. Clearing this site's local storage clears its saved catalog.
+catalog data is persisted; private location data stays in memory only. Sign-out
+immediately redacts the view, clears assistant results, and notifies other tabs.
+Sign-in, focus, and reconnection re-check access. Sessions, searches, flags, and
+assistant inputs/responses are not cached. Clearing this site's local storage clears its saved catalog.
 Clear it when switching the backend behind the same origin.
 
 This is data caching, not offline app installation: loading the HTML/JS still

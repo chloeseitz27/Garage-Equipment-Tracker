@@ -3,6 +3,7 @@ import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
   TRAINING_LEVELS,
+  resolveLocationMap,
   type Category,
   type CreateItemInput,
   type Item,
@@ -13,6 +14,7 @@ import {
 import { createItem, updateItem } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 import { CategoryPicker } from './CategoryPicker.js';
+import { RoomMap } from './RoomMap.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
 interface Props {
@@ -78,6 +80,14 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
   const mounted = useRef(true);
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
   const { blocker, dirtyRef, markSaved } = useItemDraftGuard(dirty);
+  const mapped = resolveLocationMap(locations, form.locationId);
+  const rooms = locations.filter((location) => location.parentId === null && location.kind === 'room' && location.mapId);
+  const [roomId, setRoomId] = useState(mapped?.room.id);
+  const room = rooms.find((candidate) => candidate.id === roomId) ?? rooms[0];
+
+  useEffect(() => {
+    setRoomId(mapped?.room.id);
+  }, [form.locationId, mapped?.room.id]);
 
   useEffect(() => {
     // Catalog refreshes must not overwrite a draft while the user is editing it.
@@ -95,6 +105,12 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  const selectLocation = (locationId: string): void => {
+    if (busy) return;
+    set('locationId', locationId);
+    setRoomId(resolveLocationMap(locations, locationId)?.room.id);
+  };
 
   const buildInput = (): CreateItemInput | null => {
     const shared = {
@@ -171,9 +187,8 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
         void submit();
       }}
     >
+      <h3>{item ? `Edit ${item.name}` : 'New item'}</h3>
       <fieldset className="editor-fields" disabled={busy}>
-        <h3>{item ? `Edit ${item.name}` : 'New item'}</h3>
-
         <label>
           Name
           <input value={form.name} onChange={(event) => set('name', event.target.value)} required />
@@ -200,14 +215,6 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
             onChange={(ids) => set('categoryIds', ids)}
           />
         </div>
-
-        <LocationPicker
-          label="Location"
-          locations={locations}
-          value={form.locationId}
-          disabled={busy}
-          onSelect={(locationId) => set('locationId', locationId)}
-        />
 
         {form.kind === 'equipment' ? (
           <div className="field-row">
@@ -310,17 +317,58 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
           </span>
         </label>
 
-        {error ? <p className="error" role="alert">{error}</p> : null}
-
-        <div className="editor-actions">
-          <button type="submit" disabled={busy}>
-            {busy ? 'Saving…' : item ? 'Save changes' : 'Create item'}
-          </button>
-          <button type="button" className="secondary" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
       </fieldset>
+      <fieldset className="editor-fields editor-location" disabled={busy}>
+        <legend className="visually-hidden">Item location</legend>
+        <LocationPicker
+          label="Location"
+          showMapButton={false}
+          locations={locations}
+          value={form.locationId}
+          disabled={busy}
+          onSelect={selectLocation}
+        />
+        {room ? (
+          <div>
+            <nav className="tabs sub-tabs" aria-label="Item room maps">
+              {rooms.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  className={candidate.id === room.id ? 'active' : ''}
+                  aria-pressed={candidate.id === room.id}
+                  disabled={busy}
+                  onClick={() => setRoomId(candidate.id)}
+                >{candidate.name}</button>
+              ))}
+            </nav>
+            <RoomMap
+              key={room.id}
+              room={room}
+              locations={locations}
+              selectedLocationId={form.locationId}
+              onSelect={selectLocation}
+              caption="Click a shape or marker to change the location. Changes are saved with the item."
+            />
+            {mapped?.room.id !== room.id ? (
+              <p className="hint">
+                {mapped
+                  ? `The selected location is in ${mapped.room.name}. Switching room tabs does not move the item.`
+                  : 'The selected location has no floor plan. Click a marker to choose a new location.'}
+              </p>
+            ) : null}
+          </div>
+        ) : <p className="hint">No floor plan is available for this location. Use search to select another location.</p>}
+      </fieldset>
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      <div className="editor-actions">
+        <button type="submit" disabled={busy}>
+          {busy ? 'Saving…' : item ? 'Save changes' : 'Create item'}
+        </button>
+        <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
       {blocker.state === 'blocked' ? (
         <UnsavedItemDialog busy={busy} onStay={blocker.reset} onLeave={blocker.proceed} />
       ) : null}
