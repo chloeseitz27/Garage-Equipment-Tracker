@@ -8,7 +8,7 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
   const roomId = params.get('room') ?? rooms[0]?.id;
   const room = rooms.find((candidate) => candidate.id === roomId);
   if (!room) {
-    return <section className="manager"><h2>Room maps</h2><p>No mapped room found.</p><Link to="/maps">View available rooms</Link></section>;
+    return <section className="manager" aria-label="Maps"><p>No mapped room found.</p><Link to="/maps">View available rooms</Link></section>;
   }
   const locationId = params.get('location') ?? room.id;
   const descendants = getDescendantLocationIds(catalog.locations, room.id);
@@ -19,8 +19,7 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
     setParams({ room: room.id, location: id });
   };
   return (
-    <section className="manager">
-      <h2>Room maps</h2>
+    <section className="manager" aria-label="Maps">
       <nav className="tabs sub-tabs" aria-label="Room maps">
         {rooms.map((candidate) => (
           <Link key={candidate.id} to={`/maps?${new URLSearchParams({ room: candidate.id })}`} className={candidate.id === room.id ? 'active' : ''}>

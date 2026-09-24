@@ -19,6 +19,7 @@ dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createRoot } = await import('react-dom/client');
 const { createMemoryRouter, RouterProvider } = await import('react-router-dom');
 const { RoomMap } = await import('./RoomMap.js');
+const { RoomMapsPage } = await import('./RoomMapsPage.js');
 const { LocationEditor } = await import('./LocationEditor.js');
 const { LocationMapEditor } = await import('./LocationMapEditor.js');
 
@@ -84,6 +85,16 @@ const button = (name: string): HTMLButtonElement => {
   assert.ok(element, `Missing button ${name}`);
   return element;
 };
+
+test('the Maps page omits its visible heading in both populated and empty states', async () => {
+  await render(createElement(RoomMapsPage, { catalog: { locations, items: [], categories: [] } }));
+  assert.equal(host.querySelector('.manager > h2'), null);
+  assert.equal(host.querySelector('.manager')?.getAttribute('aria-label'), 'Maps');
+  assert.ok(host.querySelector('.manager > nav'));
+  await render(createElement(RoomMapsPage, { catalog: { locations: [], items: [], categories: [] } }));
+  assert.equal(host.querySelector('.manager > h2'), null);
+  assert.match(host.textContent ?? '', /No mapped room found/);
+});
 
 test('selected tables highlight their entire SVG geometry, not the stale database pin', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'table', onSelect: () => {} }));
