@@ -107,7 +107,7 @@ fictional inventory and room structure have been replaced; `items.json` and
 `flags.json` are empty. Tables and named stations are locations, not assertions
 that any particular tool or material is available.
 
-## Room maps
+## Maps
 
 - **Common Makerspace:** 13 lettered tables/desks/workbenches, **A–M**, starting
   at the **top-right table**, then clockwise down the right wall, across the bottom
@@ -185,12 +185,12 @@ when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
 Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.
-Open **Room maps** to switch rooms and click a shape or point marker to
+Open **Maps** to switch rooms and click a shape or point marker to
 see its active items (including sub-locations). Item details highlight their
 location on the same map. For smaller storage locations, the map highlights
 their enclosing room-level location and labels that mapping as inherited.
 
-In **Manage catalog → Locations**, clicking a shape or point opens that
+In **Manage → Locations**, clicking a shape or point opens that
 location's edit panel directly below the same map. Edit its name, type, parent,
 and staff-only setting there. **Save** becomes available when the draft changes;
 **Cancel** discards the draft and clears the highlight. The old marker
@@ -222,7 +222,7 @@ locations. Staff can assign items to them with location search and see their
 actual names and sub-location paths. Visitors can still find those items, but
 their location is **Ask Staff**, with no private map or breadcrumb.
 
-**Manage catalog → Locations** has a **Staff-only** checkbox for new
+**Manage → Locations** has a **Staff-only** checkbox for new
 and existing locations. The restriction includes all descendants; unchecking a
 child does not override a restricted parent. Catalog responses, item details,
 and assistant recommendations redact restricted location metadata on the server.
@@ -242,7 +242,7 @@ an old demo automatically. Back up an existing catalog before replacing a demo.
 
 ## Staff editing
 
-Sign in with the staff passphrase and a **Manage catalog** tab appears.
+Sign in with the staff passphrase and a **Manage** tab appears.
 Its sections share one navigation bar with slim separators:
 
 | Section | Does |

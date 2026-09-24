@@ -157,7 +157,7 @@ Rules:
   valid.
 - Locations are browsable in their own right: "show me everything in Cabinet B."
 
-Room maps use the supplied Common Makerspace and Advanced Makerspace plans.
+Maps use the supplied Common Makerspace and Advanced Makerspace plans.
 Drawn locations link directly to SVG shapes by stable location ID. Selecting a
 table highlights its full shape, and SVG moves, rotations, and resizing update
 the mapping without pin repositioning. Other room-level locations can keep point markers. Drawers, bins, shelves, and

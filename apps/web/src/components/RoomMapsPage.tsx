@@ -20,7 +20,7 @@ export function RoomMapsPage({ catalog }: { catalog: CatalogResponse }): JSX.Ele
   };
   return (
     <section className="manager" aria-label="Maps">
-      <nav className="tabs sub-tabs" aria-label="Room maps">
+      <nav className="tabs sub-tabs" aria-label="Maps">
         {rooms.map((candidate) => (
           <Link key={candidate.id} to={`/maps?${new URLSearchParams({ room: candidate.id })}`} className={candidate.id === room.id ? 'active' : ''}>
             {candidate.name}

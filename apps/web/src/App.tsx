@@ -103,8 +103,8 @@ export function App({ development = import.meta.env?.DEV ?? false }: { developme
             </div>
             <nav className="tabs" aria-label="Main navigation">
               <NavLink to="/" end>Search &amp; ask</NavLink>
-              <NavLink to="/maps">Room maps</NavLink>
-              {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
+              <NavLink to="/maps">Maps</NavLink>
+              {staff ? <NavLink to="/manage">Manage</NavLink> : null}
             </nav>
             <div className="header-actions">
               {development ? (

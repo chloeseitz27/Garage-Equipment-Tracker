@@ -161,7 +161,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
 
   const placementHint = (
     <p id={placementId} className="hint" role="status">
-      {svgLinked ? 'This location follows its SVG shape. Edit the SVG to move or resize it; no pin repositioning is needed.' :
+      {svgLinked ? 'This location follows its SVG shape. Edit the SVG to move or resize it.' :
         placementProblem ?? 'Location placed. Click the map to adjust it before saving.'}
     </p>
   );

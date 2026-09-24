@@ -158,7 +158,7 @@ location references are validated for the whole batch before any write.
 Assistant retrieval matches names from all assigned categories while retaining
 one candidate per item.
 
-### 3.3 Room maps
+### 3.3 Maps
 
 The Common Makerspace (larger plan) and Advanced Makerspace (smaller plan) use
 clean SVG redraws of the supplied images, versioned in `apps/web/public/maps`.

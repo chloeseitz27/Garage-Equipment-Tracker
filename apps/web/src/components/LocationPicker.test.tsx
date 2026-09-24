@@ -524,7 +524,7 @@ test('location branches start collapsed and expand independently without catalog
   await render(createElement(LocationManager, props));
   assert.equal(host.querySelector('.manager h3'), null);
   assert.equal(host.querySelector('.location-map-editor h4'), null);
-  assert.doesNotMatch(host.textContent ?? '', /Items attach at any depth|Deleting is blocked|Room maps and markers/);
+  assert.doesNotMatch(host.textContent ?? '', /Items attach at any depth|Deleting is blocked|Maps and markers/);
   const shop = button('Expand Main Shop');
   const storage = button('Expand Storage Room');
   assert.equal(shop.getAttribute('aria-expanded'), 'false');
@@ -1602,7 +1602,7 @@ test('public item details and search are bookmarkable, and closing details parti
   assert.equal(host.querySelector('.item-detail'), null);
   await click(button('History back'));
   assert.equal(host.querySelector('.item-detail h2')?.textContent, 'Tool 2');
-  await click(link('Room maps'));
+  await click(link('Maps'));
   assert.equal(currentUrl(), '/maps');
   await click(button('History back'));
   assert.equal(currentUrl(), '/?q=Tool&item=tool2');
@@ -1680,7 +1680,7 @@ test('discovery has one focused input, two actions, live search, and category br
   assert.equal(host.querySelector('.examples'), null);
   assert.doesNotMatch(host.textContent ?? '', /Try a project|wooden planter|weather station|team offsite/);
   assert.deepEqual([...host.querySelectorAll('nav[aria-label="Main navigation"] a')]
-    .map((node) => node.textContent), ['Search & ask', 'Room maps']);
+    .map((node) => node.textContent), ['Search & ask', 'Maps']);
   assert.equal(button('Ask').disabled, true);
   assert.equal(button('Search').type, 'submit');
   assert.equal(button('Ask').type, 'button');
@@ -1878,7 +1878,7 @@ test('leaving discovery cancels the pending request', async () => {
   });
   await render(createElement(App), '/?q=Build+a+project');
   await click(button('Ask'));
-  await click(link('Room maps'));
+  await click(link('Maps'));
   assert.equal(signal?.aborted, true);
   await act(async () => { finish(jsonResponse(recommendation)); await pending; });
   assert.equal(currentUrl(), '/maps');

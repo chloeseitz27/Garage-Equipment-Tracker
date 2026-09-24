@@ -93,7 +93,7 @@ export function LocationMapEditor({
   );
 
   return (
-    <section className="location-map-editor" aria-label="Room maps and locations">
+    <section className="location-map-editor" aria-label="Maps and locations">
       {notice ? <p role="status">{notice}</p> : null}
       {room ? (
         <LocationEditor
