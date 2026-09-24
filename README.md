@@ -275,7 +275,7 @@ Location types follow a hierarchy:
 | Top level | Room | Editable room name |
 | Directly inside a room | Table, Desk, Workbench, Cabinet | Editable name, defaulting to the type plus the next available letter |
 | Directly inside a room | Station | Required editable name, with no letter |
-| Inside a room-level location or another storage container | Drawer, Bin, Shelf | Generated type and number; no name input |
+| Inside a room-level location | Drawer, Bin, Shelf | Generated type and number; terminal locations with no children |
 
 Rooms cannot contain other rooms or loose storage containers. Stations cover
 named equipment areas such as Roland, Laser, and sinks. Each room-level
@@ -284,13 +284,15 @@ editable name. **Stations such as Roland or Laser do not have letter codes**
 and do not consume letters from the available pool. Existing table letters are
 preserved; new codes fill unused letters, then continue with AA, AB, and so on.
 
-Drawers, bins, and shelves share one number sequence across their enclosing
-table/station, including nested containers. **Desk A → Drawer 3** is **A3**,
+Drawers, bins, and shelves are terminal: they cannot contain other locations,
+and neither the tree nor selection panel offers a child-creation button for them.
+They share one number sequence across their enclosing table/station.
+**Desk A → Drawer 3** is **A3**,
 and a bin elsewhere under Desk A cannot also use 3. Codes appear in the tree,
 child lists, location paths, search, and item details. Storage names are
 generated on both create and edit; submitting a custom name or number does not
 override the server assignment. Same-table moves retain their number; moving
-a subtree under another table assigns new destination numbers together.
+a storage location under another table assigns its next available destination number.
 Station storage retains its numbers and uses the station name in its path,
 such as **Roland → Drawer 3**, without a letter-based short code.
 
@@ -302,18 +304,22 @@ assignments before allocating new codes. Legacy room-level **Zone** becomes
 Old station letters are omitted from reads and removed when legacy metadata is
 next persisted; station names and child numbers are preserved.
 Other legacy invalid type/parent combinations must be corrected before saving.
+Existing nested storage is not deleted or silently re-parented. It remains
+visible with a warning so its children can be moved to a room-level surface.
 Locations, parents, maps, and item assignments keep their IDs.
 
 Number allocation is serialized with hierarchy writes on the app's single API
 instance. Do not run multiple API writers or edit location code fields directly
-in Cosmos while the app is writing. Moving more than 100 storage records as one
-subtree is refused to keep renumbering within a single storage transaction.
+in Cosmos while the app is writing.
 
 In a mapped room, room-level tables, stations, desks, workbenches, and cabinets
 require their own point marker or linked SVG shape before saving. For a point-only
 surface, click the map to place it; SVG-linked surfaces follow the drawing.
 Smaller locations only require their type and generated number. Their creation
-form has no placement map, and selecting one highlights its enclosing surface
+form is a compact row of Type, Staff-only, Save, and Cancel controls, without
+the enclosing editor card, generated-name/code preview, or extra explanatory
+text. Access restrictions are still explained when inherited from a parent.
+It has no placement map, and selecting storage highlights its enclosing surface
 rather than a separate pin. Existing storage-level pins are ignored on display
 and removed from normalized reads and subsequent location writes. Surface
 locations in unmapped rooms and top-level rooms do not require placement.

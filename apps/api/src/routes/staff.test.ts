@@ -22,9 +22,9 @@ import { publicRoutes } from './public.js';
 
 const locations: Location[] = [
   { id: 'loc-room', name: 'Main Shop', parentId: null, kind: 'room', mapId: 'common' },
-  { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'shelf' },
+  { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'cabinet' },
   { id: 'loc-bin', name: 'Bin 4', parentId: 'loc-shelf', kind: 'bin' },
-  { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'shelf' },
+  { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'cabinet' },
 ];
 
 const categories: Category[] = [
@@ -774,8 +774,11 @@ test('concurrent drawer/bin/shelf creates share a unique table-wide number seque
   assert.ok(created.every((location) => location.name === `${location.kind.charAt(0).toUpperCase() + location.kind.slice(1)} ${location.number}`));
   const drawer = created.find((location) => location.kind === 'drawer')!;
   const nested = await call('POST', '/api/locations', { kind: 'bin', parentId: drawer.id, mapPosition });
-  assert.equal(nested.status, 201);
-  assert.equal((await nested.json()).number, 8, 'Nested containers use their enclosing surface sequence');
+  assert.equal(nested.status, 400);
+  assert.match((await nested.json()).error, /cannot contain child/);
+  const next = await call('POST', '/api/locations', { kind: 'bin', parentId: 'loc-shelf' });
+  assert.equal(next.status, 201);
+  assert.equal((await next.json()).number, 8, 'Rejected nesting does not consume a storage number');
   const renamed = await call('PUT', `/api/locations/${drawer.id}`, { ...drawer, name: 'No custom names', number: 99 });
   assert.equal(renamed.status, 200);
   const saved = await renamed.json();
@@ -783,20 +786,39 @@ test('concurrent drawer/bin/shelf creates share a unique table-wide number seque
   assert.equal(saved.name, `Drawer ${drawer.number}`);
 });
 
-test('moving a storage subtree reallocates all destination numbers without changing ids', async () => {
+test('legacy nested storage must be moved to a surface without deleting its records', async () => {
   const mapPosition = { roomId: 'loc-room', mapId: 'common', x: 0.2, y: 0.3 };
   const cabinet = await call('POST', '/api/locations', { kind: 'cabinet', parentId: 'loc-room', mapPosition });
   const destination = await cabinet.json() as Location;
   await call('POST', '/api/locations', { kind: 'drawer', parentId: destination.id, mapPosition });
   const first = await (await call('POST', '/api/locations', { kind: 'drawer', parentId: 'loc-shelf', mapPosition })).json() as Location;
-  const inner = await (await call('POST', '/api/locations', { kind: 'bin', parentId: first.id, mapPosition })).json() as Location;
+  const inner = await repository.createLocation({ name: 'Bin 6', kind: 'bin', parentId: first.id, number: 6 });
   const response = await call('PUT', `/api/locations/${first.id}`, { ...first, parentId: destination.id });
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).number, 2);
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Move its children first/);
+  const movedChild = await call('PUT', `/api/locations/${inner.id}`, { ...inner, parentId: destination.id });
+  assert.equal(movedChild.status, 200);
+  assert.equal((await movedChild.json()).number, 2);
+  const movedParent = await call('PUT', `/api/locations/${first.id}`, { ...first, parentId: destination.id });
+  assert.equal(movedParent.status, 200);
+  assert.equal((await movedParent.json()).number, 3);
   const nested = (await repository.getLocations()).find((location) => location.id === inner.id)!;
-  assert.equal(nested.number, 3);
-  assert.equal(nested.parentId, first.id);
-  assert.equal(nested.name, 'Bin 3');
+  assert.equal(nested.number, 2);
+  assert.equal(nested.parentId, destination.id);
+  assert.equal(nested.name, 'Bin 2');
+});
+
+test('drawers, bins, and shelves cannot receive children through create or update APIs', async () => {
+  for (const kind of ['drawer', 'bin', 'shelf'] as const) {
+    const parent = await (await call('POST', '/api/locations', { kind, parentId: 'loc-shelf' })).json() as Location;
+    const rejected = await call('POST', '/api/locations', { kind: 'drawer', parentId: parent.id });
+    assert.equal(rejected.status, 400);
+    assert.match((await rejected.json()).error, /cannot contain child locations/);
+    const child = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+    const move = await call('PUT', `/api/locations/${child.id}`, { ...child, parentId: parent.id });
+    assert.equal(move.status, 400);
+    assert.equal((await repository.getLocations()).find((location) => location.id === child.id)?.parentId, 'loc-shelf');
+  }
 });
 
 test('legacy identity assignments persist so deleting one surface does not renumber another', async () => {

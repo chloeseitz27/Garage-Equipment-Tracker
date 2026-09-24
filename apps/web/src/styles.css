@@ -1112,6 +1112,11 @@ button:disabled {
   margin-top: 0;
 }
 
+.location-child-form {
+  min-width: 0;
+  margin: 0.75rem 0;
+}
+
 .location-placement {
   max-width: 52rem;
 }

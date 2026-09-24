@@ -290,8 +290,8 @@ explicitly using `npm run update:locations -- --apply` after deploying the code.
 ### Location hierarchy and code allocation
 
 New and edited locations must follow room -> surface -> storage. Surface types
-are table/station/desk/workbench/cabinet; storage types are drawer/bin/shelf and
-can nest, but share their enclosing surface's number space. Only rooms can be
+are table/station/desk/workbench/cabinet; storage types are drawer/bin/shelf,
+cannot have children, and share their enclosing surface's number space. Only rooms can be
 roots. Type choices and parent choices follow the same shared rules in
 `location-hierarchy.ts` and on the API.
 
@@ -307,8 +307,11 @@ identity metadata so subsequent deletions or renames cannot shift codes.
 
 `prepareLocation` owns automatic names, letters, and numbers. Creates ignore
 client identity fields; storage updates retain the current number within a
-surface and regenerate the name. Cross-surface storage-subtree moves allocate
-destination numbers in one `saveLocations` transaction (at most 100 records).
+surface and regenerate the name. Cross-surface storage moves allocate
+destination numbers. Legacy nested records remain readable but must be moved
+to a valid surface; new children of storage and writes preserving an invalid
+child relationship are rejected. Storage creation renders compact controls
+instead of a `section.location-editor` card or generated-code status paragraph.
 Location write requests are serialized per repository instance, covering the
 read/allocate/write interval. This follows the existing single-API deployment
 contract; it is not a distributed lock for multiple processes or direct Cosmos

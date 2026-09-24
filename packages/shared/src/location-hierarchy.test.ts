@@ -21,12 +21,14 @@ test('levels restrict root, room, and container children without allowing nested
   assert.deepEqual(childLocationKinds(base, null), ['room']);
   assert.deepEqual(childLocationKinds(base, 'room'), ['table', 'station', 'desk', 'workbench', 'cabinet']);
   assert.deepEqual(childLocationKinds(base, 'desk'), ['drawer', 'bin', 'shelf']);
-  assert.deepEqual(childLocationKinds(base, 'drawer'), ['drawer', 'bin', 'shelf']);
+  assert.deepEqual(childLocationKinds(base, 'drawer'), []);
   for (const [kind, parentId] of [['room', 'room'], ['bin', 'room'], ['table', 'desk'], ['station', 'drawer'], ['drawer', null]] as const) {
     assert.ok(locationHierarchyProblem({ id: 'new', kind, parentId }, base));
   }
   assert.equal(locationHierarchyProblem({ id: 'new', kind: 'cabinet', parentId: 'room' }, base), null);
-  assert.equal(locationHierarchyProblem({ id: 'new', kind: 'shelf', parentId: 'drawer' }, base), null);
+  assert.match(locationHierarchyProblem({ id: 'new', kind: 'shelf', parentId: 'drawer' }, base) ?? '', /cannot contain child/);
+  assert.deepEqual(childLocationKinds(base, 'bin'), []);
+  assert.deepEqual(childLocationKinds(base, 'shelf'), []);
 });
 
 test('surface names default from type and next available letter but allow custom names', () => {
@@ -42,8 +44,8 @@ test('surface names default from type and next available letter but allow custom
   assert.equal(changedType.letter, 'A');
 });
 
-test('storage numbers are allocated across all kinds and nested containers under the same surface', () => {
-  const prepared = prepareLocation({ name: 'User-supplied name', kind: 'bin', parentId: 'drawer', number: 1 }, base, 'new').location;
+test('storage numbers remain unique across kinds and any legacy descendants under a surface', () => {
+  const prepared = prepareLocation({ name: 'User-supplied name', kind: 'bin', parentId: 'desk', number: 1 }, base, 'new').location;
   assert.equal(prepared.number, 4);
   assert.equal(prepared.name, 'Bin 4');
   assert.equal(surfaceLocationId([...base, prepared], prepared.id), 'desk');

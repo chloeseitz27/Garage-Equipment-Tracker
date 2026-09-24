@@ -145,7 +145,7 @@ Locations form a hierarchy so the app can render a full walkable path:
 Room  →  Zone / Area  →  Shelf / Cabinet  →  Bin
 ```
 
-Example: `Main Shop → Electronics Bench → Cabinet B → Bin 4`
+Example: `Main Shop → Cabinet B → Bin 4`
 
 Rules:
 
@@ -175,8 +175,9 @@ not storage destinations; draw them without individual labels or map markers.
 Drawers use numbers appended to the surface letter, such as D2.
 
 Only rooms are top-level. Rooms contain tables, stations, desks, workbenches,
-or cabinets; those locations contain drawers, bins, or shelves. Storage may
-nest but all its numbers are unique within the enclosing room-level location.
+or cabinets; those locations contain drawers, bins, or shelves. Drawers, bins,
+and shelves are terminal and cannot have children. Their numbers are unique
+within the enclosing room-level location.
 Room-level tables, desks, workbenches, and cabinets have editable names defaulted
 from the next available letter, with a separate stable letter code. Stations
 have required names such as Roland or Laser and do not receive letter codes.

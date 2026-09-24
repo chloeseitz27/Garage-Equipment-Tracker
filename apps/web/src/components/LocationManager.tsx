@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { assignLocationIdentities, getChildLocations, getLocationPath, isStaffOnlyLocation, locationCodeFromPath, type Item, type Location } from '@garage/shared';
+import { assignLocationIdentities, childLocationKinds, getChildLocations, getLocationPath, isStaffOnlyLocation, locationCodeFromPath, type Item, type Location } from '@garage/shared';
 import { deleteLocation } from '../api.js';
 import { LocationEditor } from './LocationEditor.js';
 import { LocationMapEditor } from './LocationMapEditor.js';
@@ -39,6 +39,10 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
   };
   const openEditor = (target: EditorTarget): void => {
     if (editorBusy || (editor && targetKey(editor) === targetKey(target))) return;
+    if (target.mode === 'create' && !childLocationKinds(locations, target.parentId).length) {
+      window.alert('Drawers, bins, and shelves cannot contain child locations.');
+      return;
+    }
     if (mapEditDirty) {
       window.alert('Save or cancel the highlighted location changes before adding or editing another location.');
       return;
@@ -133,11 +137,11 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
                 {held > 0 ? <span className="muted small">{held} item(s)</span> : null}
               </span>
               <span className="tree-actions">
-                <button
+                {childLocationKinds(locations, location.id).length > 0 ? <button
                   type="button" className="icon-button" disabled={editorBusy}
                   aria-label={`Add child to ${location.name}`} title={`Add child to ${location.name}`}
                   onClick={() => openEditor({ mode: 'create', parentId: location.id })}
-                ><ActionIcon name="add" /></button>
+                ><ActionIcon name="add" /></button> : null}
                 <button
                   type="button" className="icon-button" disabled={editorBusy}
                   aria-label={`Rename or move ${location.name}`} title={`Rename or move ${location.name}`}

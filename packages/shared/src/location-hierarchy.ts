@@ -11,7 +11,10 @@ export const locationLevel = (locations: Location[], id: string): LocationLevel 
 
 export function childLocationKinds(locations: Location[], parentId: string | null): readonly LocationKind[] {
   if (parentId === null) return ['room'];
-  return locationLevel(locations, parentId) === 'room' ? SURFACE_KINDS : STORAGE_KINDS;
+  const parent = locations.find((location) => location.id === parentId);
+  if (!parent || STORAGE_KINDS.some((kind) => kind === parent.kind)) return [];
+  const level = locationLevel(locations, parentId);
+  return level === 'room' ? SURFACE_KINDS : level === 'surface' ? STORAGE_KINDS : [];
 }
 
 const letterAt = (index: number): string => {
@@ -108,8 +111,9 @@ export function locationHierarchyProblem(location: Pick<Location, 'id' | 'parent
   const allowed = childLocationKinds(locations, location.parentId);
   if (!allowed.includes(location.kind)) {
     return location.parentId === null ? 'Only rooms can be top-level locations.' :
+      allowed.length === 0 ? 'Drawers, bins, and shelves cannot contain child locations.' :
       allowed === SURFACE_KINDS ? 'Rooms can contain tables, stations, desks, workbenches, or cabinets, not other rooms or storage containers.' :
-        'Tables, stations, desks, workbenches, cabinets, and storage containers can contain drawers, bins, or shelves only.';
+        'Tables, stations, desks, workbenches, and cabinets can contain drawers, bins, or shelves only.';
   }
   const next = [...locations.filter((entry) => entry.id !== location.id), { ...location, name: '' }];
   for (const child of next.filter((entry) => entry.parentId === location.id)) {

@@ -49,7 +49,7 @@ const locations: Location[] = [
     kind: 'bin',
   })),
   { id: 'storage', name: 'Storage Room', parentId: null, kind: 'room' },
-  { id: 'destination', name: 'Spare Shelf', parentId: 'storage', kind: 'shelf' },
+  { id: 'destination', name: 'Spare Shelf', parentId: 'storage', kind: 'cabinet' },
 ];
 const categories = [{ id: 'tools', name: 'Tools' }];
 const item: Item = {
@@ -312,13 +312,14 @@ test('bulk-entry location defaults are retained and used for every submitted row
   assert.equal(input.value, path('destination'));
 });
 
-test('parent selectors filter self, descendants, and invalid parent levels while retaining full paths', async () => {
+test('legacy nested storage can choose a valid surface parent while retaining its current path', async () => {
   await render(createElement(LocationManager, { locations, items: [item], onChanged: () => {} }));
   await click(button('Expand Main Shop'));
   await click(button('Expand Electronics Bench'));
-  await click(button('Rename or move Cabinet B'));
+  await click(button('Expand Cabinet B'));
+  await click(button('Rename or move Bin B0'));
   const input = combobox('Parent location');
-  assert.equal(input.value, path('bench'));
+  assert.equal(input.value, path('cabinet'));
   await focus(input);
   assert.equal(options().length, 2); // Only surface parents outside the selected subtree.
   assert.equal(options().some((node) => /Cabinet B|Bin B/.test(node.textContent ?? '')), false);
@@ -332,7 +333,7 @@ test('parent selectors filter self, descendants, and invalid parent levels while
   assert.equal(input.value, path('destination'));
   assert.equal(writes.length, 0);
   await click(button('Save'));
-  assert.equal(writes[0]?.url, '/api/locations/cabinet');
+  assert.equal(writes[0]?.url, '/api/locations/bin-0');
   assert.equal(writes[0]?.body.parentId, 'destination');
 });
 
@@ -424,7 +425,7 @@ test('stations use a required name without a code and keep numbered child locati
   assert.doesNotMatch(panel.textContent ?? '', /Location code:|Z3|undefined/);
 });
 
-test('container forms offer only storage types and display generated names and table-wide codes', async () => {
+test('storage creation keeps only the controls, without the code hint or surrounding editor card', async () => {
   const withNumbers: Location[] = [...mapLocations.map((location) => location.id === 'bin-a'
     ? { ...location, name: 'Bin 3', number: 3 } : location), {
     id: 'shelf-a', name: 'Shelf 2', parentId: 'table-a', kind: 'shelf', number: 2,
@@ -437,11 +438,20 @@ test('container forms offer only storage types and display generated names and t
   assert.equal(typeSelect.value, '');
   assert.deepEqual([...typeSelect.options].slice(1).map((option) => option.textContent), ['Drawer', 'Bin', 'Shelf']);
   assert.equal(host.querySelector('input[aria-label="New location name"]'), null);
+  const form = host.querySelector<HTMLElement>('[aria-label="New child location"]');
+  assert.ok(form);
+  assert.equal(form.tagName, 'DIV');
+  assert.equal(form.classList.contains('location-editor'), false);
+  assert.equal(form.getAttribute('role'), 'group');
+  assert.equal(document.activeElement, typeSelect);
   await selectLocationType('drawer');
-  assert.equal(host.querySelector('output[aria-label="Location name"]')?.textContent, 'Drawer 4');
-  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /A4/);
+  assert.equal(form.querySelector('output[aria-label="Location name"]'), null);
+  assert.equal(form.querySelector('p[role="status"].location-access-hint'), null);
+  assert.doesNotMatch(form.textContent ?? '', /assigned when saved|New child of|separate map pin|A4/);
+  assert.ok(form.querySelector('input[type="checkbox"]'));
+  assert.equal(button('Save').disabled, false);
   await selectLocationType('bin');
-  assert.equal(host.querySelector('output[aria-label="Location name"]')?.textContent, 'Bin 4');
+  assert.equal(form.querySelector('output[aria-label="Location name"]'), null);
   assert.equal(writes.length, 0);
 });
 
@@ -2667,7 +2677,7 @@ test('creating storage needs only a type and saves without a separate pin', asyn
   assert.equal(host.querySelector('.location-editor .map-marker.selected'), null);
   assert.equal(button('Save').disabled, false);
   assert.equal(host.querySelector('.new-child-location .room-map'), null);
-  assert.match(host.querySelector('.new-child-location')?.textContent ?? '', /does not need a separate map pin/);
+  assert.doesNotMatch(host.querySelector('.new-child-location')?.textContent ?? '', /separate map pin|assigned when saved/);
   assert.equal(writes.length, 0);
   const current = currentUrl();
   await chooseMarkerLocation('table-a');
@@ -3063,6 +3073,38 @@ test('the selection panel lists direct children and opens an unplaced child for 
   assert.equal(writes.length, 0);
 });
 
+for (const kind of ['drawer', 'bin', 'shelf'] as const) {
+  test(`${kind} locations have no child-creation action in the tree or selection panel`, async () => {
+    const leaf: Location = { id: `leaf-${kind}`, name: `${kind} location`, kind, parentId: 'table-a' };
+    await render(createElement(LocationManager, {
+      locations: [...mapLocations, leaf], items: [], onChanged: () => {},
+    }), `/manage/locations?room=common&pin=${leaf.id}`);
+    assert.equal(host.querySelector(`button[aria-label="Add child to ${leaf.name}"]`), null);
+    assert.equal(host.querySelector('.location-map-editor .location-children'), null);
+    assert.ok(host.querySelector('button[aria-label="Add child to Table A"]'));
+    assert.equal(writes.length, 0);
+  });
+}
+
+test('legacy nested storage remains visible for relocation but cannot receive more children', async () => {
+  const nested: Location = { id: 'legacy-drawer', name: 'Drawer 2', number: 2, kind: 'drawer', parentId: 'bin-a' };
+  await render(createElement(LocationManager, {
+    locations: [...mapLocations, nested], items: [], onChanged: () => {},
+  }), '/manage/locations?room=common&pin=bin-a');
+  const children = host.querySelector('.location-map-editor .location-children');
+  assert.ok(children);
+  assert.match(children.textContent ?? '', /Storage locations cannot contain children/);
+  assert.equal(children.querySelector('.location-children-heading button'), null);
+  await click(button('Edit child Drawer 2'));
+  assert.equal(button('Save').disabled, true);
+  await choose(combobox('Parent location'), 'common table a');
+  assert.equal(button('Save').disabled, false);
+  await click(button('Save'));
+  assert.equal(writes[0]?.url, '/api/locations/legacy-drawer');
+  assert.equal(writes[0]?.body.parentId, 'table-a');
+  assert.equal(writes[0]?.body.number, 2);
+});
+
 test('the selection-panel plus opens a visible child form with a fixed parent and updates the child list after saving', async () => {
   let changed = 0;
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => { changed++; } }),
@@ -3077,7 +3119,7 @@ test('the selection-panel plus opens a visible child form with a fixed parent an
   const editor = host.querySelector<HTMLElement>('[aria-label="New child location"]');
   assert.ok(editor);
   assert.equal(editor.closest('ul[hidden]'), null, 'All ancestors must expand for a child created from the map panel');
-  assert.match(editor.textContent ?? '', /New child of Common Makerspace.*Table A/);
+  assert.equal(editor.classList.contains('location-child-form'), true);
   assert.equal(editor.querySelector('[role="combobox"]'), null);
   assert.equal(editor.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('drawer');
@@ -3096,7 +3138,7 @@ test('the selection-panel plus opens a visible child form with a fixed parent an
   assert.equal(currentUrl(), '/manage/locations?room=common&pin=saved');
   assert.equal(mapStorageName(), 'Drawer 2');
   assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.value, 'drawer');
-  assert.match(host.querySelector('.location-children')?.textContent ?? '', /No child locations yet/);
+  assert.equal(host.querySelector('.location-children'), null);
 });
 
 test('child creation and child selection do not discard an unsaved parent edit', async () => {

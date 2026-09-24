@@ -83,9 +83,10 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const allowedKinds = childLocationKinds(locations, draft.parentId);
   const selectedKind = allowedKinds.includes(draft.kind as LocationKind) ? draft.kind : '';
   const level = draft.parentId === null ? 'room' : locationLevel(locations, draft.parentId) === 'room' ? 'surface' : 'storage';
+  const compactCreation = !location && !mapPanel && level === 'storage';
   const previous = identity;
   const prepared = prepareLocation({
-    ...draft, kind: selectedKind || allowedKinds[0]!, mapId: draft.mapId || undefined,
+    ...draft, kind: selectedKind || draft.kind || allowedKinds[0] || 'bin', mapId: draft.mapId || undefined,
   }, identified, location?.id ?? `new-location-${id}`, previous);
   const candidate: Location = {
     ...prepared.location,
@@ -111,6 +112,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
     (level !== 'surface' || !mapped || Boolean(source.map)) && (!mapPanel || dirty);
   const placementId = `${id}-placement`;
   const children = location && mapPanel ? getChildLocations(identified, location.id) : [];
+  const canHaveChildren = Boolean(location && childLocationKinds(locations, location.id).length);
 
   const setParent = (nextParent: string | null): void => {
     const nextRoom = nextParent ? resolveLocationMap(locations, nextParent)?.room : undefined;
@@ -190,11 +192,13 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       ) : !rootRoom && editable ? <p className="hint">This room has no floor plan. A map marker is not required.</p> : null}
     </>
   );
+  const Container = compactCreation ? 'div' : 'section';
   return (
-    <section className={mapPanel ? `location-map-panel${editable ? ' location-editor' : ''}` : 'location-editor'}
+    <Container className={compactCreation ? 'location-child-form' : mapPanel ? `location-map-panel${editable ? ' location-editor' : ''}` : 'location-editor'}
+      role={compactCreation ? 'group' : undefined}
       aria-label={location ? `Edit ${location.name}` : mapPanel ? 'Location map' : rootRoom ? 'New room' : 'New child location'}>
       {mapPanel ? mapContent : null}
-      {!location && !mapPanel ? (
+      {!location && !mapPanel && !compactCreation ? (
         <p className="hint">
           {rootRoom ? 'New top-level room' : `New child of ${formatLocationPath(getLocationPath(locations, parentId ?? ''))}`}
         </p>
@@ -211,12 +215,13 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                 value={draft.name || (level === 'surface' && draft.kind ? prepared.location.name : '')}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               />
-            </label> : <label className="location-name-field">Location
+            </label> : !compactCreation ? <label className="location-name-field">Location
               <output aria-label="Location name">{selectedKind ? prepared.location.name : 'Choose a type'}</output>
-            </label>}
+            </label> : null}
             <label className="location-type-field">Type
               <select
                 aria-label={location ? 'Location type' : 'New location type'}
+                autoFocus={compactCreation}
                 value={rootRoom ? 'room' : selectedKind} disabled={rootRoom} required
                 onChange={(event) => {
                   const kind = allowedKinds.find((kind) => kind === event.target.value) ?? '';
@@ -268,7 +273,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                 <ActionIcon name="cancel" />
               </button>
             </div>
-            {level !== 'room' && selectedKind && (code || (level === 'storage' && !location)) ? (
+            {!compactCreation && level !== 'room' && selectedKind && (code || (level === 'storage' && !location)) ? (
               <p className="hint location-access-hint" role="status">
                 {code ? <>
                   {level === 'storage' ? `${prepared.location.name} · ` : 'Location code: '}
@@ -284,11 +289,11 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           {!parentExists ? <p className="error" role="alert">The parent location no longer exists. Cancel and choose a new parent.</p> : null}
           {error ? <p className="error" role="alert">{error}</p> : null}
           {hierarchyProblem ? <p className="hint" role="status">{hierarchyProblem}</p> : null}
-          {mapPanel && location ? (
+          {mapPanel && location && (canHaveChildren || children.length > 0) ? (
             <section className="location-children" aria-label="Child locations">
               <div className="location-children-heading">
                 <h4>Child locations ({children.length})</h4>
-                {mapPanel.onCreateChild ? (
+                {canHaveChildren && mapPanel.onCreateChild ? (
                   <button
                     type="button" className="icon-button"
                     aria-label={`Add child to ${location.name}`} title={`Add child to ${location.name}`}
@@ -296,6 +301,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                   ><ActionIcon name="add" /></button>
                 ) : null}
               </div>
+              {!canHaveChildren ? <p className="hint">Storage locations cannot contain children. Move these existing locations to a table, station, desk, workbench, or cabinet.</p> : null}
               {children.length ? (
                 <ul className="flat-list location-child-list">
                   {children.map((child) => (
@@ -322,7 +328,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           ) : null}
         </div>
       ) : null}
-      {!mapPanel ? mapContent : null}
-    </section>
+      {!mapPanel && !compactCreation ? mapContent : null}
+    </Container>
   );
 }
