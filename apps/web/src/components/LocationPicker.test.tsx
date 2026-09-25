@@ -3067,7 +3067,8 @@ test('the selection panel lists direct children and opens an unplaced child for 
   assert.equal(mapStorageName(), 'Bin 1');
   assert.match(combobox('Parent location').value, /Table A/);
   assert.equal(host.querySelector('.location-map-editor .map-marker.selected')?.getAttribute('data-location-id'), 'table-a');
-  assert.match(host.querySelector('.location-map-editor')?.textContent ?? '', /Map location inherited from Table A/);
+  assert.equal(host.querySelector('.location-map-editor figcaption'), null);
+  assert.equal(host.querySelector('.location-map-editor p[role="status"].location-access-hint'), null);
   assert.equal(button('Save').disabled, true, 'A pristine draft has nothing to save');
   assert.deepEqual([...host.querySelectorAll<HTMLButtonElement>('.location-child-select')].map((row) => row.dataset.locationId), ['drawer']);
   assert.equal(writes.length, 0);

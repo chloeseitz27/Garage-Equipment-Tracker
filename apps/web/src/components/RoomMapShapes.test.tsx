@@ -255,6 +255,21 @@ test('the selected SVG location has an edit panel instead of marker controls', a
   assert.equal(region().getAttribute('aria-label'), 'Updated table');
 });
 
+test('the selection editor omits map captions and code summaries but retains inherited access information', async () => {
+  const props = { locations, onChanged: () => {} };
+  await render(createElement(LocationMapEditor, props), parseSvgMap(source()), '/manage/locations?room=room&pin=bin');
+  assert.equal(host.querySelector('.room-map figcaption'), null);
+  assert.equal(host.querySelector('p[role="status"].location-access-hint'), null);
+  assert.ok(region().classList.contains('selected'));
+  assert.match(host.querySelector('output[aria-label="Location name"]')?.textContent ?? '', /Bin/);
+
+  const restricted = locations.map((location) => location.id === 'table' ? { ...location, staffOnly: true } : location);
+  await render(createElement(LocationMapEditor, { ...props, locations: restricted }));
+  assert.equal(host.querySelector('.room-map figcaption'), null);
+  assert.equal(host.querySelector('p[role="status"].location-access-hint'), null);
+  assert.match(host.querySelector('p.location-access-hint[id]')?.textContent ?? '', /required by the parent/);
+});
+
 test('metadata editing accepts a linked SVG shape without requiring a point marker', async () => {
   const location = { ...locations[1]!, mapPosition: undefined };
   await render(createElement(LocationEditor, {

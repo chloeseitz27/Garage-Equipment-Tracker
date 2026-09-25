@@ -10,6 +10,7 @@ interface Props {
   selectedLocationIds?: readonly string[];
   excludedIds?: readonly string[];
   caption?: string;
+  showCaption?: boolean;
   onSelect?: (id: string, point?: { x: number; y: number }) => void;
   onPlace?: (point: { x: number; y: number }) => void;
 }
@@ -40,7 +41,7 @@ function ShapeGeometry({ geometry }: { geometry: SvgMapGeometry }): JSX.Element 
 }
 
 export function RoomMap({
-  room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, onSelect, onPlace,
+  room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, showCaption = true, onSelect, onPlace,
 }: Props): JSX.Element {
   const asset = room.mapId ? ROOM_MAPS[room.mapId] : undefined;
   const source = useSvgMap(room.mapId);
@@ -313,7 +314,7 @@ export function RoomMap({
         </div>
       </div>
       <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.</p>
-      {caption !== '' || failed || (ready && selectedLocationId && resolved?.room.id === room.id && target?.location.id !== selectedLocationId) ? (
+      {showCaption && (caption !== '' || failed || (ready && selectedLocationId && resolved?.room.id === room.id && target?.location.id !== selectedLocationId)) ? (
         <figcaption>
           {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
           {ready && target && target.location.id !== selectedLocationId ? (

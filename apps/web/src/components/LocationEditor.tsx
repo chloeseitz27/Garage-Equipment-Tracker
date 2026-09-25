@@ -175,6 +175,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           {!mapPanel && editable ? placementHint : null}
           <RoomMap
             key={displayRoom.id} room={displayRoom} locations={preview}
+            showCaption={!mapPanel}
             selectedLocationId={editable ? (!placementProblem || mapPanel ? candidate.id : undefined) : location?.id}
             onPlace={editable && level === 'surface' && mapped && !busy && !svgLinked ? place : undefined}
             onSelect={(selectedId, point) => {
@@ -273,7 +274,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
                 <ActionIcon name="cancel" />
               </button>
             </div>
-            {!compactCreation && level !== 'room' && selectedKind && (code || (level === 'storage' && !location)) ? (
+            {!mapPanel && !compactCreation && level !== 'room' && selectedKind && (code || (level === 'storage' && !location)) ? (
               <p className="hint location-access-hint" role="status">
                 {code ? <>
                   {level === 'storage' ? `${prepared.location.name} · ` : 'Location code: '}
