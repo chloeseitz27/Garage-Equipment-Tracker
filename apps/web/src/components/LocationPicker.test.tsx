@@ -470,6 +470,21 @@ test('editing keeps the stored type, while saving a new type still uses its cano
   assert.equal(writes[0]?.body.kind, 'desk');
 });
 
+test('location management lists siblings alphabetically with natural number order', async () => {
+  const unsorted: Location[] = [
+    { id: 'z', name: 'Zeta Room', parentId: null, kind: 'room' },
+    { id: 'a', name: 'annex', parentId: null, kind: 'room' },
+    { id: 'm', name: 'Main Shop', parentId: null, kind: 'room' },
+    { id: 's10', name: 'Shelf 10', parentId: 'm', kind: 'shelf' },
+    { id: 's2', name: 'Shelf 2', parentId: 'm', kind: 'shelf' },
+    { id: 'b', name: 'Bench', parentId: 'm', kind: 'station' },
+  ];
+  await render(createElement(LocationManager, { locations: unsorted, items: [], onChanged: () => {} }));
+  const labels = (): string[] => [...host.querySelectorAll('button[aria-label^="Rename or move "]')]
+    .map((node) => node.getAttribute('aria-label')!.replace('Rename or move ', ''));
+  assert.deepEqual(labels(), ['annex', 'Main Shop', 'Bench', 'Shelf 2', 'Shelf 10', 'Zeta Room']);
+});
+
 test('the new-room row adds a top-level room without a type selector and root-room edits cannot change its parent', async () => {
   await render(createElement(LocationManager, { locations, items: [], onChanged: () => {} }));
   const rows = [...host.querySelectorAll('ul.tree > li')];

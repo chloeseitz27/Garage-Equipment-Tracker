@@ -258,7 +258,9 @@ Its sections share one navigation bar with slim separators:
 In **Locations**, each branch of the tree below the map starts collapsed.
 Use its chevron to expand or collapse children; collapsing keeps any draft edit.
 Rename/move, delete, save, cancel, and add use icons with tooltips and accessible
-labels. Clicking Delete on a location that holds items or children opens a popup
+labels. Rooms and each level's children are listed alphabetically by name
+(case-insensitive, with numbers in natural order, so "Shelf 2" precedes
+"Shelf 10"). Clicking Delete on a location that holds items or children opens a popup
 explaining what must be moved or removed first; it does not attempt deletion.
 Each location's **+** opens an inline form for a child of that location, without
 a parent picker. The last row of the list is a **New Room** field: type a name

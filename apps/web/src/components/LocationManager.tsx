@@ -13,6 +13,7 @@ interface Props {
 }
 
 type EditorTarget = { mode: 'edit'; id: string } | { mode: 'create'; parentId: string | null };
+const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 const targetKey = (target: EditorTarget): string => target.mode === 'edit'
   ? `edit:${target.id}` : target.parentId === null ? 'create-room' : `create-child:${target.parentId}`;
 
@@ -101,8 +102,11 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
     />
   ) : null;
 
+  const sortedChildren = (parentId: string | null): Location[] =>
+    getChildLocations(locations, parentId).sort((a, b) => nameCollator.compare(a.name, b.name));
+
   const renderNode = (location: Location, depth: number): JSX.Element => {
-    const children = getChildLocations(locations, location.id);
+    const children = sortedChildren(location.id);
     const held = itemCounts.get(location.id) ?? 0;
     const blocked = children.length > 0 || held > 0;
     const creatingChild = editor?.mode === 'create' && editor.parentId === location.id;
@@ -190,7 +194,7 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
         onCreateChild={(location) => openEditor({ mode: 'create', parentId: location.id })}
       />
       <ul className="tree">
-        {getChildLocations(locations, null).map((root) => renderNode(root, 0))}
+        {sortedChildren(null).map((root) => renderNode(root, 0))}
         <NewRoomRow
           active={editor?.mode === 'create' && editor.parentId === null}
           disabled={editorBusy}
