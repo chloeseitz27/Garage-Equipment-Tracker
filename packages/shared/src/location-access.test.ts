@@ -15,8 +15,7 @@ const catalog: CatalogResponse = {
     { id: 'closet', name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true },
     { id: 'basement', name: 'Basement Storage', parentId: null, kind: 'room', staffOnly: true },
     { id: 'bin', name: 'Private Bin', parentId: 'closet', kind: 'bin', staffOnly: false },
-    { id: 'cabinet', name: 'Private Cabinet', parentId: 'shop', kind: 'cabinet', staffOnly: true,
-      mapPosition: { roomId: 'shop', mapId: 'common', x: 0.8, y: 0.4 } },
+    { id: 'cabinet', name: 'Private Cabinet', parentId: 'shop', kind: 'cabinet', staffOnly: true },
   ],
   items: ['closet', 'basement', 'bin', 'bench', 'cabinet'].map((locationId) => ({
     id: `item-${locationId}`, name: 'Tool', kind: 'equipment', categoryIds: ['tools'], locationId,
@@ -37,7 +36,7 @@ test('staff-only locations and descendants become one Ask Staff destination with
       assert.equal(resolveLocationMap(visible.locations, item.locationId), null);
     }
   }
-  assert.doesNotMatch(JSON.stringify(visible.locations), /Storage Closet|Basement Storage|Private|mapPosition|staffOnly/);
+  assert.doesNotMatch(JSON.stringify(visible.locations), /Storage Closet|Basement Storage|Private|staffOnly/);
   assert.deepEqual(catalog, original);
   assert.deepEqual(catalogSchema.parse(visible), visible);
   assert.deepEqual(publicCatalog(visible), visible);

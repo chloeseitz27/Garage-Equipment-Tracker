@@ -2,9 +2,9 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import { Link } from 'react-router-dom';
 import {
   ROOM_MAP_IDS, ROOM_MAPS, assignLocationIdentities, childLocationKinds, formatLocationPath, getChildLocations, getDescendantLocationIds,
-  getLocationPath, isStaffOnlyLocation, locationPlacementProblem, resolveLocationMap,
+  getLocationPath, isStaffOnlyLocation, resolveLocationMap,
   locationCodeFromPath, locationHierarchyProblem, locationKindLabel, locationLevel, prepareLocation,
-  type Location, type LocationKind, type MapPosition, type RoomMapId,
+  type Location, type LocationKind, type RoomMapId,
 } from '@garage/shared';
 import { createLocation, updateLocation } from '../api.js';
 import { ActionIcon } from './ActionIcon.js';
@@ -35,7 +35,6 @@ interface LocationDraft {
   kind: LocationKind | '';
   parentId: string | null;
   mapId: RoomMapId | '';
-  mapPosition?: MapPosition;
   staffOnly: boolean;
 }
 
@@ -44,7 +43,6 @@ const toDraft = (location: Location | undefined, parentId: string | null, rootRo
   kind: rootRoom ? 'room' : location?.kind ?? '',
   parentId: location?.parentId ?? parentId,
   mapId: location?.mapId ?? '',
-  mapPosition: location?.mapPosition,
   staffOnly: location?.staffOnly ?? false,
 });
 
@@ -103,42 +101,28 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const source = useSvgMap(level === 'surface' || mapPanel ? displayRoom?.mapId : undefined);
   const svgIds = useMemo(() => new Set(source.map?.regions.map((region) => region.locationId) ?? []), [source.map]);
   const svgLinked = level === 'surface' && Boolean(mapped && svgIds.has(candidate.id));
-  const placementProblem = locationPlacementProblem(candidate, locations, svgIds);
   const inherited = draft.parentId !== null && isStaffOnlyLocation(locations, draft.parentId);
   const parentExists = draft.parentId === null || locations.some((entry) => entry.id === draft.parentId);
   const hierarchyProblem = locationHierarchyProblem(candidate, locations);
   const nameRequired = level === 'room' || selectedKind === 'station';
   const code = locationCodeFromPath(getLocationPath([...identified.filter((entry) => entry.id !== candidate.id), candidate], candidate.id));
   const canSave = editable && (!nameRequired || draft.name.trim() !== '') && selectedKind !== '' && parentExists &&
-    !hierarchyProblem && !placementProblem && !busy &&
-    (level !== 'surface' || !mapped || Boolean(source.map)) && (!mapPanel || dirty);
-  const placementId = `${id}-placement`;
+    !hierarchyProblem && !busy && (!mapPanel || dirty);
   const children = location && mapPanel ? getChildLocations(identified, location.id) : [];
   const canHaveChildren = Boolean(location && childLocationKinds(locations, location.id).length);
   const ancestors = mapPanel && location ? getLocationPath(preview, candidate.id).slice(0, -1) : [];
 
   const setParent = (nextParent: string | null): void => {
-    const nextRoom = nextParent ? resolveLocationMap(locations, nextParent)?.room : undefined;
     setDraft((current) => ({
       ...current, parentId: nextParent,
       kind: childLocationKinds(locations, nextParent).includes(current.kind as LocationKind) ? current.kind : '',
-      mapPosition: current.mapPosition?.roomId === nextRoom?.id && current.mapPosition?.mapId === nextRoom?.mapId
-        ? current.mapPosition : undefined,
     }));
-    setError(null);
-  };
-  const place = ({ x, y }: { x: number; y: number }): void => {
-    if (!editable || level !== 'surface' || busy || svgLinked || !mapped?.room.mapId) return;
-    const mapPosition: MapPosition = {
-      roomId: mapped.room.id, mapId: mapped.room.mapId, x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000,
-    };
-    setDraft((current) => ({ ...current, mapPosition }));
     setError(null);
   };
   const save = async (): Promise<void> => {
     if (busy) return;
     if (!canSave) {
-      setError(hierarchyProblem ?? placementProblem ?? (!parentExists ? 'The parent location no longer exists.' : 'Name and type are required.'));
+      setError(hierarchyProblem ?? (!parentExists ? 'The parent location no longer exists.' : 'Name and type are required.'));
       return;
     }
     setBusy(true);
@@ -164,40 +148,27 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
     }
   };
 
-  const placementHint = (
-    <p id={placementId} className="hint" role="status">
-      {svgLinked ? 'This location follows its SVG shape. Edit the SVG to move or resize it.' :
-        placementProblem ?? 'Location placed. Click the map to adjust it before saving.'}
-    </p>
-  );
-  const placeable = editable && level === 'surface' && Boolean(mapped) && !busy && !svgLinked;
+  const floorPlanHint = svgLinked ? 'This location follows its SVG shape. Edit the SVG to move or resize it.' :
+    'This location is not on the floor plan yet. Add an SVG shape with this location id to draw it on the map.';
   const mapContent = (
     <>
       {mapPanel?.navigation(displayRoom ?? mapPanel.room)}
       {displayRoom && (mapPanel || level === 'surface') ? (
         <div className="location-placement">
-          {!mapPanel && editable ? placementHint : null}
           <RoomMap
             key={displayRoom.id} room={displayRoom} locations={preview}
             showCaption={!mapPanel}
-            selectedLocationId={editable ? (!placementProblem || mapPanel ? candidate.id : undefined) : location?.id}
-            // In the map panel, empty space places only an unplaced pin; otherwise it clears the selection.
-            onPlace={placeable && (!mapPanel || placementProblem) ? place : undefined}
-            onMoveSelected={placeable && mapPanel ? place : undefined}
+            selectedLocationId={editable ? candidate.id : location?.id}
             onDeselect={mapPanel && location && !busy ? mapPanel.onDeselect : undefined}
-            onSelect={(selectedId, point) => {
+            onSelect={(selectedId) => {
               if (mapPanel) mapPanel.onSelect(selectedId, displayRoom);
-              else if (point) place(point);
-              else if (!busy && !svgLinked) setError('Click a spot on the map to place this location.');
             }}
-            caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked || level === 'storage' ? '' : mapPanel
-                          ? placementProblem ? 'Click empty map space to place this location.' : 'Drag the marker to move this location.'
-              : 'Click to place this location. Its name, parent, and marker are saved together.'}
+            caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked || level === 'storage' ? '' : floorPlanHint}
           />
         </div>
       ) : level === 'storage' && editable ? (
-        <p className="hint">This location uses {surface?.name ?? 'its enclosing surface'}&apos;s location. It does not need a separate map pin.</p>
-      ) : !rootRoom && editable ? <p className="hint">This room has no floor plan. A map marker is not required.</p> : null}
+        <p className="hint">This location uses {surface?.name ?? 'its enclosing surface'}&apos;s floor-plan shape.</p>
+      ) : !rootRoom && editable ? <p className="hint">This room has no floor plan. The location can still be saved.</p> : null}
     </>
   );
   const nameInput = (
@@ -312,8 +283,8 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
             </label>
             <div className="location-form-actions">
               <button
-                type="button" className="icon-button" aria-label="Save" title={placementProblem ?? 'Save location'}
-                aria-describedby={placementProblem ? placementId : undefined} aria-busy={busy}
+                type="button" className="icon-button" aria-label="Save" title="Save location"
+                aria-busy={busy}
                 disabled={!canSave} onClick={() => void save()}
               ><ActionIcon name="save" /></button>
               <button type="button" className="icon-button secondary" aria-label="Cancel" title="Cancel location changes" onClick={onCancel}>
@@ -331,8 +302,8 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
             ) : null}
             {inherited ? <p id={`${id}-access`} className="hint location-access-hint">Staff-only access is also required by the parent location.</p> : null}
           </fieldset>
-          {mapPanel && mapped && level === 'surface' ? placementHint : null}
-          {mapPanel && !mapped && !rootRoom ? <p className="hint">The selected parent has no floor plan. A map marker is not required.</p> : null}
+          {mapPanel && mapped && level === 'surface' ? <p className="hint" role="status">{floorPlanHint}</p> : null}
+          {mapPanel && !mapped && !rootRoom ? <p className="hint">The selected parent has no floor plan. The location can still be saved.</p> : null}
           {!parentExists ? <p className="error" role="alert">The parent location no longer exists. Cancel and choose a new parent.</p> : null}
           {error ? <p className="error" role="alert">{error}</p> : null}
           {hierarchyProblem ? <p className="hint" role="status">{hierarchyProblem}</p> : null}

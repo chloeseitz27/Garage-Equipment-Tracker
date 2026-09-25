@@ -25,7 +25,7 @@ const OLD_NAMES: Record<string, readonly string[]> = {
 };
 const ADDITIONS = ['loc-table-u', 'loc-storage-closet', 'loc-basement-storage'];
 
-/** Explicit, repeatable upgrade; never reseeds inventory or overwrites staff-positioned markers. */
+/** Explicit, repeatable upgrade; never reseeds inventory or overwrites staff-managed hierarchy. */
 export async function updateLocationCatalog(repository: CatalogRepository, seed: Location[], apply: boolean): Promise<string[]> {
   const locations = await repository.getLocations();
   const changes: string[] = [];
@@ -35,7 +35,7 @@ export async function updateLocationCatalog(repository: CatalogRepository, seed:
     if (replacement && location.name !== replacement.name && OLD_NAMES[location.id]?.includes(location.name) &&
       location.parentId === replacement.parentId) {
       updates.push({ ...location, name: replacement.name });
-      changes.push(`Rename ${location.name} to ${replacement.name} (${location.id}); preserve marker and parent.`);
+      changes.push(`Rename ${location.name} to ${replacement.name} (${location.id}); preserve parent.`);
     }
   }
   const next = locations.map((location) => updates.find((update) => update.id === location.id) ?? location);
@@ -48,7 +48,7 @@ export async function updateLocationCatalog(repository: CatalogRepository, seed:
     if (existing) {
       if (definition.staffOnly && !existing.staffOnly) {
         updates.push({ ...existing, staffOnly: true });
-        changes.push(`Restrict ${existing.name} to staff; preserve its id, parent, and marker.`);
+        changes.push(`Restrict ${existing.name} to staff; preserve its id and parent.`);
       }
     } else {
       if (definition.parentId && !next.some((location) => location.id === definition.parentId)) {

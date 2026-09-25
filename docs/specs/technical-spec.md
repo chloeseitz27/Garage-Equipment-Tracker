@@ -96,12 +96,6 @@ interface Location {
   number?: number; // storage number unique across one enclosing surface subtree
   staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
-  mapPosition?: {
-    roomId: string;
-    mapId: 'common' | 'advanced';
-    x: number; // 0..1 from the left edge of the image
-    y: number; // 0..1 from the top edge of the image
-  };
 }
 
 interface Category {
@@ -170,21 +164,18 @@ SVG overlay; it never injects source scripts, event handlers, styles, or HTML
 into the document. A selected location highlights its entire SVG surface.
 Unknown, excluded, or out-of-room location IDs do not become interactive.
 
-`resolveMapTarget` resolves the enclosing room-level surface and prefers its
-SVG shape over its point. `resolveLocationMap` derives the containing room and
-that surface's point. Locations below the surface level never contribute their
-own pins or selectable SVG regions, even when a legacy record contains coordinates.
-Selecting storage intentionally highlights its enclosing surface, rather than
-describing it as an approximate or unplaced child location.
-`roomId` and `mapId` in point coordinates
-must both match the current room; stale positions from cross-room moves or plan
-changes are ignored, never shown on the wrong floor plan.
+`resolveMapTarget` resolves the enclosing room-level surface only when that
+surface has an SVG shape in the room plan. `resolveLocationMap` derives the
+containing room for a location. Locations below the surface level never
+contribute their own selectable SVG regions, even when legacy records contain
+coordinates. Selecting storage intentionally highlights its enclosing surface,
+rather than describing it as an approximate or unplaced child location.
 
 SVG geometry changes apply on the next map fetch without database writes. SVG
 requests use `cache: 'no-store'`, coalesce by map, and refresh on window focus
-and reconnection; background and overlay use the same source snapshot. Original
-map coordinates remain backward-compatible fallback data, not the source of
-truth for a currently linked SVG shape. Label changes and new catalog records
+and reconnection; background and overlay use the same source snapshot. Legacy
+stored coordinates are ignored and stripped by normalized reads/writes; SVG
+shapes are the only map representation. Label changes and new catalog records
 remain explicit operations. Supported regions use rect/path/polygon/circle/
 ellipse geometry; explicit `data-location-shape="true"` pieces override the
 usual surface/station/cabinet classes. Duplicate IDs, malformed XML, DTDs,
@@ -196,7 +187,7 @@ the same shape IDs remain available when source folders are not shipped.
 Development reads the current source files, not a stale generated list.
 
 The management map renders the shared `LocationEditor` beside the map rather
-than a point-marker toolbar. Above 1000px viewport width, room tabs span a
+than a shape-selection panel. Above 1000px viewport width, room tabs span a
 two-column grid with the map on the left and a 22rem edit panel on the right.
 Narrower screens stack the fields below the map. The desktop map track keeps
 the same width in both states. With no editable selection, a translation
@@ -208,14 +199,12 @@ The panel starts with ancestor breadcrumbs and a title. Surface names use an
 editable title input; generated storage names are read-only headings. Breadcrumb
 navigation uses the existing unsaved-change guard, and unmapped ancestors remain
 plain text rather than navigating to an unavailable map. Changes to name, type, parent,
-staff-only access, and any point placement save together through
-`PUT /api/locations/:id`. Save is disabled for a pristine draft; Cancel resets
-the draft and clears the selection. Clicking empty map space, or Escape on the
-focused map, also clears the selection by removing `pin` from the URL, so the
-same unsaved-change guard applies. In the map panel, empty space places a pin
-only while the selected surface still needs one; placed pins move by dragging
-the selected marker. Room and pin URL changes, including
-Back/Forward, are blocked until edits are saved or explicitly discarded.
+staff-only access save through `PUT /api/locations/:id`. Save is disabled for
+a pristine draft; Cancel resets the draft and clears the selection. Clicking
+empty map space, or Escape on the focused map, also clears the selection by
+removing `location` from the URL, so the same unsaved-change guard applies.
+Room and location URL changes, including Back/Forward, are blocked until edits
+are saved or explicitly discarded.
 Failed saves retain the draft, and pending saves lock selection and form
 actions. Metadata/parent edits preview on the same map; successful moves follow
 the saved room. Tree forms and the map panel do not edit simultaneously.
@@ -226,33 +215,17 @@ catalog refresh completes, so newly created children appear immediately.
 Child selection uses the saved hierarchy, not a pending parent-move preview,
 and retains the same unsaved-change guard as map selection.
 
-The legacy `POST /api/locations/markers` API remains available for compatibility,
-but is no longer driven by a UI toolbar. It accepts up to 100 distinct
-`{ id, roomId, mapId, position }` records,
-where `position` is normalized `{ x, y }` or `null` to remove a marker.
-All references and room/plan identities are validated before writing, and only
-marker data is merged into existing records. SVG-linked locations reject point
-batch edits with an instruction to edit the SVG instead. The repository saves the batch in
-one JSON file replacement (updating memory only after persistence succeeds) or
-one Cosmos transaction of replacements in the `location` partition. Successful
-saves invalidate the catalog cache; failed saves retain the client drafts.
-
 Location creation starts from a row's **+** (fixed parent) or the bottom **+**
-(top-level room). One inline `LocationEditor` holds metadata and a temporary
-placement preview without issuing a create request. Top-level room edits omit
-the parent picker; other edits retain it and exclude self/descendants.
-`locationPlacementProblem` gates the form and authenticated location
-create/update routes: a room-level surface in a mapped room needs its own
-`mapPosition` matching that room/map or its own linked SVG shape. Storage
-inherits the surface and requires no placement. Storage creation has no
-placement map, and storage writes strip `mapPosition`. Legacy storage coordinates
-are also removed during identity normalization, while surface positions remain
-unchanged. The batch marker API rejects new storage pins but permits explicit
-cleanup of old pins. Shape-linked surface geometry remains SVG-owned.
-Root locations and children of unmapped rooms are exempt. Cross-room edits
-require remapping; failed saves retain the form. Tree forms and
-the selected map panel are mutually exclusive editing modes and share one navigation
-guard. The legacy marker-removal API remains supported separately.
+(top-level room). One inline `LocationEditor` holds metadata without issuing a
+create request until Save. Top-level room edits omit the parent picker; other
+edits retain it and exclude self/descendants. A room-level surface in a mapped
+room can be saved without map placement; it appears on the floor plan only when
+the SVG contains a shape with its id. Storage inherits the enclosing surface
+shape and requires no placement. Storage creation has no placement map, and
+legacy coordinates are removed during identity normalization. Shape-linked
+surface geometry remains SVG-owned. Cross-room edits do not require remapping;
+failed saves retain the form. Tree forms and the selected map panel are
+mutually exclusive editing modes and share one navigation guard.
 
 Visitor map URLs preserve the
 selected room and location. Seed data contains two mapped rooms, their labeled
@@ -265,7 +238,7 @@ center, X/Y along the bottom-left, and Z at left-center.
 Existing IDs are retained when display labels change; the added surface now
 called Table X retains `loc-table-u`.
 The six central Common work tables are drawing-only features, not catalog
-locations, so they have no markers and are absent from storage pickers. The
+locations, so they have no selectable shapes and are absent from storage pickers. The
 current seed contains 31 locations: four rooms (two staff-only), 21 lettered surfaces, and six
 named stations/cabinets. SVG tests parse XML and apply transforms rather than
 depending on Inkscape's attribute ordering or whitespace. Drawer numbering (for example D2) is separate from
@@ -428,9 +401,8 @@ REST, JSON, served by Express under `/api`.
 | `POST` | `/api/assistant/recommend` | none | Project Assistant (§6) |
 | `POST` | `/api/items` | staff | Create |
 | `PUT` | `/api/items/:id` | staff | Update |
-| `POST` | `/api/locations` | staff | Create metadata and required map placement together |
-| `PUT` | `/api/locations/:id` | staff | Update metadata; mapped children require a valid direct marker |
-| `POST` | `/api/locations/markers` | staff | Atomically update/remove up to 100 location markers |
+| `POST` | `/api/locations` | staff | Create location metadata |
+| `PUT` | `/api/locations/:id` | staff | Update location metadata |
 | `POST` | `/api/auth/login` | none | Staff sign-in (§8) |
 | `POST` | `/api/auth/logout` | staff | |
 | `GET` | `/api/flags` | staff | Flag queue |

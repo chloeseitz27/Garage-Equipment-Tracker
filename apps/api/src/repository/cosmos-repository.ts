@@ -12,7 +12,7 @@ import {
 import { DefaultAzureCredential } from '@azure/identity';
 import {
   findCatalogProblems,
-  MARKER_BATCH_LIMIT,
+  LOCATION_WRITE_BATCH_LIMIT,
   itemSchema,
   type Category,
   type CreateItemInput,
@@ -214,7 +214,7 @@ export class CosmosCatalogRepository implements CatalogRepository {
 
   async saveLocations(locations: Location[]): Promise<void> {
     if (locations.length === 0) return;
-    if (locations.length > MARKER_BATCH_LIMIT) throw new Error(`Save at most ${MARKER_BATCH_LIMIT} markers at once.`);
+    if (locations.length > LOCATION_WRITE_BATCH_LIMIT) throw new Error(`Save at most ${LOCATION_WRITE_BATCH_LIMIT} locations at once.`);
     const operations: ReplaceOperationInput[] = locations.map((location) => ({
       operationType: BulkOperationType.Replace,
       id: location.id,
@@ -223,10 +223,10 @@ export class CosmosCatalogRepository implements CatalogRepository {
     const response = await this.container.items.batch(operations, 'location');
     const failed = response.result?.find((entry) => entry.statusCode >= 400);
     if ((response.code !== undefined && response.code >= 400) || failed) {
-      throw new Error(`Marker batch failed (status ${failed?.statusCode ?? response.code}); no locations were changed.`);
+      throw new Error(`Location batch failed (status ${failed?.statusCode ?? response.code}); no locations were changed.`);
     }
     if (!response.result || response.result.length !== locations.length) {
-      throw new Error('Could not confirm the marker batch result. Refresh the catalog before retrying.');
+      throw new Error('Could not confirm the location batch result. Refresh the catalog before retrying.');
     }
   }
 

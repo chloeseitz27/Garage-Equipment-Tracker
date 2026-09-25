@@ -160,18 +160,19 @@ Rules:
 Maps use the supplied Common Makerspace and Advanced Makerspace plans.
 Drawn locations link directly to SVG shapes by stable location ID. Selecting a
 table highlights its full shape, and SVG moves, rotations, and resizing update
-the mapping without pin repositioning. Other room-level locations can keep point markers. Drawers, bins, shelves, and
-deeper locations do not have separate map pins; they inherit their enclosing
-table, station, desk, workbench, or cabinet.
-Selecting a map shape or marker lists active items at or beneath that location. Item
-details highlight that enclosing location for storage. Staff can position or remove surface point markers with an
-explicit save; SVG-linked shapes are edited in the drawing. Floor plans do not imply any tool availability or unverified item placement.
+the mapping directly. Room-level locations without an SVG shape are simply not
+shown on the map. Drawers, bins, shelves, and deeper locations inherit their
+enclosing table, station, desk, workbench, or cabinet.
+Selecting a map shape lists active items at or beneath that location. Item
+details highlight that enclosing location for storage. Staff edit map geometry
+in the SVG drawing, not in the app. Floor plans do not imply any tool
+availability or unverified item placement.
 
 Table/bench letters are unique across rooms. Common runs A-M clockwise from the
 top-right table. Advanced runs S-Z clockwise from the top-left workbench,
 continuing left to right across the top, down the right side, and back around
 the lower and left portions of the room. The six central Common tables are shared work surfaces,
-not storage destinations; draw them without individual labels or map markers.
+not storage destinations; draw them without individual labels or selectable map shapes.
 Drawers use numbers appended to the surface letter, such as D2.
 
 Only rooms are top-level. Rooms contain tables, stations, desks, workbenches,

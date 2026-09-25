@@ -108,12 +108,6 @@ export const locationSchema = z.object({
   letter: z.string().regex(/^[A-Z]+$/).optional(),
   number: z.number().int().positive().safe().optional(),
   mapId: z.enum(ROOM_MAP_IDS).optional(),
-  mapPosition: z.object({
-    roomId: idSchema,
-    mapId: z.enum(ROOM_MAP_IDS),
-    x: z.number().min(0).max(1),
-    y: z.number().min(0).max(1),
-  }).optional(),
 });
 
 export const categorySchema = z.object({
@@ -154,18 +148,7 @@ export const createCategorySchema = categorySchema.omit({ id: true });
 export const updateLocationSchema = locationSchema;
 export const updateCategorySchema = categorySchema;
 
-export const MARKER_BATCH_LIMIT = 100;
-export const bulkUpdateMarkersSchema = z.object({
-  markers: z.array(z.object({
-    id: idSchema,
-    roomId: idSchema,
-    mapId: z.enum(ROOM_MAP_IDS),
-    position: locationSchema.shape.mapPosition.unwrap().pick({ x: true, y: true }).nullable(),
-  })).min(1).max(MARKER_BATCH_LIMIT).refine(
-    (markers) => new Set(markers.map((marker) => marker.id)).size === markers.length,
-    'Each location can appear only once',
-  ),
-});
+export const LOCATION_WRITE_BATCH_LIMIT = 100;
 
 /**
  * Bulk item creation (product-spec.md §6.5). Cataloging a shelf one modal at a

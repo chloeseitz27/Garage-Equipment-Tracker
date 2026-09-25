@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { CosmosClient, BulkOperationType } from '@azure/cosmos';
 import { DefaultAzureCredential } from '@azure/identity';
-import { locationsFileSchema, MARKER_BATCH_LIMIT } from '@garage/shared';
+import { LOCATION_WRITE_BATCH_LIMIT, locationsFileSchema } from '@garage/shared';
 import { config } from '../apps/api/src/config.ts';
 import { planMapSynchronization } from '../apps/api/src/repository/map-synchronization.ts';
 
@@ -30,11 +30,11 @@ const documents = await readLocations();
 const seed = locationsFileSchema.parse(JSON.parse(await readFile(join(config.seedDir, 'locations.json'), 'utf8')));
 const plan = planMapSynchronization(locationsFileSchema.parse(documents), seed);
 for (const location of plan.updated) {
-  console.log(`${location.id}: ${documents.find((doc) => doc.id === location.id).name} -> ${location.name}; ${JSON.stringify(location.mapPosition)}`);
+  console.log(`${location.id}: ${documents.find((doc) => doc.id === location.id).name} -> ${location.name}`);
 }
-for (const location of plan.created) console.log(`Create ${location.id}: ${location.name}; ${JSON.stringify(location.mapPosition)}`);
+for (const location of plan.created) console.log(`Create ${location.id}: ${location.name}`);
 const count = plan.updated.length + plan.created.length;
-if (count > MARKER_BATCH_LIMIT) throw new Error(`The synchronization exceeds the ${MARKER_BATCH_LIMIT}-operation transaction limit.`);
+if (count > LOCATION_WRITE_BATCH_LIMIT) throw new Error(`The synchronization exceeds the ${LOCATION_WRITE_BATCH_LIMIT}-operation transaction limit.`);
 if (!apply) {
   console.log(`Preview: ${plan.updated.length} updates, ${plan.created.length} additions. No records changed.`);
 } else if (count === 0) {
@@ -53,7 +53,6 @@ if (!apply) {
         operationType: BulkOperationType.Patch, id: location.id, ifMatch: document._etag,
         resourceBody: { operations: [
           { op: 'set', path: '/name', value: location.name },
-          { op: 'set', path: '/mapPosition', value: location.mapPosition },
         ] },
       };
     }),
@@ -72,7 +71,7 @@ if (!apply) {
   const domain = (document) => Object.fromEntries(Object.entries(document).filter(([field]) => !field.startsWith('_')));
   for (const before of documents) {
     const update = plan.updated.find((location) => location.id === before.id);
-    const expected = update ? { ...domain(before), name: update.name, mapPosition: update.mapPosition } : domain(before);
+    const expected = update ? { ...domain(before), name: update.name } : domain(before);
     assert.ok(byId.has(before.id), `Location disappeared during synchronization: ${before.id}`);
     assert.deepEqual(domain(byId.get(before.id)), expected, `Unexpected changes to ${before.id}`);
   }

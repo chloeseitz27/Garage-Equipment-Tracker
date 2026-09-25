@@ -18,8 +18,7 @@ const catalogFixture = (): CatalogResponse => ({
   }],
   locations: [
     { id: 'room', name: 'Shop', kind: 'room', parentId: null, mapId: 'common' },
-    { id: 'cabinet', name: 'Cabinet', kind: 'cabinet', parentId: 'room',
-      mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.8 } },
+    { id: 'cabinet', name: 'Cabinet', kind: 'cabinet', parentId: 'room' },
     { id: 'table', name: 'Table', kind: 'table', parentId: 'room' },
     { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
     { id: 'drawer', name: 'Drawer 1', kind: 'drawer', parentId: 'cabinet' },
@@ -107,7 +106,7 @@ test('concurrent requests coalesce, and returned values cannot mutate the saved 
   response.resolve(catalogFixture());
   const [a, b] = await Promise.all([first, second]);
   a.catalog.items[0]!.name = 'Wrong name';
-  b.catalog.locations[1]!.mapPosition!.x = 0;
+  b.catalog.locations[1]!.name = 'Wrong location';
   assert.deepEqual(cache.read()?.catalog, catalogFixture());
   assert.equal(calls, 1);
 });

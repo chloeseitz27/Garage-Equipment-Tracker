@@ -14,8 +14,7 @@ const catalogFixture = (): CatalogResponse => ({
   }],
   locations: [
     { id: 'room', name: 'Shop', kind: 'room', parentId: null, mapId: 'common' },
-    { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room',
-      mapPosition: { roomId: 'room', mapId: 'common', x: 0.4, y: 0.6 } },
+    { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
   ],
   categories: [{ id: 'tools', name: 'Tools' }, { id: 'electronics', name: 'Electronics' }],
 });
@@ -73,7 +72,7 @@ test('all reads share one query per collection and preserve retirement, maps, an
   assert.equal(await cache.getItem('missing'), null);
   assert.deepEqual([state.reads, locationReads, categoryReads], [1, 1, 1]);
   items[0]!.tags.push('caller mutation');
-  locations[1]!.mapPosition!.x = 0;
+  locations[1]!.name = 'Caller mutation';
   categories[0]!.name = 'Wrong';
   state.catalog.items[0]!.name = 'Underlying mutation';
   assert.deepEqual(await cache.getItems(), catalogFixture().items);

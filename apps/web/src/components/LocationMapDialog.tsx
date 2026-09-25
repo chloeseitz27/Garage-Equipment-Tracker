@@ -65,7 +65,7 @@ export function LocationMapDialog({
         <button ref={closeRef} type="button" onClick={() => finish(onClose)}>Close map</button>
       </div>
       <p id={helpId} className="hint">
-        {multiple ? 'Click shapes or markers to toggle locations in the filter.' : 'Click a shape or marker to choose that location.'}
+        {multiple ? 'Click shapes to toggle locations in the filter.' : 'Click a shape to choose that location.'}
         {' '}For locations not shown on the map, use search instead.
       </p>
       <p className="location-map-selection" aria-live="polite">
@@ -92,7 +92,7 @@ export function LocationMapDialog({
             selectedLocationIds={multiple ? selectedIds : undefined}
             excludedIds={excludedIds}
             onSelect={choose}
-            caption={multiple ? 'Click a shape or marker to toggle its location.' : 'Click a shape or marker to choose its location.'}
+            caption={multiple ? 'Click a shape to toggle its location.' : 'Click a shape to choose its location.'}
           />
         </>
       ) : <p className="muted">No floor plans are available for these locations. Use search to choose a location.</p>}

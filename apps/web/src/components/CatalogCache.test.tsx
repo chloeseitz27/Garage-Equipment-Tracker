@@ -6,7 +6,7 @@ import type { Root } from 'react-dom/client';
 import { publicCatalog, type CatalogResponse } from '@garage/shared';
 import { CATALOG_CACHE_KEY } from '../catalog-cache.js';
 import { RoomMapSourcesContext } from '../room-map-source.js';
-import { pointMapSources } from './map-test-sources.js';
+import { benchMapSources } from './map-test-sources.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
 Object.defineProperties(globalThis, {
@@ -33,8 +33,7 @@ const catalogFixture = (): CatalogResponse => ({
   }],
   locations: [
     { id: 'room', name: 'Shop', kind: 'room', parentId: null, mapId: 'common' },
-    { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room',
-      mapPosition: { roomId: 'room', mapId: 'common', x: 0.4, y: 0.6 } },
+    { id: 'bench', name: 'Bench', kind: 'workbench', parentId: 'room' },
   ],
   categories: [{ id: 'tools', name: 'Tools' }, { id: 'electronics', name: 'Electronics' }],
 });
@@ -84,7 +83,7 @@ after(() => dom.window.close());
 
 const render = async (path = '/', development = true): Promise<void> => {
   router = createMemoryRouter([{ path: '*', element: createElement(App, { development }) }], { initialEntries: [path] });
-  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: pointMapSources },
+  await act(() => root.render(createElement(RoomMapSourcesContext.Provider, { value: benchMapSources },
     createElement(RouterProvider, { router }))));
 };
 const saveSnapshot = (catalog: CatalogResponse, fetchedAt = Date.now()): string => {
@@ -267,10 +266,9 @@ test('cross-tab public snapshots trigger an authenticated refresh for staff', as
   })));
   assert.equal(reads, 2);
   assert.equal(dom.window.localStorage.getItem(CATALOG_CACHE_KEY), newValue, 'Authenticated reload must not echo a storage write');
-  const marker = host.querySelector<HTMLElement>('.map-marker[title="Other tab bench"]');
-  assert.ok(marker);
-  assert.equal(marker.style.left, '40%');
-  assert.equal(marker.style.top, '60%');
+  const region = host.querySelector<SVGElement>('.map-region[data-location-id="bench"]');
+  assert.ok(region);
+  assert.equal(region.getAttribute('aria-label'), 'Other tab bench');
   assert.doesNotMatch(host.textContent ?? '', /Showing saved catalog data/);
   await click(button('Refresh catalog'));
   assert.equal(reads, 3);

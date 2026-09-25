@@ -348,13 +348,13 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
               locations={locations}
               selectedLocationId={form.locationId}
               onSelect={selectLocation}
-              caption="Click a shape or marker to change the location. Changes are saved with the item."
+              caption="Click a shape to change the location. Changes are saved with the item."
             />
             {mapped?.room.id !== room.id ? (
               <p className="hint">
                 {mapped
                   ? `The selected location is in ${mapped.room.name}. Switching room tabs does not move the item.`
-                  : 'The selected location has no floor plan. Click a marker to choose a new location.'}
+                  : 'The selected location has no floor plan. Click a floor-plan shape to choose a new location.'}
               </p>
             ) : null}
           </div>

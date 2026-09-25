@@ -797,8 +797,7 @@ header h1 {
   touch-action: none;
 }
 
-.room-map-viewport.dragging,
-.room-map-viewport.dragging .room-map-stage.placing {
+.room-map-viewport.dragging {
   cursor: grabbing;
 }
 
@@ -854,10 +853,6 @@ header h1 {
   user-select: none;
 }
 
-.room-map-stage.placing {
-  cursor: crosshair;
-}
-
 .room-map-stage img {
   display: block;
   width: 100%;
@@ -905,57 +900,6 @@ header h1 {
   stroke: #07121f;
   stroke-width: 4;
   stroke-dasharray: 6 3;
-}
-
-.room-map-stage .map-marker {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: #174478;
-  text-decoration: none;
-}
-
-/* Keep a 24px hit target without covering labels on a fitted map. */
-.map-marker-dot {
-  width: 10px;
-  height: 10px;
-  background: currentColor;
-  border: 2px solid white;
-  border-radius: 50%;
-  box-shadow: 0 1px 4px #0008;
-}
-
-.room-map-stage .map-marker.selected {
-  color: #f4be42;
-  z-index: 1;
-}
-
-.map-marker.selected .map-marker-dot {
-  width: 12px;
-  height: 12px;
-  border-color: #231800;
-}
-
-.room-map-stage .map-marker.movable {
-  cursor: grab;
-  touch-action: none;
-}
-
-.room-map-stage .map-marker.movable:active {
-  cursor: grabbing;
-}
-
-.map-marker:focus-visible {
-  outline: 3px solid #231800;
-  outline-offset: 2px;
 }
 
 .room-map figcaption {
@@ -1279,19 +1223,20 @@ button:disabled {
   }
 }
 
-@media (min-width: 1001px) and (prefers-reduced-motion: no-preference) {
+/* Short, layout-preserving motion; not gated on prefers-reduced-motion by design request. */
+@media (min-width: 1001px) {
   .location-map-panel > .location-placement {
-    transition: transform 240ms ease-in-out;
+    transition: transform 280ms ease-in-out;
   }
 
   .location-map-panel > .location-editor-fields {
-    animation: location-panel-appear 160ms ease-out 80ms both;
+    animation: location-panel-appear 220ms ease-out 120ms both;
   }
 }
 
 @keyframes location-panel-appear {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateX(0.75rem); }
+  to { opacity: 1; transform: none; }
 }
 
 .location-children {
@@ -1874,7 +1819,7 @@ code {
   left: 0;
 }
 
-.location-map-dialog button[aria-pressed="true"]:not(.map-marker) {
+.location-map-dialog button[aria-pressed="true"] {
   background: var(--accent);
   color: #07121f;
   border-color: var(--accent);

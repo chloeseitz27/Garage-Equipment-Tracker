@@ -27,13 +27,13 @@ export function LocationMapEditor({
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pendingSelection, setPendingSelection] = useState<{ room: string; pin?: string } | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<{ room: string; location?: string } | null>(null);
   const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
   const { blocker, markSaved } = useItemDraftGuard(dirty || formDirty, {
     allowSearchChanges: (current, next) => {
       const from = new URLSearchParams(current), to = new URLSearchParams(next);
       return (from.get('room') ?? rooms[0]?.id) === (to.get('room') ?? rooms[0]?.id) &&
-        from.get('pin') === to.get('pin');
+        from.get('location') === to.get('location');
     },
   });
   const blockerRef = useRef(blocker);
@@ -54,16 +54,16 @@ export function LocationMapEditor({
 
   const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
-  const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
+  const selected = savedLocations.find((location) => location.id === params.get('location') && descendants.includes(location.id));
   const choose = (id: string, targetRoom: Location): void => {
     // A draft can preview another room; navigation must target the saved hierarchy.
     const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
-    navigate({ room: savedRoom.id, pin: id });
+    navigate({ room: savedRoom.id, location: id });
   };
   const deselect = (): void => {
     if (room && selected) navigate({ room: room.id });
   };
-  const navigate = (target: { room: string; pin?: string }): void => {
+  const navigate = (target: { room: string; location?: string }): void => {
     if (busy || formBusy) return;
     setNotice(null);
     if (disabled && formDirty) {
@@ -74,7 +74,7 @@ export function LocationMapEditor({
       onDiscardForm?.();
       markSaved();
     }
-    setParams(target.pin ? { room: target.room, pin: target.pin } : { room: target.room });
+    setParams(target.location ? { room: target.room, location: target.location } : { room: target.room });
   };
   const clearDraft = (): void => {
     setDirty(false);
@@ -122,7 +122,7 @@ export function LocationMapEditor({
             const pendingNavigation = blockerRef.current;
             if (pendingNavigation.state === 'blocked') pendingNavigation.proceed();
             else if (!savedRoom) setParams({ room: room.id });
-            else if (savedRoom.id !== room.id) setParams({ room: savedRoom.id, pin: saved.id });
+            else if (savedRoom.id !== room.id) setParams({ room: savedRoom.id, location: saved.id });
             onChanged(saved);
           }}
         />
@@ -143,7 +143,7 @@ export function LocationMapEditor({
             clearDraft();
             onDiscardForm?.();
             if (blocker.state === 'blocked') blocker.proceed();
-            else if (target) setParams(target.pin ? { room: target.room, pin: target.pin } : { room: target.room });
+            else if (target) setParams(target.location ? { room: target.room, location: target.location } : { room: target.room });
           }}
         />
       ) : null}

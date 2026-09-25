@@ -72,7 +72,7 @@ request automatically.
 | `npm run seed` | Copy `data/seed` to `data/runtime` if runtime is empty |
 | `npm run seed:cosmos` | Import `data/seed` into Cosmos (validates first, upserts by id) |
 | `npm run update:locations` | Preview additive location updates; pass `-- --apply` to apply to the configured backend |
-| `npm run sync:maps:cosmos` | Preview drawn location names/markers; apply with `-- --apply --backup <absolute-path>` |
+| `npm run sync:maps:cosmos` | Preview drawn location names; apply with `-- --apply --backup <absolute-path>` |
 | `npm run reset` | Overwrite `data/runtime` from seed — the "put the demo back" button |
 | `npm test` | Grounding, safety, and location-path tests, plus seed validation |
 | `npm run validate:seed` | Schema + referential integrity check on `data/seed` |
@@ -122,7 +122,7 @@ Letters are unique across rooms. **N–R** are unused, leaving room to expand.
 Cabinets, the Toolbox, and named stations retain descriptive names outside the
 table/bench sequence. Storage-location IDs are not renamed, so existing links
 and item assignments follow the new display names. The center work tables are
-not in location pickers or map markers and cannot receive item assignments.
+not in location pickers or map shapes and cannot receive item assignments.
 Drawer labels use the table letter followed by the drawer number (for example,
 **D2** means Table D, Drawer 2); drawers are not pre-populated without their
 actual counts and positions.
@@ -134,15 +134,15 @@ as source references. Both redraws retain the original coordinate system, and
 table selects its whole surface, and selection highlights the full outline
 rather than a dot. Rectangles, paths, polygons, circles, ellipses, and nested
 SVG transforms stay aligned while zooming or panning. Room-level locations not
-drawn in the SVG can use point markers. Drawers, bins, shelves, and deeper
-locations do not get their own pins: they inherit their enclosing table,
-station, desk, workbench, or cabinet's map location.
+drawn in the SVG are not shown on the map. Drawers, bins, shelves, and deeper
+locations inherit their enclosing table, station, desk, workbench, or cabinet's
+map shape.
 
 Each drawn location is linked by `data-location-id="<database location id>"`.
 Keep that attribute when moving, resizing, rotating, or reshaping a table in
 Inkscape. The app reads the updated SVG on map load and when the tab regains
 focus or reconnects; development asset changes also reload through Vite.
-**No database coordinate update or marker Save is needed for SVG-linked shapes.**
+**No database coordinate update is needed; SVG shapes are the only map representation.**
 The background image and hit areas come from the same fetched SVG version.
 Renaming SVG text does not rename database records, and adding SVG groups does
 not create inventory locations automatically.
@@ -156,20 +156,18 @@ location IDs, or unsupported region geometry produces a visible map error
 instead of silently using misaligned hit targets.
 
 SVG-linked geometry is read-only in the location editor: edit the SVG to change
-its outline or position. Location metadata remains editable. Existing database coordinates are retained for
-compatibility but ignored while a matching SVG shape exists. If the SVG link
-is removed, a valid stored point can be used as a fallback; no catalog record
-is deleted by editing an SVG.
+its outline or position. Location metadata remains editable. Legacy database coordinates are ignored and stripped by normalized reads and
+writes. If an SVG link is removed, the location simply is not drawn until a
+shape with its id is added again.
 
-These are schematics, not scale drawings. Existing staff-positioned points are
-not overwritten by the additive location update. The legacy coordinate/name
-synchronizer remains available, but is not needed for SVG geometry changes.
-To explicitly realign the live
-Cosmos catalog with these drawings, preview `npm run sync:maps:cosmos`, then run
+These are schematics, not scale drawings. The map synchronizer is only for
+name/letter alignment with drawn SVG surfaces; it does not write coordinates.
+To explicitly realign the live Cosmos catalog with these drawings, preview
+`npm run sync:maps:cosmos`, then run
 `npm run sync:maps:cosmos -- --apply --backup <absolute-path>`. This backs up the
-catalog, uses one ETag-guarded transaction to change mapped surface names and
-coordinates, creates missing drawn surfaces with stable IDs, and verifies that
-other fields and item assignments are unchanged. Named stations/cabinets keep
+catalog, uses one ETag-guarded transaction to change mapped surface names,
+creates missing drawn surfaces with stable IDs, and verifies that other fields
+and item assignments are unchanged. Named stations/cabinets keep
 their names; unmapped locations are untouched. Existing API processes may need
 a restart to clear their catalog cache after this out-of-band update.
 In PowerShell, use `npm.cmd run sync:maps:cosmos -- --apply --backup <absolute-path>`
@@ -182,15 +180,14 @@ Structural projections are shown as solid wall sections without separate post ca
 Compact **− / percentage / +** controls float at the map's bottom-left. Click
 the percentage to reset. Maps fit their container without an internal scrollbar;
 when zoomed, drag to pan, or focus the map and use arrow keys (Home resets).
-Initial markers were placed approximately on labeled surfaces, not inferred item placements.
 The Toolbox retains its original location ID after moving to Advanced Makerspace,
 so linked items and sub-locations follow it.
-Open **Maps** to switch rooms and click a shape or point marker to
+Open **Maps** to switch rooms and click a shape to
 see its active items (including sub-locations). Item details highlight their
 location on the same map. For smaller storage locations, the map highlights
 their enclosing room-level location and labels that mapping as inherited.
 
-In **Manage → Locations**, clicking a shape or point opens that
+In **Manage → Locations**, clicking a shape opens that
 location's edit panel to the right of the same map on wider screens, or below
 it on screens 1000px wide or narrower. Edit its name, type, parent,
 and staff-only setting there. Ancestor breadcrumbs appear at the top of the
@@ -201,8 +198,8 @@ On wider screens the map keeps the same size with or without a selection:
 it is centered when the editor is closed and slides left when the editor opens.
 Reduced-motion preferences disable the slide and panel fade.
 **Save** becomes available when the draft changes;
-**Cancel** discards the draft and clears the highlight. The old marker
-save/discard/delete/undo toolbar and batch count are no longer shown.
+**Cancel** discards the draft and clears the highlight. There is no
+point-placement toolbar or batch count.
 **Child locations** lists the selected location's immediate children below its
 fields. Click a child to select and edit it, or use the **+** beside the list to
 open the existing child-creation form with this location as its fixed parent.
@@ -211,19 +208,13 @@ child appears in the selection panel after saving. Save or cancel parent edits
 before adding a child; selecting a child also protects unsaved changes.
 Clicking empty map space (or pressing Escape on the focused map) clears the
 selection and closes the panel, prompting first if there are unsaved edits.
-Point-only room-level locations are repositioned by dragging their selected pin;
-a location that has no pin yet is placed by clicking empty space instead. Their
-metadata and point are saved together. SVG-linked shapes continue
-to follow the SVG rather than accepting point edits.
-
 Selecting a different location, switching rooms, browser Back/Forward, or
 leaving the page prompts when there are unsaved edits. Failed saves preserve
 the draft for retry. Selection and cancellation keep the current map zoom.
 The map section has room tabs and the map, without a separate location picker.
-Use the tree's edit form to place an existing location that has no marker or
-SVG shape, or to place a point directly on a drawn surface.
-Renaming a location retains its marker. A cross-room move, or changing a room's
-floor plan, makes old coordinates inactive until the location is remapped.
+Use the tree's edit form to create or edit locations; a location appears on a
+map only when the room SVG contains a shape with its id. Cross-room moves and
+floor-plan changes do not require coordinate cleanup.
 Existing item and location IDs remain stable during normal edits.
 
 ### Staff-only storage
@@ -245,7 +236,7 @@ Then run `npm run update:locations` to preview changes and
 `npm run update:locations -- --apply` to add the two rooms and the missing drawn
 table (now Table X), and align known old table labels with the drawing. The script uses the configured JSON
 or Cosmos backend, is safe to rerun, and preserves inventory, existing IDs,
-custom location names, parent links, and saved marker positions. It is not a
+custom location names, parent links, and legacy fields unrelated to SVG shape geometry. It is not a
 reset and does not run automatically on startup.
 
 `seed:cosmos` upserts seed records; it does **not** delete existing data or migrate
@@ -259,7 +250,7 @@ Its sections share one navigation bar with slim separators:
 | Section | Does |
 |---|---|
 | Items | Filter, create, and edit items; expand Bulk entry to add a whole shelf at once |
-| Locations | View room maps, position markers, and manage the location tree |
+| Locations | View room maps, select SVG shapes, and manage the location tree |
 | Categories | Rename, add, and delete the flat category list |
 | Flag queue | Work anonymous reports: jump to the item, fix it, resolve |
 | Recycle bin | Retired items, restorable — nothing is ever destroyed |
@@ -324,18 +315,16 @@ instance. Do not run multiple API writers or edit location code fields directly
 in Cosmos while the app is writing.
 
 In a mapped room, room-level tables, stations, desks, workbenches, and cabinets
-require their own point marker or linked SVG shape before saving. For a point-only
-surface, click the map to place it; SVG-linked surfaces follow the drawing.
+can be saved without map placement; they appear only when the room SVG contains
+a shape with their id.
 Smaller locations only require their type and generated number. Their creation
 form is a compact row of Type, Staff-only, Save, and Cancel controls, without
 the enclosing editor card, generated-name/code preview, or extra explanatory
 text. Access restrictions are still explained when inherited from a parent.
 It has no placement map, and selecting storage highlights its enclosing surface
-rather than a separate pin. Existing storage-level pins are ignored on display
-and removed from normalized reads and subsequent location writes. Surface
-locations in unmapped rooms and top-level rooms do not require placement.
-Metadata and any surface placement are saved
-together; no temporary location is created first. Save or cancel the highlighted
+rather than a separate shape. Legacy storage-level coordinates are ignored on
+display and removed from normalized reads and subsequent location writes.
+Metadata is saved directly; no temporary location is created first. Save or cancel the highlighted
 location's draft before opening another tree form. While a tree form is open,
 the main map stays visible without displaying a second editable panel.
 The map remains selectable: choosing a location prompts before abandoning an
@@ -392,25 +381,23 @@ Location editing fields use the same single-choice picker: **Move to**, the item
 editor, bulk-entry defaults, and parent fields when editing non-root-room locations.
 Outside the item editor, click
 **Choose on map**, switch rooms,
-and click a location marker to select it without using the dropdown. The picker
+and click a location shape to select it without using the dropdown. The picker
 opens on the selected location's room; switching rooms, zooming, or closing the
 map does not change the selection. **Choose entire room** selects the room itself.
-Selections remain drafts until the form's normal Save/Add action. Clicking a
-marker in the marker editor selects it without changing its coordinates.
+Selections remain drafts until the form's normal Save/Add action. Clicking a shape in the location editor selects it without changing geometry.
 Parent restrictions also apply on the map, and **Top level (no parent)** remains
-available. Locations without a valid marker stay searchable with **Use search
-instead**. Selecting storage highlights its enclosing surface without changing
+available. Locations without a shape stay searchable with **Use search instead**. Selecting storage highlights its enclosing surface without changing
 the selected sub-location.
 
 In the item editor, the location picker and a live map sit to the right of the
 item fields (stacked below them on smaller screens). The map follows the draft
 location, including room changes and inherited surface locations. Room tabs
 above the map let you browse another room without changing the item. Click a
-marker to change the draft location; location search also switches the map to
+shape to change the draft location; location search also switches the map to
 the chosen location's room. There is no separate **Choose on map** button in the
 item editor. Changes are only saved with **Save changes** or **Create item**.
 
-The location column filter also offers **Choose on map**. Click markers to toggle
+The location column filter also offers **Choose on map**. Click shapes to toggle
 multiple locations, including across rooms, then **Close map**. Like the existing
 filter list, changes apply immediately and include sub-locations; they never move
 items. This works in both Items and the recycle bin.
@@ -459,7 +446,7 @@ Navigation uses real URLs and browser history:
 | `/manage/items` | Items grid |
 | `/manage/items/new` | New item form |
 | `/manage/items/<id>/edit` | Edit an item |
-| `/manage/locations?room=loc-common-makerspace&pin=loc-common-table-8` | Location tree and marker editor for Table C |
+| `/manage/locations?room=loc-common-makerspace&location=loc-common-table-8` | Location tree and SVG shape editor for Table C |
 | `/manage/categories` | Categories |
 | `/manage/flags` | Flag queue |
 | `/manage/recycle-bin` | Recycle bin |

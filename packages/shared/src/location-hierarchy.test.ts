@@ -6,6 +6,7 @@ import {
 } from './location-hierarchy.js';
 import { formatLocationPath, getLocationPath, locationCodeFromPath } from './location.js';
 import { findCatalogProblems } from './integrity.js';
+import { locationSchema } from './schema.js';
 import type { Location } from './types.js';
 
 const base: Location[] = [
@@ -55,17 +56,21 @@ test('storage numbers remain unique across kinds and any legacy descendants unde
   assert.equal(other.name, 'Drawer 1');
 });
 
-test('storage pins are removed from identity projections and prepared writes without changing surface placement', () => {
-  const pin = { roomId: 'room', mapId: 'common' as const, x: 0.2, y: 0.3 };
-  const original = base.map((location) => ['desk', 'drawer', 'bin'].includes(location.id) ? { ...location, mapPosition: pin } : location);
+test('legacy storage coordinates are stripped from identity projections and schema-parsed writes', () => {
+  const legacyPoint = { roomId: 'room', mapId: 'common' as const, x: 0.2, y: 0.3 };
+  const original = base.map((location) => ['desk', 'drawer', 'bin'].includes(location.id)
+    ? { ...location, mapPosition: legacyPoint } as Location & { mapPosition: typeof legacyPoint }
+    : location);
   const identified = assignLocationIdentities(original);
-  assert.deepEqual(identified.find((location) => location.id === 'desk')?.mapPosition, pin);
-  assert.equal(identified.find((location) => location.id === 'drawer')?.mapPosition, undefined);
-  assert.equal(identified.find((location) => location.id === 'bin')?.mapPosition, undefined);
-  const prepared = prepareLocation({ kind: 'drawer', parentId: 'desk', mapPosition: pin }, identified, 'new');
-  assert.equal(prepared.location.mapPosition, undefined);
-  assert.equal(original.find((location) => location.id === 'drawer')?.mapPosition, pin);
+  assert.equal('mapPosition' in (identified.find((location) => location.id === 'desk') ?? {}), false);
+  assert.equal('mapPosition' in (identified.find((location) => location.id === 'drawer') ?? {}), false);
+  assert.equal('mapPosition' in (identified.find((location) => location.id === 'bin') ?? {}), false);
+  const parsed = locationSchema.parse({ id: 'new', name: 'Drawer', kind: 'drawer', parentId: 'desk', mapPosition: legacyPoint });
+  const prepared = prepareLocation(parsed, identified, 'new');
+  assert.equal('mapPosition' in prepared.location, false);
+  assert.deepEqual((original.find((location) => location.id === 'drawer') as Location & { mapPosition?: typeof legacyPoint })?.mapPosition, legacyPoint);
 });
+
 test('same-surface edits retain numbers and ignore client attempts to rename or renumber storage', () => {
   const previous = base[3]!;
   const prepared = prepareLocation({ ...previous, name: 'Custom', number: 99, kind: 'shelf' }, base, previous.id, previous).location;

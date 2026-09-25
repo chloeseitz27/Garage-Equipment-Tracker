@@ -84,20 +84,18 @@ test('JSON loading rejects unknown secondary references on retired items', async
   await assert.rejects(repository.load(), /itm-tape has unknown categoryId: cat-missing/);
 });
 
-test('JSON location batches persist every marker and reload with stable ids', async (t) => {
+test('JSON location batches persist location metadata and reload with stable ids', async (t) => {
   const { repository, dataDir } = await fixture(t, []);
   await repository.load();
   const first = await repository.createLocation({ name: 'A', kind: 'table', parentId: 'loc-shop' });
   const second = await repository.createLocation({ name: 'B', kind: 'table', parentId: 'loc-shop' });
   const updated = [first, second].map((location, index) => ({
-    ...location, mapPosition: { roomId: 'loc-shop', mapId: 'common' as const, x: 0.2 + index * 0.1, y: 0.5 },
+    ...location, name: `${location.name}-${index + 1}`,
   }));
   await repository.saveLocations(updated);
   const reloaded = new JsonCatalogRepository(dataDir);
   await reloaded.load();
   assert.deepEqual((await reloaded.getLocations()).filter((location) => location.id !== 'loc-shop'), updated);
-  await repository.saveLocations([first, second]);
-  assert.ok((await repository.getLocations()).every((location) => !location.mapPosition));
 });
 
 test('JSON batch validation and disk failures leave all in-memory and persisted locations unchanged', async (t) => {
@@ -120,14 +118,14 @@ test('JSON batch validation and disk failures leave all in-memory and persisted 
   }
 });
 
-test('location upgrades use permanent seed IDs despite relabeling, without resetting inventory or custom markers', async (t) => {
+test('location upgrades use permanent seed IDs despite relabeling, without resetting inventory or custom names', async (t) => {
   const seed = locationsFileSchema.parse(JSON.parse(await readFile(
     new URL('../../../../data/seed/locations.json', import.meta.url), 'utf8',
   )));
   const { repository, dataDir } = await fixture(t, []);
   const original = seed.filter((location) => !['loc-table-u', 'loc-storage-closet', 'loc-basement-storage'].includes(location.id))
     .map((location) => location.id === 'loc-advanced-table-20'
-      ? { ...location, name: 'Table Z', mapPosition: { roomId: 'loc-advanced-makerspace', mapId: 'advanced' as const, x: 0.1, y: 0.2 } }
+      ? { ...location, name: 'Table Z' }
       : location);
   original.push({ id: 'custom-closet', name: 'Storage Closet', kind: 'room', parentId: null });
   await writeFile(join(dataDir, 'locations.json'), JSON.stringify(original));
@@ -139,7 +137,6 @@ test('location upgrades use permanent seed IDs despite relabeling, without reset
   const updated = await repository.getLocations();
   const table = updated.find((location) => location.id === 'loc-advanced-table-20')!;
   assert.equal(table.name, 'Table Y');
-  assert.deepEqual(table.mapPosition, { roomId: 'loc-advanced-makerspace', mapId: 'advanced', x: 0.1, y: 0.2 });
   assert.equal(updated.find((location) => location.id === 'custom-closet')?.staffOnly, true);
   assert.equal(updated.filter((location) => location.name === 'Storage Closet').length, 1);
   assert.equal(updated.find((location) => location.id === 'loc-basement-storage')?.staffOnly, true);

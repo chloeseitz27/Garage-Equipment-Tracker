@@ -157,9 +157,9 @@ test('Cosmos location migrations preserve the supplied stable ID rather than der
   assert.equal(location.id, 'loc-table-u');
   assert.deepEqual(documents.get('loc-table-u'), { ...location, type: 'location' });
 });
-test('Cosmos saves marker batches in one location-partition replacement transaction', async () => {
+test('Cosmos saves location batches in one location-partition replacement transaction', async () => {
   const locations: Location[] = [
-    { id: 'a', name: 'A', parentId: 'room', kind: 'table', mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.3 } },
+    { id: 'a', name: 'A', parentId: 'room', kind: 'table' },
     { id: 'b', name: 'B', parentId: 'room', kind: 'bin' },
   ];
   const repository = new CosmosCatalogRepository({ endpoint: 'https://unused.invalid', database: 'test', container: 'test' });

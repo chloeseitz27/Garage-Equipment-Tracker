@@ -1,6 +1,6 @@
 import { createElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ROOM_MAPS, getLocationPath, locationCodeFromPath, resolveLocationMap, resolveMapTarget, roomMapMarkers, type Location, type SvgMapGeometry } from '@garage/shared';
+import { ROOM_MAPS, getLocationPath, locationCodeFromPath, resolveLocationMap, resolveMapTarget, type Location, type SvgMapGeometry } from '@garage/shared';
 import { useSvgMap } from '../room-map-source.js';
 
 interface Props {
@@ -12,11 +12,8 @@ interface Props {
   caption?: string;
   showCaption?: boolean;
   onSelect?: (id: string, point?: { x: number; y: number }) => void;
-  onPlace?: (point: { x: number; y: number }) => void;
-  /** Clicking empty map space clears the selection when no placement is pending. */
+  /** Clicking empty map space clears the selection. */
   onDeselect?: () => void;
-  /** Lets the selected marker be dragged to a new position. */
-  onMoveSelected?: (point: { x: number; y: number }) => void;
 }
 
 export function roomMapUrl(roomId: string, locationId?: string): string {
@@ -45,7 +42,7 @@ function ShapeGeometry({ geometry }: { geometry: SvgMapGeometry }): JSX.Element 
 }
 
 export function RoomMap({
-  room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, showCaption = true, onSelect, onPlace, onDeselect, onMoveSelected,
+  room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, showCaption = true, onSelect, onDeselect,
 }: Props): JSX.Element {
   const asset = room.mapId ? ROOM_MAPS[room.mapId] : undefined;
   const source = useSvgMap(room.mapId);
@@ -67,16 +64,14 @@ export function RoomMap({
     moved: boolean;
   } | null>(null);
   const suppressClick = useRef(false);
-  const markerDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; moved: boolean } | null>(null);
-  const [markerDrag, setMarkerDrag] = useState<{ x: number; y: number } | null>(null);
   const helpId = useId();
   const resolved = selectedLocationId ? resolveLocationMap(locations, selectedLocationId) : null;
   const enclosingSurface = selectedLocationId ? getLocationPath(locations, selectedLocationId)[1] : undefined;
   const target = selectedLocationId && resolved?.room.id === room.id ? resolveMapTarget(locations, selectedLocationId, svgIds) : null;
   const highlighted = target?.location.id;
   const highlightedCode = target ? locationCodeFromPath(getLocationPath(locations, target.location.id)) : undefined;
-  const highlightedX = target?.kind === 'shape' ? shapeCenter?.x : target?.position?.x;
-  const highlightedY = target?.kind === 'shape' ? shapeCenter?.y : target?.position?.y;
+  const highlightedX = shapeCenter?.x;
+  const highlightedY = shapeCenter?.y;
   const regionCenter = (id: string): { x: number; y: number } | undefined => {
     const bounds = regionRefs.current.get(id)?.getBoundingClientRect();
     const stage = stageRef.current?.getBoundingClientRect();
@@ -87,8 +82,8 @@ export function RoomMap({
     };
   };
   useLayoutEffect(() => {
-    setShapeCenter(target?.kind === 'shape' ? regionCenter(target.location.id) : undefined);
-  }, [highlighted, target?.kind, source.map]);
+    setShapeCenter(target ? regionCenter(target.location.id) : undefined);
+  }, [highlighted, source.map]);
   useEffect(() => {
     setImageFailed(false);
     setView(FIT_VIEW);
@@ -146,9 +141,8 @@ export function RoomMap({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
-
   if (!asset) return <p className="muted">No floor plan is assigned to {room.name}.</p>;
-  const markers = roomMapMarkers(locations, room.id).filter((location) => !svgIds.has(location.id) && !excludedIds?.includes(location.id));
+  if (!asset) return <p className="muted">No floor plan is assigned to {room.name}.</p>;
   const regions = source.map?.regions.flatMap((region) => {
     const location = locations.find((location) => location.id === region.locationId);
     return location && location.parentId === room.id && !excludedIds?.includes(location.id) && resolveLocationMap(locations, location.id)?.room.id === room.id
@@ -164,41 +158,7 @@ export function RoomMap({
   };
   const clickBlank = (event: MouseEvent<HTMLDivElement>): void => {
     if (!ready) return;
-    if (!onPlace) {
-      onDeselect?.();
-      return;
-    }
-    const point = pointerPosition(event);
-    if (point) onPlace(point);
-  };
-  const startMarkerDrag = (event: PointerEvent<HTMLButtonElement>): void => {
-    if (!onMoveSelected || !ready || event.button !== 0 || event.isPrimary === false) return;
-    // Dragging the selected marker moves it instead of panning the map.
-    event.stopPropagation();
-    markerDragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, moved: false };
-  };
-  const moveMarker = (event: PointerEvent<HTMLButtonElement>): void => {
-    const drag = markerDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.stopPropagation();
-    if (!drag.moved && Math.hypot(event.clientX - drag.clientX, event.clientY - drag.clientY) < 5) return;
-    if (!drag.moved) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      drag.moved = true;
-    }
-    const point = pointerPosition(event);
-    if (point) setMarkerDrag(point);
-  };
-  const endMarkerDrag = (event: PointerEvent<HTMLButtonElement>): void => {
-    const drag = markerDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.stopPropagation();
-    markerDragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    const point = event.type === 'pointerup' && drag.moved ? pointerPosition(event) : undefined;
-    setMarkerDrag(null);
-    if (drag.moved) suppressClick.current = true;
-    if (point) onMoveSelected?.(point);
+    onDeselect?.();
   };
   return (
     <figure className="room-map">
@@ -228,7 +188,7 @@ export function RoomMap({
             if (event.key === 'Home') {
               event.preventDefault();
               setView(FIT_VIEW);
-            } else if (event.key === 'Escape' && onDeselect && !onPlace) {
+            } else if (event.key === 'Escape' && onDeselect) {
               event.preventDefault();
               onDeselect();
             } else if (view.zoom > 1 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
@@ -243,7 +203,7 @@ export function RoomMap({
         >
           <div
             ref={stageRef}
-            className={onPlace ? 'room-map-stage placing' : 'room-map-stage'}
+            className="room-map-stage"
             style={{ transform: `translate(${view.x * 100}%, ${view.y * 100}%) scale(${view.zoom})` }}
             onClick={clickBlank}
           >
@@ -299,58 +259,6 @@ export function RoomMap({
                 })}
               </svg>
             ) : null}
-            {ready && markers.map((location) => {
-              const saved = location.mapPosition;
-              if (!saved) return null;
-              const selected = selectedLocationIds ? selectedLocationIds.includes(location.id) : highlighted === location.id;
-              const movable = selected && Boolean(onMoveSelected) && !selectedLocationIds;
-              const pin = movable && markerDrag ? markerDrag : saved;
-              const className = `map-marker${selected ? ' selected' : ''}${movable ? ' movable' : ''}`;
-              const style = {
-                left: `${pin.x * 100}%`, top: `${pin.y * 100}%`,
-                transform: `translate(-50%, -50%) scale(${1 / view.zoom})`,
-              };
-              const label = `${location.name}${selected ? ' (highlighted)' : ''}`;
-              const reveal = (): void => {
-                setView((current) => clampView({
-                  ...current, x: 0.5 - pin.x * current.zoom, y: 0.5 - pin.y * current.zoom,
-                }));
-              };
-              return onSelect ? (
-                <button
-                  key={location.id}
-                  data-location-id={location.id}
-                  type="button"
-                  className={className}
-                  style={style}
-                  aria-label={label}
-                  aria-pressed={selected}
-                  title={movable ? `${location.name} (drag to move)` : location.name}
-                  onFocus={(event) => {
-                    if (event.currentTarget.matches(':focus-visible')) reveal();
-                  }}
-                  onPointerDown={movable ? startMarkerDrag : undefined}
-                  onPointerMove={movable ? moveMarker : undefined}
-                  onPointerUp={movable ? endMarkerDrag : undefined}
-                  onPointerCancel={movable ? endMarkerDrag : undefined}
-                  onClick={(event) => { event.stopPropagation(); onSelect(location.id, pin); }}
-                ><span className="map-marker-dot" aria-hidden="true" /></button>
-              ) : (
-                <Link
-                  key={location.id}
-                  data-location-id={location.id}
-                  className={className}
-                  style={style}
-                  to={roomMapUrl(room.id, location.id)}
-                  aria-label={label}
-                  aria-current={selected ? 'location' : undefined}
-                  title={location.name}
-                  onFocus={(event) => {
-                    if (event.currentTarget.matches(':focus-visible')) reveal();
-                  }}
-                ><span className="map-marker-dot" aria-hidden="true" /></Link>
-              );
-            })}
           </div>
         </div>
         <div className="room-map-controls" role="group" aria-label={`${room.name} map zoom`}>
@@ -361,7 +269,7 @@ export function RoomMap({
           <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!ready || view.zoom >= 3} onClick={() => changeZoom(0.25)}>+</button>
         </div>
       </div>
-      <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.{onDeselect ? ' Click empty map space or press Escape to clear the selection.' : ''}{onMoveSelected ? ' Drag the selected marker to move it.' : ''}</p>
+      <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.{onDeselect ? ' Click empty map space or press Escape to clear the selection.' : ''}</p>
       {showCaption && (caption !== '' || failed || (ready && selectedLocationId && resolved?.room.id === room.id && target?.location.id !== selectedLocationId)) ? (
         <figcaption>
           {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}
@@ -370,8 +278,8 @@ export function RoomMap({
           ) : null}
           {ready && selectedLocationId && resolved?.room.id === room.id && !target ? (
             <p className="hint">{enclosingSurface && enclosingSurface.id !== selectedLocationId
-              ? `Room shown; ${enclosingSurface.name} has not been placed on the map yet.`
-              : 'Room shown; this location has no marker or linked SVG shape yet.'}</p>
+              ? `Room shown; ${enclosingSurface.name} is not on the floor plan yet.`
+              : 'Room shown; this location has no shape on the floor plan yet.'}</p>
           ) : null}
         </figcaption>
       ) : null}

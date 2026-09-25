@@ -3,17 +3,14 @@ import {
   bulkCreateItemsSchema,
   bulkRetireItemsSchema,
   bulkUpdateItemsSchema,
-  bulkUpdateMarkersSchema,
   createCategorySchema,
   createItemSchema,
   createLocationSchema,
   itemSchema,
   locationMapProblem,
-  locationPlacementProblem,
-  getLocationPath,
   locationHierarchyProblem,
   prepareLocation,
-  MARKER_BATCH_LIMIT,
+  LOCATION_WRITE_BATCH_LIMIT,
   resolveFlagSchema,
   resolveLocationMap,
   updateCategorySchema,
@@ -22,12 +19,10 @@ import {
   wouldCreateCycle,
   type Item,
   type Location,
-  type RoomMapId,
 } from '@garage/shared';
 
 import { requireStaff } from '../auth.js';
 import { asyncHandler } from '../middleware.js';
-import { svgLocationIds } from '../room-map-source.js';
 import { identifiedLocations, serializeLocationWrite } from '../location-write.js';
 import { randomUUID } from 'node:crypto';
 import type { CatalogRepository } from '../repository/catalog-repository.js';
@@ -283,59 +278,13 @@ export function staffRoutes(repository: CatalogRepository): Router {
         res.status(400).json({ error: location.kind === 'station' ? 'Station name is required.' : 'Room name is required.' });
         return;
       }
-      const mapProblem = locationMapProblem(location, locations) ?? locationPlacementProblem(location, locations);
+      const mapProblem = locationMapProblem(location);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;
       }
       const { id: _id, ...input } = location;
       res.status(201).json(await repository.createLocation(input, id));
-    })),
-  );
-
-  router.post(
-    '/locations/markers',
-    asyncHandler(async (req, res) => serializeLocationWrite(repository, async () => {
-      const parsed = bulkUpdateMarkersSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: 'Invalid marker batch', details: parsed.error.issues });
-        return;
-      }
-      const locations = await repository.getLocations();
-      const updated: Location[] = [];
-      const svgMaps = new Map<RoomMapId, Promise<Set<string>>>();
-      for (const marker of parsed.data.markers) {
-        const location = locations.find((candidate) => candidate.id === marker.id);
-        if (!location) {
-          res.status(404).json({ error: `Location no longer exists: ${marker.id}` });
-          return;
-        }
-        const mapped = resolveLocationMap(locations, location.id);
-        if (!mapped || mapped.room.id === location.id || mapped.room.id !== marker.roomId || mapped.room.mapId !== marker.mapId) {
-          res.status(409).json({ error: `${location.name}: the room or floor plan changed. Discard this marker draft and place it again.` });
-          return;
-        }
-        const surface = getLocationPath(locations, location.id).length === 2;
-        if (!surface && marker.position !== null) {
-          res.status(400).json({ error: `${location.name} inherits its enclosing surface's map location and cannot have a separate pin.` });
-          return;
-        }
-        if (surface) {
-          let shapes = svgMaps.get(marker.mapId);
-          if (!shapes) { shapes = svgLocationIds(marker.mapId); svgMaps.set(marker.mapId, shapes); }
-          if ((await shapes).has(location.id)) {
-            res.status(409).json({ error: `${location.name} is linked to an SVG shape. Edit the floor plan SVG to move or resize it.` });
-            return;
-          }
-        }
-        // Merge only marker data so a batch cannot overwrite a rename or hierarchy edit.
-        const { mapPosition: _old, ...record } = location;
-        updated.push(marker.position === null ? record : {
-          ...record, mapPosition: { roomId: marker.roomId, mapId: marker.mapId, ...marker.position },
-        });
-      }
-      await repository.saveLocations(updated);
-      res.json({ updated: updated.length, locations: updated });
     })),
   );
 
@@ -376,15 +325,11 @@ export function staffRoutes(repository: CatalogRepository): Router {
         res.status(400).json({ error: prepared.location.kind === 'station' ? 'Station name is required.' : 'Room name is required.' });
         return;
       }
-      if (prepared.descendants.length + 1 > MARKER_BATCH_LIMIT) {
+      if (prepared.descendants.length + 1 > LOCATION_WRITE_BATCH_LIMIT) {
         res.status(400).json({ error: 'Move fewer than 100 storage locations at once to keep numbering changes atomic.' });
         return;
       }
-      const room = parsed.data.parentId ? resolveLocationMap(locations, parsed.data.parentId)?.room : undefined;
-      const surface = getLocationPath(locations, parsed.data.parentId ?? '').length === 1;
-      const shapes = surface && room?.mapId ? await svgLocationIds(room.mapId) : new Set<string>();
-      const mapProblem = locationMapProblem(prepared.location, locations, previous) ??
-        locationPlacementProblem(prepared.location, locations, shapes);
+      const mapProblem = locationMapProblem(prepared.location);
       if (mapProblem) {
         res.status(400).json({ error: mapProblem });
         return;

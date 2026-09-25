@@ -1,4 +1,4 @@
-import { assignLocationIdentities, MARKER_BATCH_LIMIT, type Location } from '@garage/shared';
+import { assignLocationIdentities, LOCATION_WRITE_BATCH_LIMIT, type Location } from '@garage/shared';
 import type { CatalogRepository } from './repository/catalog-repository.js';
 
 const queues = new WeakMap<CatalogRepository, Promise<void>>();
@@ -23,11 +23,10 @@ export async function identifiedLocations(repository: CatalogRepository): Promis
   const locations = assignLocationIdentities(current);
   const changed = locations.filter((location, index) =>
     location.letter !== current[index]?.letter || location.number !== current[index]?.number ||
-    location.name !== current[index]?.name || location.kind !== current[index]?.kind ||
-    location.mapPosition !== current[index]?.mapPosition);
+    location.name !== current[index]?.name || location.kind !== current[index]?.kind);
   // Persist legacy assignments before new allocations so deletion or renaming cannot shift existing codes.
-  for (let index = 0; index < changed.length; index += MARKER_BATCH_LIMIT) {
-    await repository.saveLocations(changed.slice(index, index + MARKER_BATCH_LIMIT));
+  for (let index = 0; index < changed.length; index += LOCATION_WRITE_BATCH_LIMIT) {
+    await repository.saveLocations(changed.slice(index, index + LOCATION_WRITE_BATCH_LIMIT));
   }
   return locations;
 }

@@ -1,5 +1,5 @@
 import { getLocationPath, getDescendantLocationIds, indexLocations } from './location.js';
-import { STORAGE_KINDS, SURFACE_KINDS, isStationKind } from './schema.js';
+import { STORAGE_KINDS, SURFACE_KINDS, isStationKind, locationSchema } from './schema.js';
 import type { Location, LocationKind } from './types.js';
 
 export type LocationLevel = 'room' | 'surface' | 'storage';
@@ -39,7 +39,7 @@ export function surfaceLocationId(locations: Location[], id: string): string | u
 
 /** Preserve legacy IDs/parents while assigning codes and generated storage names. Persist before allocating new codes. */
 export function assignLocationIdentities(locations: Location[]): Location[] {
-  const result = locations.map((location) => ({ ...location }));
+  const result = locations.map((location) => locationSchema.parse(location));
   const index = indexLocations(result);
   const surfaces = result.filter((location) => getLocationPath(index, location.id).length === 2)
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -90,7 +90,6 @@ export function assignLocationIdentities(locations: Location[]): Location[] {
       numbers.add(number);
     }
     for (const location of storage) {
-      delete location.mapPosition;
       if (STORAGE_KINDS.some((kind) => kind === location.kind)) location.name = `${locationKindLabel(location.kind)} ${location.number}`;
     }
   }
@@ -148,7 +147,6 @@ export function prepareLocation(
       record.name = `${locationKindLabel(record.kind)} ${record.letter}`;
     }
   } else if (level === 'storage' && input.parentId) {
-    delete record.mapPosition;
     const sameSurface = previous && surfaceLocationId(locations, previous.id) === surfaceLocationId(locations, input.parentId);
     const moving = previous ? getDescendantLocationIds(locations, previous.id) : [id];
     let number = nextStorageNumber(locations, input.parentId, moving);
@@ -157,8 +155,7 @@ export function prepareLocation(
     if (previous && !sameSurface) {
       for (const child of locations.filter((child) => child.id !== id && moving.includes(child.id)).sort((a, b) => a.id.localeCompare(b.id))) {
         if (!Number.isSafeInteger(number)) throw new Error('The destination has exhausted its storage number range.');
-        const { mapPosition: _oldPin, ...fields } = child;
-        descendants.push({ ...fields, number, name: `${locationKindLabel(child.kind)} ${number++}` });
+        descendants.push({ ...child, number, name: `${locationKindLabel(child.kind)} ${number++}` });
       }
     }
   }

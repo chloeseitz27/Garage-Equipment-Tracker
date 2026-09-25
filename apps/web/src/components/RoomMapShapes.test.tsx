@@ -30,9 +30,9 @@ const source = (x = 100, transform = 'translate(20,30)') => `<svg xmlns="http://
 const room: Location = { id: 'room', name: 'Common Makerspace', kind: 'room', parentId: null, mapId: 'common' };
 const locations: Location[] = [
   room,
-  { id: 'table', name: 'Table A', parentId: 'room', kind: 'table', mapPosition: { roomId: 'room', mapId: 'common', x: 0.99, y: 0.99 } },
+  { id: 'table', name: 'Table A', parentId: 'room', kind: 'table' },
   { id: 'bin', name: 'Bin A1', parentId: 'table', kind: 'bin' },
-  { id: 'point', name: 'Standalone bin', parentId: 'room', kind: 'bin', mapPosition: { roomId: 'room', mapId: 'common', x: 0.3, y: 0.7 } },
+  { id: 'point', name: 'Standalone bin', parentId: 'room', kind: 'bin' },
 ];
 const ElementContext = createContext<ReactElement | null>(null);
 const Screen = (): ReactElement | null => useContext(ElementContext);
@@ -96,15 +96,15 @@ test('the Maps page omits its visible heading in both populated and empty states
   assert.match(host.textContent ?? '', /No mapped room found/);
 });
 
-test('selected tables highlight their entire SVG geometry, not the stale database pin', async () => {
+test('selected tables highlight their entire SVG geometry without database points', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'table', onSelect: () => {} }));
-  assert.equal(host.querySelector('.map-marker[title="Table A"]'), null);
+  assert.equal(host.querySelector('.map-region[title="Table A"]'), null);
   assert.ok(region().classList.contains('selected'));
   assert.equal(region().getAttribute('aria-pressed'), 'true');
   assert.equal(region().querySelector('rect')?.getAttribute('x'), '100');
   assert.equal(region().querySelector('rect')?.getAttribute('width'), '200');
   assert.equal(region().querySelector('g')?.getAttribute('transform'), 'translate(20,30)');
-  assert.ok(host.querySelector('.map-marker[title="Standalone bin"]'));
+  assert.equal(host.querySelector('.map-region[title="Standalone bin"]'), null);
   assert.equal(host.querySelector('.map-region[data-location-id="unknown"]'), null);
   assert.equal(writes.length, 0);
 });
@@ -118,26 +118,24 @@ test('geometry edits update the image and selection outline together without cat
   assert.equal(region().querySelector('rect')?.getAttribute('width'), '320');
   assert.equal(region().querySelector('g')?.getAttribute('transform'), 'rotate(15,500,250)');
   assert.notEqual(host.querySelector('img')?.getAttribute('src'), before);
-  assert.equal(locations[1]?.mapPosition?.x, 0.99);
   assert.equal(writes.length, 0);
 });
 
 test('SVG surfaces select on click, Enter, and Space without placing points or submitting forms', async () => {
   const selected: string[] = [];
-  let placed = 0, submitted = 0;
+  let submitted = 0;
   await render(createElement('form', { onSubmit: () => { submitted++; } },
-    createElement(RoomMap, { room, locations, onSelect: (id: string) => { selected.push(id); }, onPlace: () => { placed++; } })));
+    createElement(RoomMap, { room, locations, onSelect: (id: string) => { selected.push(id); } })));
   await click(region().querySelector('rect')!);
   await key(region(), 'Enter');
   await key(region(), ' ');
   assert.deepEqual(selected, ['table', 'table', 'table']);
   assert.equal(region().getAttribute('tabindex'), '0');
   assert.equal(region().getAttribute('role'), 'button');
-  assert.equal(placed, 0);
   assert.equal(submitted, 0);
 });
 
-test('shape selection supplies the clicked spot or measured shape center, never the legacy pin', async () => {
+test('shape selection supplies the clicked spot or measured shape center', async () => {
   const points: Array<{ x: number; y: number } | undefined> = [];
   await render(createElement(RoomMap, { room, locations, onSelect: (_id, point) => { points.push(point); } }));
   const stage = host.querySelector<HTMLElement>('.room-map-stage');
@@ -163,32 +161,31 @@ test('shape selection supplies the clicked spot or measured shape center, never 
   assert.deepEqual(points, [{ x: 0.15, y: 0.21 }, { x: 0.22, y: 0.26 }, { x: 0.22, y: 0.26 }]);
 });
 
-test('storage descendants inherit the enclosing table shape instead of receiving their own pin', async () => {
-  const unpinned = locations.map((location) => location.id === 'table' ? { ...location, mapPosition: undefined } : location);
-  await render(createElement(RoomMap, { room, locations: unpinned, selectedLocationId: 'bin', onSelect: () => {} }));
+test('storage descendants inherit the enclosing table shape', async () => {
+  await render(createElement(RoomMap, { room, locations, selectedLocationId: 'bin', onSelect: () => {} }));
   assert.ok(region().classList.contains('selected'));
   assert.match(host.textContent ?? '', /Map location inherited from Table A/);
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'point', onSelect: () => {} }));
   assert.equal(region().classList.contains('selected'), false);
-  assert.equal(host.querySelector('.map-marker.selected')?.getAttribute('title'), 'Standalone bin');
+  assert.equal(host.querySelector('.map-region.selected'), null);
 });
 
-test('suppressing a caption retains inherited-location and missing-placement notices', async () => {
+test('suppressing a caption retains inherited-location and missing-shape notices', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationId: 'bin', caption: '', onSelect: () => {} }));
   assert.match(host.querySelector('figcaption')?.textContent ?? '', /Map location inherited/);
   const unplaced = { id: 'unplaced', name: 'Unplaced bin', kind: 'bin' as const, parentId: room.id };
   await render(createElement(RoomMap, { room, locations: [...locations, unplaced], selectedLocationId: unplaced.id, caption: '', onSelect: () => {} }));
-  assert.match(host.querySelector('figcaption')?.textContent ?? '', /no marker or linked SVG shape/);
+  assert.match(host.querySelector('figcaption')?.textContent ?? '', /no shape on the floor plan/);
 });
 
-test('legacy storage pins and SVG regions do not become independently selectable map locations', async () => {
-  const child: Location = { ...locations[2]!, mapPosition: { roomId: room.id, mapId: 'common', x: 0.4, y: 0.5 } };
+test('storage SVG regions do not become independently selectable map locations', async () => {
+  const child: Location = { ...locations[2]! };
   const withChildShape = parseSvgMap(source().replace('</svg>',
     '<g data-location-id="bin"><rect class="surface" x="140" y="80" width="30" height="30"/></g></svg>'));
   await render(createElement(RoomMap, {
     room, locations: [room, locations[1]!, child], selectedLocationId: child.id, onSelect: () => {},
   }), withChildShape);
-  assert.equal(host.querySelector('.map-marker[data-location-id="bin"]'), null);
+  assert.equal(host.querySelector('.map-region[data-location-id="bin"]'), null);
   assert.equal(host.querySelector('.map-region[data-location-id="bin"]'), null);
   assert.ok(region().classList.contains('selected'));
   assert.match(host.textContent ?? '', /Map location inherited from Table A/);
@@ -207,10 +204,10 @@ test('shape links navigate normally, while excluded or cross-room locations are 
   assert.equal(host.querySelector('.map-region'), null);
 });
 
-test('multi-select maps highlight exact selected shapes and fallback points', async () => {
+test('multi-select maps highlight exact selected shapes', async () => {
   await render(createElement(RoomMap, { room, locations, selectedLocationIds: ['table', 'point'], onSelect: () => {} }));
   assert.equal(region().getAttribute('aria-pressed'), 'true');
-  assert.equal(host.querySelector('.map-marker')?.getAttribute('aria-pressed'), 'true');
+  assert.equal(host.querySelector('.map-region')?.getAttribute('aria-pressed'), 'true');
 });
 
 test('SVG content is never injected as executable DOM', async () => {
@@ -221,11 +218,11 @@ test('SVG content is never injected as executable DOM', async () => {
   assert.equal(region().querySelector('rect')?.attributes.length, 6);
 });
 
-test('the selected SVG location has an edit panel instead of marker controls', async () => {
+test('the selected SVG location has an edit panel instead of shape controls', async () => {
   await render(createElement(LocationMapEditor, { locations, onChanged: () => {} }), parseSvgMap(source()),
-    '/manage/locations?room=room&pin=table');
-  assert.equal(host.querySelector('button[aria-label="Remove marker"]'), null);
-  assert.equal(host.querySelector('button[aria-label="Save all markers"]'), null);
+    '/manage/locations?room=room&location=table');
+  assert.equal(host.querySelector('button[aria-label="Remove shape"]'), null);
+  assert.equal(host.querySelector('button[aria-label="Save all shapes"]'), null);
   assert.equal(host.querySelector<HTMLInputElement>('[aria-label="Location name"]')?.value, 'Table A');
   assert.equal(button('Save').disabled, true);
   assert.equal(host.querySelectorAll('.room-map').length, 1);
@@ -249,7 +246,6 @@ test('the selected SVG location has an edit panel instead of marker controls', a
   await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations/table');
   assert.equal(writes[0]?.body.name, 'Updated table');
-  assert.deepEqual(writes[0]?.body.mapPosition, locations[1]?.mapPosition);
   assert.equal(input.value, 'Updated table');
   assert.equal(button('Save').disabled, true);
   assert.equal(region().getAttribute('aria-label'), 'Updated table');
@@ -257,7 +253,7 @@ test('the selected SVG location has an edit panel instead of marker controls', a
 
 test('the selection editor omits map captions and code summaries but retains inherited access information', async () => {
   const props = { locations, onChanged: () => {} };
-  await render(createElement(LocationMapEditor, props), parseSvgMap(source()), '/manage/locations?room=room&pin=bin');
+  await render(createElement(LocationMapEditor, props), parseSvgMap(source()), '/manage/locations?room=room&location=bin');
   assert.equal(host.querySelector('.room-map figcaption'), null);
   assert.equal(host.querySelector('p[role="status"].location-access-hint'), null);
   assert.ok(region().classList.contains('selected'));
@@ -270,8 +266,8 @@ test('the selection editor omits map captions and code summaries but retains inh
   assert.match(host.querySelector('p.location-access-hint[id]')?.textContent ?? '', /required by the parent/);
 });
 
-test('metadata editing accepts a linked SVG shape without requiring a point marker', async () => {
-  const location = { ...locations[1]!, mapPosition: undefined };
+test('metadata editing accepts a linked SVG shape without requiring a point shape', async () => {
+  const location = { ...locations[1]! };
   await render(createElement(LocationEditor, {
     locations: [room, location], location, parentId: room.id, onSaved: () => {}, onCancel: () => {}, onStateChange: () => {},
   }));
@@ -279,7 +275,6 @@ test('metadata editing accepts a linked SVG shape without requiring a point mark
   assert.equal(host.querySelector('.room-map-stage')?.classList.contains('placing'), false);
   await click(button('Save'));
   assert.equal(writes[0]?.url, '/api/locations/table');
-  assert.equal(writes[0]?.body.mapPosition, undefined);
 });
 
 test('refreshing an SVG source reads fresh geometry and recovers explicitly from malformed assets', async () => {
@@ -295,7 +290,7 @@ test('refreshing an SVG source reads fresh geometry and recovers explicitly from
   text = '<not-an-svg/>';
   await act(() => refreshSvgMap('common'));
   assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Could not load the floor plan/);
-  assert.equal(host.querySelector('.map-region, .map-marker'), null);
+  assert.equal(host.querySelector('.map-region, .map-region'), null);
   text = source(200);
   await act(() => refreshSvgMap('common'));
   assert.equal(region().querySelector('rect')?.getAttribute('x'), '200');
