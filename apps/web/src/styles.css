@@ -1208,7 +1208,7 @@ button:disabled {
     margin: 0;
   }
 
-  .location-map-panel.location-editor > .location-editor-fields {
+  .location-map-panel > .location-editor-fields {
     grid-column: 2;
     grid-row: 2;
   }
@@ -1231,11 +1231,21 @@ button:disabled {
   .location-map-panel > .location-editor-fields {
     animation: location-panel-appear 220ms ease-out 120ms both;
   }
+
+  .location-map-panel > .location-editor-fields.closing {
+    animation: location-panel-disappear 200ms ease-in both;
+    pointer-events: none;
+  }
 }
 
 @keyframes location-panel-appear {
   from { opacity: 0; transform: translateX(0.75rem); }
   to { opacity: 1; transform: none; }
+}
+
+@keyframes location-panel-disappear {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(0.75rem); }
 }
 
 .location-children {

@@ -4,6 +4,11 @@ import { getDescendantLocationIds, resolveLocationMap, type Location } from '@ga
 import { LocationEditor } from './LocationEditor.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
 
+const PANEL_CLOSE_MS = 200;
+// Mirrors the CSS media query that animates the side panel.
+const animatePanel = (): boolean => typeof window.matchMedia === 'function' &&
+  window.matchMedia('(min-width: 1001px) and (prefers-reduced-motion: no-preference)').matches;
+
 interface Props {
   locations: Location[];
   onChanged: (location: Location) => void;
@@ -55,6 +60,22 @@ export function LocationMapEditor({
   const room = rooms.find((location) => location.id === (params.get('room') ?? rooms[0]?.id));
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
   const selected = savedLocations.find((location) => location.id === params.get('location') && descendants.includes(location.id));
+  // Keep a just-deselected panel mounted briefly so it can fade out while the map slides back.
+  const [closing, setClosing] = useState<{ location: Location; room: string } | null>(null);
+  const [previous, setPrevious] = useState({ selected, room: room?.id });
+  if (previous.selected !== selected || previous.room !== room?.id) {
+    setPrevious({ selected, room: room?.id });
+    if (!selected && previous.selected && room && previous.room === room.id && animatePanel()) {
+      setClosing({ location: previous.selected, room: room.id });
+    } else if (closing) setClosing(null);
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(() => setClosing(null), PANEL_CLOSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [closing]);
+  const closingLocation = !selected && closing?.room === room?.id ? closing?.location : undefined;
+  const displayed = selected ?? closingLocation;
   const choose = (id: string, targetRoom: Location): void => {
     // A draft can preview another room; navigation must target the saved hierarchy.
     const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
@@ -103,10 +124,13 @@ export function LocationMapEditor({
       {room ? (
         <LocationEditor
           locations={savedLocations}
-          location={selected}
-          parentId={selected?.parentId ?? null}
+          location={displayed}
+          parentId={displayed?.parentId ?? null}
           onStateChange={reportEditor}
-          mapPanel={{ room, navigation, onSelect: choose, onDeselect: deselect, onCreateChild, readOnly: disabled, revision }}
+          mapPanel={{
+            room, navigation, onSelect: choose, onDeselect: deselect, onCreateChild, readOnly: disabled, revision,
+            closing: Boolean(closingLocation),
+          }}
           onCancel={() => {
             clearDraft();
             setParams({ room: room.id });

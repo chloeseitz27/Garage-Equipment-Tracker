@@ -27,6 +27,8 @@ interface Props {
     onSelect: (id: string, room: Location) => void;
     onCreateChild?: (location: Location) => void;
     onDeselect?: () => void;
+    /** The panel is fading out after deselection; it stays visible but inert. */
+    closing?: boolean;
   };
 }
 
@@ -49,6 +51,7 @@ const toDraft = (location: Location | undefined, parentId: string | null, rootRo
 export function LocationEditor({ locations, location, parentId, onSaved, onCancel, onStateChange, mapPanel }: Props): JSX.Element {
   const id = useId();
   const editable = !mapPanel || Boolean(location && !mapPanel.readOnly);
+  const closing = Boolean(mapPanel?.closing);
   const rootRoom = location ? location.parentId === null : !mapPanel && parentId === null;
   const identified = useMemo(() => assignLocationIdentities(locations), [locations]);
   const identity = location ? identified.find((entry) => entry.id === location.id) : undefined;
@@ -158,8 +161,8 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
           <RoomMap
             key={displayRoom.id} room={displayRoom} locations={preview}
             showCaption={!mapPanel}
-            selectedLocationId={editable ? candidate.id : location?.id}
-            onDeselect={mapPanel && location && !busy ? mapPanel.onDeselect : undefined}
+            selectedLocationId={closing ? undefined : editable ? candidate.id : location?.id}
+            onDeselect={mapPanel && location && !busy && !closing ? mapPanel.onDeselect : undefined}
             onSelect={(selectedId) => {
               if (mapPanel) mapPanel.onSelect(selectedId, displayRoom);
             }}
@@ -186,7 +189,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   );
   const Container = compactCreation ? 'div' : 'section';
   return (
-    <Container className={compactCreation ? 'location-child-form' : mapPanel ? `location-map-panel${editable ? ' location-editor' : ''}` : 'location-editor'}
+    <Container className={compactCreation ? 'location-child-form' : mapPanel ? `location-map-panel${editable && !closing ? ' location-editor' : ''}` : 'location-editor'}
       role={compactCreation ? 'group' : undefined}
       aria-label={location ? `Edit ${location.name}` : mapPanel ? 'Location map' : rootRoom ? 'New room' : 'New child location'}>
       {mapPanel ? mapContent : null}
@@ -196,7 +199,8 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
         </p>
       ) : null}
       {editable ? (
-        <div className="location-editor-fields">
+        <div className={closing ? 'location-editor-fields closing' : 'location-editor-fields'}
+          ref={(element) => { element?.toggleAttribute('inert', closing); }} aria-hidden={closing || undefined}>
           {mapPanel && location ? (
             <div className="location-selection-heading">
               {ancestors.length ? (

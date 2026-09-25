@@ -3284,6 +3284,39 @@ test('clicking empty map space clears the selection and protects unsaved drafts'
   assert.equal(writes.length, 0);
 });
 
+test('with motion allowed, a deselected panel fades out inertly before unmounting', async () => {
+  const queries: string[] = [];
+  dom.window.matchMedia = ((query: string) => {
+    queries.push(query);
+    return { matches: true, media: query } as MediaQueryList;
+  }) as typeof dom.window.matchMedia;
+  try {
+    await render(createElement(LocationMapEditor, {
+      locations: mapLocations, onChanged: () => {},
+    }), '/manage/locations?room=common&location=table-a');
+    const stage = host.querySelector<HTMLElement>('.location-map-editor .room-map-stage');
+    assert.ok(stage);
+    await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 50, clientY: 50 })); });
+    assert.equal(currentUrl(), '/manage/locations?room=common');
+    assert.match(queries.join(), /prefers-reduced-motion: no-preference/);
+    const fields = host.querySelector<HTMLElement>('.location-editor-fields.closing');
+    assert.ok(fields, 'The panel stays mounted while it fades out');
+    assert.equal(fields.hasAttribute('inert'), true);
+    assert.equal(host.querySelector('.location-map-panel')?.classList.contains('location-editor'), false,
+      'The map slides back while the panel fades');
+    assert.equal(host.querySelector('.map-region.selected'), null);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    assert.equal(host.querySelector('.location-editor-fields'), null);
+
+    await chooseShapeLocation('table-a');
+    const reopened = host.querySelector('.location-editor-fields');
+    assert.ok(reopened);
+    assert.equal(reopened.classList.contains('closing'), false);
+  } finally {
+    delete (dom.window as { matchMedia?: unknown }).matchMedia;
+  }
+});
+
 test('location rename preserves existing floor plan metadata', async () => {
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
     '/manage/locations?room=common');
