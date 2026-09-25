@@ -10,6 +10,14 @@ import type {
   RecommendResponse,
 } from '@garage/shared';
 
+/** An HTTP error response from the API; `status` distinguishes auth failures from outages. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(path, {
     ...init,
@@ -18,7 +26,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `Request failed (${response.status})`);
+    throw new ApiError(body.error ?? `Request failed (${response.status})`, response.status);
   }
 
   if (response.status === 204) return undefined as T;
@@ -43,7 +51,7 @@ export const recommend = (projectDescription: string, signal?: AbortSignal): Pro
 export const getSession = (): Promise<{ staff: boolean }> => request('/api/auth/session');
 
 export const login = (passphrase: string): Promise<{ staff: boolean }> =>
-  request('/api/auth/login', { method: 'POST', body: JSON.stringify({ passphrase }) });
+  request('/api/auth/login', { method: 'POST', body: JSON.stringify({ passphrase }), signal: AbortSignal.timeout(10_000) });
 
 export const logout = (): Promise<{ staff: boolean }> =>
   request('/api/auth/logout', { method: 'POST' });

@@ -1,6 +1,16 @@
 import { useState } from 'react';
 
-import { login, logout } from '../api.js';
+import { ApiError, login, logout } from '../api.js';
+
+const CONNECTION_ERROR = 'Could not connect to the API. Check that the server is running and try again.';
+
+/** Only a 401 means a wrong passphrase; network failures, timeouts, and 5xx proxy errors are outages. */
+export function signInError(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return CONNECTION_ERROR;
+  if (cause.status === 401) return 'Incorrect passphrase';
+  if (cause.status >= 500) return CONNECTION_ERROR;
+  return cause.message;
+}
 
 interface Props {
   staff: boolean;
@@ -25,8 +35,8 @@ export function StaffBar({ staff, onChange, beforeSignOut }: Props): JSX.Element
       setPassphrase('');
       setPrompting(false);
       setError(null);
-    } catch {
-      setError('Incorrect passphrase');
+    } catch (cause) {
+      setError(signInError(cause));
     }
   };
 
@@ -72,7 +82,7 @@ export function StaffBar({ staff, onChange, beforeSignOut }: Props): JSX.Element
           <button type="button" onClick={() => void signIn()}>
             Sign in
           </button>
-          {error ? <span className="error">{error}</span> : null}
+          {error ? <span className="error" role="alert">{error}</span> : null}
         </>
       ) : (
         <button type="button" onClick={() => setPrompting(true)}>
