@@ -195,9 +195,15 @@ copy the SVG assets into `@garage/shared/dist/maps` as a deployment fallback, so
 the same shape IDs remain available when source folders are not shipped.
 Development reads the current source files, not a stale generated list.
 
-The management map renders the shared `LocationEditor` below the highlighted
-location rather than a point-marker toolbar. One persistent map sits above the
-fields, retaining zoom across selection changes. Changes to name, type, parent,
+The management map renders the shared `LocationEditor` beside the map rather
+than a point-marker toolbar. Above 1000px viewport width, room tabs span a
+two-column grid with the map on the left and a 22rem edit panel on the right.
+Narrower screens stack the fields below the map. With no editable selection,
+the map uses the full width. One persistent map retains zoom across selection changes. Changes to name, type, parent,
+The panel starts with ancestor breadcrumbs and a title. Surface names use an
+editable title input; generated storage names are read-only headings. Breadcrumb
+navigation uses the existing unsaved-change guard, and unmapped ancestors remain
+plain text rather than navigating to an unavailable map. Changes to name, type, parent,
 staff-only access, and any point placement save together through
 `PUT /api/locations/:id`. Save is disabled for a pristine draft; Cancel resets
 the draft and clears the selection. Room and pin URL changes, including

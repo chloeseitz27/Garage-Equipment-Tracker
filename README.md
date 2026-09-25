@@ -191,8 +191,13 @@ location on the same map. For smaller storage locations, the map highlights
 their enclosing room-level location and labels that mapping as inherited.
 
 In **Manage → Locations**, clicking a shape or point opens that
-location's edit panel directly below the same map. Edit its name, type, parent,
-and staff-only setting there. **Save** becomes available when the draft changes;
+location's edit panel to the right of the same map on wider screens, or below
+it on screens 1000px wide or narrower. Edit its name, type, parent,
+and staff-only setting there. Ancestor breadcrumbs appear at the top of the
+panel; click an ancestor to navigate, with unsaved-change protection.
+Room-level names appear as editable titles instead of a separate Name field.
+Automatically numbered storage titles remain read-only.
+**Save** becomes available when the draft changes;
 **Cancel** discards the draft and clears the highlight. The old marker
 save/discard/delete/undo toolbar and batch count are no longer shown.
 **Child locations** lists the selected location's immediate children below its

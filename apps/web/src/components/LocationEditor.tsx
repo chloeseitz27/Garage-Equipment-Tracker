@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ROOM_MAP_IDS, ROOM_MAPS, assignLocationIdentities, childLocationKinds, formatLocationPath, getChildLocations, getDescendantLocationIds,
   getLocationPath, isStaffOnlyLocation, locationPlacementProblem, resolveLocationMap,
@@ -113,6 +114,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
   const placementId = `${id}-placement`;
   const children = location && mapPanel ? getChildLocations(identified, location.id) : [];
   const canHaveChildren = Boolean(location && childLocationKinds(locations, location.id).length);
+  const ancestors = mapPanel && location ? getLocationPath(preview, candidate.id).slice(0, -1) : [];
 
   const setParent = (nextParent: string | null): void => {
     const nextRoom = nextParent ? resolveLocationMap(locations, nextParent)?.room : undefined;
@@ -193,6 +195,19 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       ) : !rootRoom && editable ? <p className="hint">This room has no floor plan. A map marker is not required.</p> : null}
     </>
   );
+  const nameInput = (
+    <input
+      className={mapPanel ? 'location-title-input' : undefined}
+      aria-label={location ? 'Location name' : 'New location name'}
+      title={mapPanel ? 'Edit location name' : undefined}
+      autoFocus={!mapPanel}
+      required={nameRequired}
+      disabled={busy}
+      placeholder={rootRoom ? 'Room name' : selectedKind === 'station' ? 'Station name' : 'Location name'}
+      value={draft.name || (level === 'surface' && draft.kind ? prepared.location.name : '')}
+      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+    />
+  );
   const Container = compactCreation ? 'div' : 'section';
   return (
     <Container className={compactCreation ? 'location-child-form' : mapPanel ? `location-map-panel${editable ? ' location-editor' : ''}` : 'location-editor'}
@@ -206,19 +221,45 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
       ) : null}
       {editable ? (
         <div className="location-editor-fields">
+          {mapPanel && location ? (
+            <div className="location-selection-heading">
+              {ancestors.length ? (
+                <nav className="location-breadcrumbs" aria-label="Location breadcrumbs">
+                  <ol>
+                    {ancestors.map((ancestor, index) => {
+                      const ancestorRoom = resolveLocationMap(locations, ancestor.id)?.room;
+                      return (
+                        <li key={ancestor.id}>
+                          {index > 0 ? <span aria-hidden="true">/</span> : null}
+                          {!ancestorRoom ? <span>{ancestor.name}</span> : ancestor.parentId === null ? (
+                            <Link
+                              to={`?${new URLSearchParams({ room: ancestorRoom.id })}`}
+                              aria-disabled={busy}
+                              onClick={(event) => { if (busy) event.preventDefault(); }}
+                            >{ancestor.name}</Link>
+                          ) : (
+                            <button type="button" disabled={busy}
+                              onClick={() => mapPanel.onSelect(ancestor.id, ancestorRoom)}>{ancestor.name}</button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </nav>
+              ) : null}
+              {level === 'storage' ? (
+                <h3 className="location-selection-title">
+                  <output aria-label="Location name">{selectedKind ? prepared.location.name : 'Choose a type'}</output>
+                </h3>
+              ) : nameInput}
+            </div>
+          ) : null}
           <fieldset className="location-fields" disabled={busy}>
-            {level !== 'storage' ? <label className="location-name-field">Name
-              <input
-                aria-label={location ? 'Location name' : 'New location name'}
-                autoFocus={!mapPanel}
-                required={nameRequired}
-                placeholder={rootRoom ? 'Room name' : selectedKind === 'station' ? 'Station name' : 'Location name'}
-                value={draft.name || (level === 'surface' && draft.kind ? prepared.location.name : '')}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
+            {!mapPanel ? level !== 'storage' ? <label className="location-name-field">Name
+              {nameInput}
             </label> : !compactCreation ? <label className="location-name-field">Location
               <output aria-label="Location name">{selectedKind ? prepared.location.name : 'Choose a type'}</output>
-            </label> : null}
+            </label> : null : null}
             <label className="location-type-field">Type
               <select
                 aria-label={location ? 'Location type' : 'New location type'}

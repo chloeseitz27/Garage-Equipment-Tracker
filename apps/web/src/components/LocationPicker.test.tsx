@@ -2778,6 +2778,38 @@ test('map clicks during child creation prompt even when the parent is already se
   assert.equal(writes.length, 0);
 });
 
+test('selection breadcrumbs navigate ancestors with unsaved-change protection and storage titles stay read-only', async () => {
+  await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
+    '/manage/locations?room=common&pin=bin-a');
+  const breadcrumbs = host.querySelector('nav[aria-label="Location breadcrumbs"]');
+  assert.ok(breadcrumbs);
+  assert.match(breadcrumbs.textContent ?? '', /Common Makerspace.*Table A/);
+  assert.equal(host.querySelector('input[aria-label="Location name"]'), null);
+  assert.equal(host.querySelector('.location-selection-title output')?.textContent, 'Bin 1');
+  assert.equal(host.querySelector('.location-fields output'), null);
+  await selectLocationType('drawer', true);
+  assert.equal(host.querySelector('.location-selection-title output')?.textContent, 'Drawer 1');
+  const parent = breadcrumbs.querySelector('button');
+  assert.ok(parent);
+  await click(parent);
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Stay on page'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=bin-a');
+  await click(parent);
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  assert.equal(mapLocationName().value, 'Table A');
+  await type(mapLocationName(), 'Unsaved title');
+  const roomLink = host.querySelector<HTMLAnchorElement>('.location-breadcrumbs a');
+  assert.ok(roomLink);
+  await click(roomLink);
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  assert.equal(host.querySelector('.location-selection-heading'), null);
+  assert.equal(writes.length, 0);
+});
+
 test('selecting a map location closes an untouched child form without a warning', async () => {
   await render(createElement(LocationManager, { locations: mapLocations, items: [], onChanged: () => {} }),
     '/manage/locations?room=common');
@@ -3027,7 +3059,7 @@ test('the highlighted location saves metadata and normalized point placement tog
   assert.equal(changed, 1);
 });
 
-test('the selected location fields replace the marker action toolbar below a single map', async () => {
+test('the selected location fields share a single map without the old marker toolbar', async () => {
   await render(createElement(LocationMapEditor, { locations: mapLocations, onChanged: () => {} }),
     '/manage/locations?room=common&pin=table-a');
   const map = host.querySelector('.location-map-editor .room-map');
@@ -3040,6 +3072,12 @@ test('the selected location fields replace the marker action toolbar below a sin
     assert.equal(host.querySelector(`button[aria-label="${label}"]`), null);
   }
   assert.equal(mapLocationName().value, 'Table A');
+  assert.ok(mapLocationName().classList.contains('location-title-input'));
+  assert.equal(fields.contains(mapLocationName()), false, 'The title replaces the Name row');
+  const heading = host.querySelector('.location-selection-heading');
+  assert.ok(heading);
+  assert.ok(heading.querySelector('nav[aria-label="Location breadcrumbs"]'));
+  assert.ok(heading.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(host.querySelector<HTMLSelectElement>('[aria-label="Location type"]')?.value, 'table');
   assert.equal(combobox('Parent location').value, 'Common Makerspace');
   assert.ok(fields.querySelector('input[type="checkbox"]'));
@@ -3496,6 +3534,7 @@ test('pending panel saves lock placement and selection and complete a blocked na
   await click(button('Save'));
   assert.equal(button('Save').getAttribute('aria-busy'), 'true');
   assert.equal(button('Save').disabled, true);
+  assert.equal(mapLocationName().disabled, true, 'The title outside the fieldset is locked during saving');
   await placeMarker(75, 80);
   assert.equal(markerPercent('X'), 25);
   assert.equal(markerPercent('Y'), 60);
