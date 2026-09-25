@@ -26,6 +26,7 @@ interface Props {
     navigation: (room: Location) => ReactNode;
     onSelect: (id: string, room: Location) => void;
     onCreateChild?: (location: Location) => void;
+    onDeselect?: () => void;
   };
 }
 
@@ -169,6 +170,7 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
         placementProblem ?? 'Location placed. Click the map to adjust it before saving.'}
     </p>
   );
+  const placeable = editable && level === 'surface' && Boolean(mapped) && !busy && !svgLinked;
   const mapContent = (
     <>
       {mapPanel?.navigation(displayRoom ?? mapPanel.room)}
@@ -179,14 +181,17 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
             key={displayRoom.id} room={displayRoom} locations={preview}
             showCaption={!mapPanel}
             selectedLocationId={editable ? (!placementProblem || mapPanel ? candidate.id : undefined) : location?.id}
-            onPlace={editable && level === 'surface' && mapped && !busy && !svgLinked ? place : undefined}
+            // In the map panel, empty space places only an unplaced pin; otherwise it clears the selection.
+            onPlace={placeable && (!mapPanel || placementProblem) ? place : undefined}
+            onMoveSelected={placeable && mapPanel ? place : undefined}
+            onDeselect={mapPanel && location && !busy ? mapPanel.onDeselect : undefined}
             onSelect={(selectedId, point) => {
               if (mapPanel) mapPanel.onSelect(selectedId, displayRoom);
               else if (point) place(point);
               else if (!busy && !svgLinked) setError('Click a spot on the map to place this location.');
             }}
             caption={!editable ? undefined : mapPanel && !mapped ? 'The selected parent has no floor plan.' : svgLinked || level === 'storage' ? '' : mapPanel
-              ? 'Select a location, or click empty map space to place this location.'
+                          ? placementProblem ? 'Click empty map space to place this location.' : 'Drag the marker to move this location.'
               : 'Click to place this location. Its name, parent, and marker are saved together.'}
           />
         </div>

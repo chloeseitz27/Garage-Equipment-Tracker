@@ -944,6 +944,15 @@ header h1 {
   border-color: #231800;
 }
 
+.room-map-stage .map-marker.movable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.room-map-stage .map-marker.movable:active {
+  cursor: grabbing;
+}
+
 .map-marker:focus-visible {
   outline: 3px solid #231800;
   outline-offset: 2px;
@@ -1226,25 +1235,32 @@ button:disabled {
 }
 
 @media (min-width: 1001px) {
-  .location-map-panel.location-editor {
+  .location-map-panel {
+    --location-sidebar-width: 22rem;
+    --location-panel-gap: 1rem;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 22rem;
+    grid-template-columns: minmax(0, 1fr) var(--location-sidebar-width);
     align-items: start;
-    gap: 1rem;
+    gap: var(--location-panel-gap);
   }
 
-  .location-map-panel.location-editor > .sub-tabs {
+  .location-map-panel > .sub-tabs {
     grid-column: 1 / -1;
     margin-bottom: 0;
   }
 
-  .location-map-panel.location-editor > .location-placement {
+  .location-map-panel > .location-placement {
     grid-column: 1;
     grid-row: 2;
     min-width: 0;
+    transform: translateX(calc((var(--location-sidebar-width) + var(--location-panel-gap)) / 2));
   }
 
-  .location-map-panel.location-editor > .location-placement > .room-map {
+  .location-map-panel.location-editor > .location-placement {
+    transform: translateX(0);
+  }
+
+  .location-map-panel > .location-placement > .room-map {
     margin: 0;
   }
 
@@ -1261,6 +1277,21 @@ button:disabled {
   .location-map-panel > .location-editor-fields > .location-fields > :not(.staff-only-option):not(.location-form-actions) {
     grid-column: 1 / -1;
   }
+}
+
+@media (min-width: 1001px) and (prefers-reduced-motion: no-preference) {
+  .location-map-panel > .location-placement {
+    transition: transform 240ms ease-in-out;
+  }
+
+  .location-map-panel > .location-editor-fields {
+    animation: location-panel-appear 160ms ease-out 80ms both;
+  }
+}
+
+@keyframes location-panel-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .location-children {

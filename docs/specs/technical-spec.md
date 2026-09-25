@@ -198,15 +198,23 @@ Development reads the current source files, not a stale generated list.
 The management map renders the shared `LocationEditor` beside the map rather
 than a point-marker toolbar. Above 1000px viewport width, room tabs span a
 two-column grid with the map on the left and a 22rem edit panel on the right.
-Narrower screens stack the fields below the map. With no editable selection,
-the map uses the full width. One persistent map retains zoom across selection changes. Changes to name, type, parent,
+Narrower screens stack the fields below the map. The desktop map track keeps
+the same width in both states. With no editable selection, a translation
+centers the map over the empty editor track; opening the editor animates that
+translation to zero without resizing the map. Reduced-motion preferences
+disable the transition and editor fade. One persistent map retains zoom across
+selection changes.
 The panel starts with ancestor breadcrumbs and a title. Surface names use an
 editable title input; generated storage names are read-only headings. Breadcrumb
 navigation uses the existing unsaved-change guard, and unmapped ancestors remain
 plain text rather than navigating to an unavailable map. Changes to name, type, parent,
 staff-only access, and any point placement save together through
 `PUT /api/locations/:id`. Save is disabled for a pristine draft; Cancel resets
-the draft and clears the selection. Room and pin URL changes, including
+the draft and clears the selection. Clicking empty map space, or Escape on the
+focused map, also clears the selection by removing `pin` from the URL, so the
+same unsaved-change guard applies. In the map panel, empty space places a pin
+only while the selected surface still needs one; placed pins move by dragging
+the selected marker. Room and pin URL changes, including
 Back/Forward, are blocked until edits are saved or explicitly discarded.
 Failed saves retain the draft, and pending saves lock selection and form
 actions. Metadata/parent edits preview on the same map; successful moves follow

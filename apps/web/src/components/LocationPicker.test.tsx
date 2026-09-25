@@ -3243,7 +3243,7 @@ test('child controls stay disabled until a pending parent save finishes', async 
   assert.equal(add.getAttribute('aria-label'), 'Add child to Saved parent');
 });
 
-test('room-map click placement positions the marker and keeps changes unsaved', async () => {
+test('dragging the selected marker positions it and keeps changes unsaved', async () => {
   await render(createElement(LocationMapEditor, {
     locations: mapLocations, onChanged: () => {},
   }), '/manage/locations?room=common&pin=table-a');
@@ -3253,7 +3253,7 @@ test('room-map click placement positions the marker and keeps changes unsaved', 
     x: 10, y: 20, left: 10, top: 20, width: 1000, height: 500, right: 1010, bottom: 520,
     toJSON: () => ({}),
   });
-  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 260, clientY: 270 })); });
+  await dragMarker(host.querySelector<HTMLElement>('.map-marker.movable')!, 260, 270);
   assert.equal(markerPercent('X'), 25);
   assert.equal(markerPercent('Y'), 50);
   assert.equal(writes.length, 0);
@@ -3269,6 +3269,34 @@ test('room-map click placement positions the marker and keeps changes unsaved', 
   await click(link('Common Makerspace'));
   await chooseMarkerLocation('table-a');
   assert.equal(markerPercent('X'), 25);
+});
+
+test('clicking empty map space clears the selection and protects unsaved drafts', async () => {
+  await render(createElement(LocationMapEditor, {
+    locations: mapLocations, onChanged: () => {},
+  }), '/manage/locations?room=common&pin=table-a');
+  const blank = async (): Promise<void> => {
+    const stage = host.querySelector<HTMLElement>('.location-map-editor .room-map-stage');
+    assert.ok(stage);
+    assert.equal(stage.classList.contains('placing'), false, 'A placed pin must not move on an empty-space click');
+    await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 50, clientY: 50 })); });
+  };
+  await blank();
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  assert.equal(host.querySelector('.location-editor-fields'), null);
+  assert.equal(writes.length, 0);
+
+  await chooseMarkerLocation('table-a');
+  await type(mapLocationName(), 'Draft name');
+  await blank();
+  assert.ok(host.querySelector('[role="alertdialog"]'));
+  assert.equal(currentUrl(), '/manage/locations?room=common&pin=table-a');
+  await click(button('Stay on page'));
+  assert.equal(mapLocationName().value, 'Draft name');
+  await blank();
+  await click(button('Discard changes'));
+  assert.equal(currentUrl(), '/manage/locations?room=common');
+  assert.equal(writes.length, 0);
 });
 
 test('location rename preserves existing floor plan and marker metadata', async () => {
@@ -3356,9 +3384,27 @@ const placeMarker = async (x: number, y: number, selector = '.location-map-edito
     x: 10, y: 20, left: 10, top: 20, width: 1000, height: 500, right: 1010, bottom: 520,
     toJSON: () => ({}),
   });
+  const clientX = 10 + x * 10, clientY = 20 + y * 5;
+  const marker = stage.querySelector<HTMLElement>('.map-marker.movable');
+  // Map-panel pins that are already placed move by dragging; empty space clears the selection.
+  if (marker && !stage.classList.contains('placing')) {
+    await dragMarker(marker, clientX, clientY);
+    return;
+  }
   await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', {
-    bubbles: true, clientX: 10 + x * 10, clientY: 20 + y * 5,
+    bubbles: true, clientX, clientY,
   })); });
+};
+
+const dragMarker = async (marker: HTMLElement, clientX: number, clientY: number): Promise<void> => {
+  const captured = new Set<number>();
+  marker.setPointerCapture = (id: number) => { captured.add(id); };
+  marker.hasPointerCapture = (id: number) => captured.has(id);
+  marker.releasePointerCapture = (id: number) => { captured.delete(id); };
+  await pointer(marker, 'pointerdown', clientX - 50, clientY - 50);
+  await pointer(marker, 'pointermove', clientX, clientY);
+  await pointer(marker, 'pointerup', clientX, clientY);
+  await act(() => { marker.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })); });
 };
 
 const chooseMarkerLocation = async (id: string): Promise<void> => {
@@ -3752,7 +3798,7 @@ test('marker placement stays normalized on a zoomed map', async () => {
     x: 10, y: 20, left: 10, top: 20, width: 1250, height: 625, right: 1260, bottom: 645,
     toJSON: () => ({}),
   });
-  await act(() => { stage.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 322.5, clientY: 332.5 })); });
+  await dragMarker(host.querySelector<HTMLElement>('.map-marker.movable')!, 322.5, 332.5);
   assert.equal(markerPercent('X'), 25);
   assert.equal(markerPercent('Y'), 50);
   assert.equal(writes.length, 0);

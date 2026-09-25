@@ -27,7 +27,7 @@ export function LocationMapEditor({
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pendingSelection, setPendingSelection] = useState<{ room: string; pin: string } | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<{ room: string; pin?: string } | null>(null);
   const rooms = savedLocations.filter((location) => location.kind === 'room' && location.parentId === null && location.mapId);
   const { blocker, markSaved } = useItemDraftGuard(dirty || formDirty, {
     allowSearchChanges: (current, next) => {
@@ -56,11 +56,16 @@ export function LocationMapEditor({
   const descendants = room ? getDescendantLocationIds(savedLocations, room.id).filter((id) => id !== room.id) : [];
   const selected = savedLocations.find((location) => location.id === params.get('pin') && descendants.includes(location.id));
   const choose = (id: string, targetRoom: Location): void => {
-    if (busy || formBusy) return;
-    setNotice(null);
     // A draft can preview another room; navigation must target the saved hierarchy.
     const savedRoom = resolveLocationMap(savedLocations, id)?.room ?? targetRoom;
-    const target = { room: savedRoom.id, pin: id };
+    navigate({ room: savedRoom.id, pin: id });
+  };
+  const deselect = (): void => {
+    if (room && selected) navigate({ room: room.id });
+  };
+  const navigate = (target: { room: string; pin?: string }): void => {
+    if (busy || formBusy) return;
+    setNotice(null);
     if (disabled && formDirty) {
       setPendingSelection(target);
       return;
@@ -69,7 +74,7 @@ export function LocationMapEditor({
       onDiscardForm?.();
       markSaved();
     }
-    setParams(target);
+    setParams(target.pin ? { room: target.room, pin: target.pin } : { room: target.room });
   };
   const clearDraft = (): void => {
     setDirty(false);
@@ -101,7 +106,7 @@ export function LocationMapEditor({
           location={selected}
           parentId={selected?.parentId ?? null}
           onStateChange={reportEditor}
-          mapPanel={{ room, navigation, onSelect: choose, onCreateChild, readOnly: disabled, revision }}
+          mapPanel={{ room, navigation, onSelect: choose, onDeselect: deselect, onCreateChild, readOnly: disabled, revision }}
           onCancel={() => {
             clearDraft();
             setParams({ room: room.id });
@@ -138,7 +143,7 @@ export function LocationMapEditor({
             clearDraft();
             onDiscardForm?.();
             if (blocker.state === 'blocked') blocker.proceed();
-            else if (target) setParams(target);
+            else if (target) setParams(target.pin ? { room: target.room, pin: target.pin } : { room: target.room });
           }}
         />
       ) : null}

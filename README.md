@@ -197,6 +197,9 @@ and staff-only setting there. Ancestor breadcrumbs appear at the top of the
 panel; click an ancestor to navigate, with unsaved-change protection.
 Room-level names appear as editable titles instead of a separate Name field.
 Automatically numbered storage titles remain read-only.
+On wider screens the map keeps the same size with or without a selection:
+it is centered when the editor is closed and slides left when the editor opens.
+Reduced-motion preferences disable the slide and panel fade.
 **Save** becomes available when the draft changes;
 **Cancel** discards the draft and clears the highlight. The old marker
 save/discard/delete/undo toolbar and batch count are no longer shown.
@@ -206,8 +209,11 @@ open the existing child-creation form with this location as its fixed parent.
 The tree expands the full parent path so that form is visible, and the new
 child appears in the selection panel after saving. Save or cancel parent edits
 before adding a child; selecting a child also protects unsaved changes.
-Point-only room-level locations can be repositioned by clicking empty space in
-the main map; their metadata and point are saved together. SVG-linked shapes continue
+Clicking empty map space (or pressing Escape on the focused map) clears the
+selection and closes the panel, prompting first if there are unsaved edits.
+Point-only room-level locations are repositioned by dragging their selected pin;
+a location that has no pin yet is placed by clicking empty space instead. Their
+metadata and point are saved together. SVG-linked shapes continue
 to follow the SVG rather than accepting point edits.
 
 Selecting a different location, switching rooms, browser Back/Forward, or
