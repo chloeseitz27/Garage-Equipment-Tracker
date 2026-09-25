@@ -261,9 +261,11 @@ Rename/move, delete, save, cancel, and add use icons with tooltips and accessibl
 labels. Clicking Delete on a location that holds items or children opens a popup
 explaining what must be moved or removed first; it does not attempt deletion.
 Each location's **+** opens an inline form for a child of that location, without
-a parent picker. The **+** below the list creates a top-level room; there is no
-permanent creation form at the bottom. New child locations require an explicit
-**Type** selection, displayed in Title Case. Top-level room forms use **Room**.
+a parent picker. The last row of the list is a **New Room** field: type a name
+(optionally tick Staff-only) and press the **+** or Enter to add a top-level
+room, or the **X** / Escape to discard it. It has no type selector; the floor plan
+can be chosen later by editing the room. New child locations require an explicit
+**Type** selection, displayed in Title Case.
 **Drawer** is available as its own location type; existing bins are not
 automatically reclassified. Deploy matching API and web versions before using
 new location types in a shared catalog.

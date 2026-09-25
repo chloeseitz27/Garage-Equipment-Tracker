@@ -1010,6 +1010,27 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.new-room-row {
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+
+.new-room-row > input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.new-room-row > .staff-only-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.new-room-row > .tree-actions {
+  margin-left: auto;
+}
+
 .category-edit {
   width: 100%;
   min-width: 0;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { assignLocationIdentities, childLocationKinds, getChildLocations, getLocationPath, isStaffOnlyLocation, locationCodeFromPath, type Item, type Location } from '@garage/shared';
-import { deleteLocation } from '../api.js';
+import { createLocation, deleteLocation } from '../api.js';
 import { LocationEditor } from './LocationEditor.js';
 import { LocationMapEditor } from './LocationMapEditor.js';
 import { useCatalogDraft } from '../catalog-draft.js';
@@ -37,17 +37,18 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
     setEditorDirty(false);
     setEditorBusy(false);
   };
-  const openEditor = (target: EditorTarget): void => {
-    if (editorBusy || (editor && targetKey(editor) === targetKey(target))) return;
+  const openEditor = (target: EditorTarget): boolean => {
+    if (editorBusy) return false;
+    if (editor && targetKey(editor) === targetKey(target)) return true;
     if (target.mode === 'create' && !childLocationKinds(locations, target.parentId).length) {
       window.alert('Drawers, bins, and shelves cannot contain child locations.');
-      return;
+      return false;
     }
     if (mapEditDirty) {
       window.alert('Save or cancel the highlighted location changes before adding or editing another location.');
-      return;
+      return false;
     }
-    if (editorDirty && !window.confirm('Discard the unsaved location changes and open another location?')) return;
+    if (editorDirty && !window.confirm('Discard the unsaved location changes and open another location?')) return false;
     setEditor(target);
     setEditorDirty(false);
     setError(null);
@@ -55,6 +56,7 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
       const pathIds = getLocationPath(locations, target.parentId).map((location) => location.id);
       setExpandedIds((current) => new Set([...current, ...pathIds]));
     }
+    return true;
   };
 
   const itemCounts = useMemo(() => {
@@ -187,14 +189,113 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
         onDraftChange={setMapEditDirty}
         onCreateChild={(location) => openEditor({ mode: 'create', parentId: location.id })}
       />
-      <ul className="tree">{getChildLocations(locations, null).map((root) => renderNode(root, 0))}</ul>
-      <div className="add-row">
-        <button
-          type="button" className="icon-button" aria-label="Add room" title="Add top-level room"
-          disabled={editorBusy} onClick={() => openEditor({ mode: 'create', parentId: null })}
-        ><ActionIcon name="add" /></button>
-      </div>
-      {editor?.mode === 'create' && editor.parentId === null ? renderEditor() : null}
+      <ul className="tree">
+        {getChildLocations(locations, null).map((root) => renderNode(root, 0))}
+        <NewRoomRow
+          active={editor?.mode === 'create' && editor.parentId === null}
+          disabled={editorBusy}
+          onActivate={() => openEditor({ mode: 'create', parentId: null })}
+          onStateChange={reportEditor}
+          onCancel={closeEditor}
+          onSaved={(saved) => {
+            closeEditor();
+            locationSaved(saved);
+          }}
+        />
+      </ul>
     </div>
+  );
+}
+
+interface NewRoomRowProps {
+  active: boolean;
+  disabled: boolean;
+  /** Claims the single location editor slot; returns false when another draft blocks it. */
+  onActivate: () => boolean;
+  onStateChange: (dirty: boolean, busy: boolean) => void;
+  onCancel: () => void;
+  onSaved: (location: Location) => void;
+}
+
+/** The last tree row: type a name and press + to add a top-level room. */
+function NewRoomRow({ active, disabled, onActivate, onStateChange, onCancel, onSaved }: NewRoomRowProps): JSX.Element {
+  const [name, setName] = useState('');
+  const [staffOnly, setStaffOnly] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = name !== '' || staffOnly;
+  useEffect(() => {
+    if (active) return;
+    setName('');
+    setStaffOnly(false);
+    setError(null);
+  }, [active]);
+  useEffect(() => { if (active) onStateChange(dirty || busy, busy); }, [active, dirty, busy, onStateChange]);
+
+  const edit = (apply: () => void): void => {
+    if (active || onActivate()) apply();
+  };
+  const discard = (): void => {
+    if (busy) return;
+    setName('');
+    setStaffOnly(false);
+    setError(null);
+    if (active) onCancel();
+  };
+  const add = async (): Promise<void> => {
+    const trimmed = name.trim();
+    if (busy || !trimmed || !(active || onActivate())) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await createLocation({ name: trimmed, kind: 'room', parentId: null, staffOnly });
+      setName('');
+      setStaffOnly(false);
+      onSaved(saved);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add the room.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className="tree-new-room">
+      <div className="tree-node new-room-row" role="group" aria-label="New room">
+        <span className="tree-toggle-space" aria-hidden="true" />
+        <input
+          aria-label="New room name" placeholder="New Room" value={name}
+          disabled={busy || (disabled && !active)}
+          onChange={(event) => { const value = event.target.value; edit(() => setName(value)); }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void add();
+            } else if (event.key === 'Escape' && dirty) {
+              event.preventDefault();
+              discard();
+            }
+          }}
+        />
+        <label className="staff-only-option">
+          <input
+            type="checkbox" checked={staffOnly} disabled={busy || (disabled && !active)}
+            onChange={(event) => { const checked = event.target.checked; edit(() => setStaffOnly(checked)); }}
+          />
+          Staff-only
+        </label>
+        <span className="tree-actions">
+          <button
+            type="button" className="icon-button" aria-label="Add room" title="Add this room"
+            aria-busy={busy} disabled={busy || disabled && !active || !name.trim()} onClick={() => void add()}
+          ><ActionIcon name="add" /></button>
+          <button
+            type="button" className="icon-button secondary" aria-label="Discard new room" title="Discard new room"
+            disabled={busy || !dirty} onClick={discard}
+          ><ActionIcon name="cancel" /></button>
+        </span>
+      </div>
+      {error ? <p className="error" role="alert">{error}</p> : null}
+    </li>
   );
 }

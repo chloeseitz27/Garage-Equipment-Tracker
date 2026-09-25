@@ -215,9 +215,13 @@ catalog refresh completes, so newly created children appear immediately.
 Child selection uses the saved hierarchy, not a pending parent-move preview,
 and retains the same unsaved-change guard as map selection.
 
-Location creation starts from a row's **+** (fixed parent) or the bottom **+**
-(top-level room). One inline `LocationEditor` holds metadata without issuing a
-create request until Save. Top-level room edits omit the parent picker; other
+Child location creation starts from a row's **+** (fixed parent); one inline
+`LocationEditor` holds metadata without issuing a create request until Save.
+Top-level rooms are added from the inline **New Room** row at the end of the
+tree (`NewRoomRow`): name plus Staff-only, **+**/Enter to create with
+`kind: 'room'` and `parentId: null`, **X**/Escape to discard. Typing claims the
+same single editor slot, so an unsaved draft elsewhere prompts before it is
+replaced. Top-level room edits omit the parent picker; other
 edits retain it and exclude self/descendants. A room-level surface in a mapped
 room can be saved without map placement; it appears on the floor plan only when
 the SVG contains a shape with its id. Storage inherits the enclosing surface
