@@ -1223,8 +1223,7 @@ button:disabled {
   }
 }
 
-/* Short, layout-preserving motion; not gated on prefers-reduced-motion by design request. */
-@media (min-width: 1001px) {
+@media (min-width: 1001px) and (prefers-reduced-motion: no-preference) {
   .location-map-panel > .location-placement {
     transition: transform 280ms ease-in-out;
   }
