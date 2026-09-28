@@ -263,7 +263,10 @@ labels. Rooms and each level's children are listed alphabetically by name
 "Shelf 10"). Clicking Delete on a location that holds items or children opens a popup
 explaining what must be moved or removed first; it does not attempt deletion.
 Each location's **+** opens an inline form for a child of that location, without
-a parent picker. The last row of the list is a **New Room** field: type a name
+a parent picker. The form sits directly under its highlighted parent, in an
+accent-outlined card headed **New · Child location in _parent path_**, and uses
+**+** (Add location) and **X** (Discard new location) instead of Save/Cancel.
+The last row of the list is a **New Room** field: type a name
 (optionally tick Staff-only) and press the **+** or Enter to add a top-level
 room, or the **X** / Escape to discard it. It has no type selector; the floor plan
 can be chosen later by editing the room. New child locations require an explicit

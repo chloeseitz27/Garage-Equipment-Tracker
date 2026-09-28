@@ -359,22 +359,28 @@ test('each plus opens a child form with a fixed parent and no preselected type',
   assert.deepEqual([...select.options].slice(1).map((option) => option.textContent),
     ['Table', 'Station', 'Desk', 'Workbench', 'Cabinet']);
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
-  assert.match(host.querySelector('.new-child-location')?.textContent ?? '', /New child of Main Shop/);
+  const newChild = host.querySelector<HTMLElement>('.new-child-location .location-create');
+  assert.ok(newChild);
+  assert.match(newChild.querySelector('.location-create-heading')?.textContent ?? '', /^NewChild location in Main Shop$/);
+  assert.ok(host.querySelector('.tree-node.creating-child')?.textContent?.startsWith('Main Shop'));
+  assert.ok(button('Add location').querySelector('svg.action-icon-add'));
+  assert.equal(button('Add location').title, 'Add this location to Main Shop');
+  assert.ok(button('Discard new location').querySelector('svg.action-icon-cancel'));
   assert.equal(locationChildren(button('Collapse Main Shop')).hidden, false);
   await type(name, 'New shelf');
-  assert.equal(button('Save').disabled, true);
-  await click(button('Save'));
+  assert.equal(button('Add location').disabled, true);
+  await click(button('Add location'));
   assert.equal(writes.length, 0);
   await selectLocationType('cabinet');
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   assert.equal(host.querySelector('.location-editor .staff-only-option')?.textContent?.trim(), 'Staff-only');
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes[0]?.body.kind, 'cabinet');
   assert.equal(writes[0]?.body.parentId, 'room');
   assert.equal(host.querySelector('.location-editor'), null);
   await click(button('Add child to Main Shop'));
   assert.equal(host.querySelector<HTMLSelectElement>('select[aria-label="New location type"]')?.value, '');
-  assert.equal(button('Save').disabled, true);
+  assert.equal(button('Add location').disabled, true);
 });
 
 test('new surfaces suggest the next available letter but keep custom names editable', async () => {
@@ -392,7 +398,7 @@ test('new surfaces suggest the next available letter but keep custom names edita
   await selectLocationType('cabinet');
   assert.equal(input.value, 'Roland');
   assert.match(host.querySelector('.location-editor')?.textContent ?? '', /Location code: C/);
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes[0]?.body.name, 'Roland');
   assert.equal(writes[0]?.body.kind, 'cabinet');
   assert.equal(writes[0]?.body.letter, undefined);
@@ -445,9 +451,11 @@ test('storage creation keeps only the controls, without the code hint or surroun
   await selectLocationType('drawer');
   assert.equal(form.querySelector('output[aria-label="Location name"]'), null);
   assert.equal(form.querySelector('p[role="status"].location-access-hint'), null);
-  assert.doesNotMatch(form.textContent ?? '', /assigned when saved|New child of|separate map pin|A4/);
+  assert.doesNotMatch(form.textContent ?? '', /assigned when saved|separate map pin|A4/);
+  assert.equal(form.classList.contains('location-create'), true);
+  assert.match(form.querySelector('.location-create-heading')?.textContent ?? '', /Child location in Common Makerspace → Table A/);
   assert.ok(form.querySelector('input[type="checkbox"]'));
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   await selectLocationType('bin');
   assert.equal(form.querySelector('output[aria-label="Location name"]'), null);
   assert.equal(writes.length, 0);
@@ -2733,7 +2741,7 @@ test('creating storage needs only a type and saves without a separate shape', as
   await selectLocationType('bin');
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
   assert.equal(host.querySelector('.location-editor .map-region.selected'), null);
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   assert.equal(host.querySelector('.new-child-location .room-map'), null);
   assert.doesNotMatch(host.querySelector('.new-child-location')?.textContent ?? '', /separate map pin|assigned when saved/);
   assert.equal(writes.length, 0);
@@ -2742,7 +2750,7 @@ test('creating storage needs only a type and saves without a separate shape', as
   assert.equal(currentUrl(), current);
   assert.ok(host.querySelector('[role="alertdialog"]'), 'Map selection must prompt instead of silently ignoring the click');
   await click(button('Stay on page'));
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes.length, 1);
   assert.equal(writes[0]?.url, '/api/locations');
   assert.equal(writes[0]?.body.name, undefined, 'The server generates storage names');
@@ -2765,8 +2773,8 @@ test('children of unmapped staff storage need no shape and retain their fixed pa
   assert.equal(host.querySelector('.location-editor .room-map'), null);
   assert.match(host.querySelector('.location-editor')?.textContent ?? '', /floor plan.*can still be saved|no floor plan/i);
   assert.match(host.querySelector('.location-editor')?.textContent ?? '', /required by the parent/);
-  assert.equal(button('Save').disabled, false);
-  await click(button('Save'));
+  assert.equal(button('Add location').disabled, false);
+  await click(button('Add location'));
   assert.equal(writes[0]?.body.parentId, storage.id);
 });
 
@@ -2898,13 +2906,13 @@ test('failed location creation preserves fields for retry', async () => {
   await selectLocationType('cabinet');
   const succeed = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Save unavailable' }), { status: 503 });
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.match(host.querySelector('.location-editor [role="alert"]')?.textContent ?? '', /Save unavailable/);
   assert.equal(name.value, 'New shelf');
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   assert.equal(unloadIsBlocked(), true);
   globalThis.fetch = succeed;
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes[0]?.body.name, 'New shelf');
   assert.equal(writes[0]?.body.parentId, 'common');
 });
@@ -2920,9 +2928,9 @@ test('pending location saves lock metadata and creation targets', async () => {
   await type(name, 'New shelf');
   await selectLocationType('cabinet');
   globalThis.fetch = () => pending;
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(host.querySelector<HTMLFieldSetElement>('.location-editor fieldset')?.disabled, true);
-  assert.equal(button('Cancel').matches(':disabled'), true);
+  assert.equal(button('Discard new location').matches(':disabled'), true);
   assert.equal(button('Add room').disabled, true);
   await chooseShapeLocation('table-a');
   assert.equal(host.querySelector('[role="alertdialog"]'), null);
@@ -2956,7 +2964,7 @@ test('switching creation targets asks before discarding and highlighted-location
   window.confirm = () => false;
   await type(newRoom, 'Annex');
   assert.equal(newRoom.value, '');
-  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /New child of Common Makerspace/);
+  assert.match(host.querySelector('.location-editor')?.textContent ?? '', /Child location in Common Makerspace/);
   window.confirm = () => true;
   await type(newRoom, 'Annex');
   assert.equal(newRoom.value, 'Annex');
@@ -2982,9 +2990,9 @@ test('location management excludes self and descendants on the map and requires 
   assert.equal(host.querySelector('.location-editor [role="combobox"]'), null);
   assert.equal(host.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('bin');
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   assert.equal(host.querySelector('.new-child-location .room-map'), null);
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes[1]?.url, '/api/locations');
   assert.equal(writes[1]?.body.parentId, 'table-a');
 });
@@ -3172,9 +3180,9 @@ test('the selection-panel plus opens a visible child form with a fixed parent an
   assert.equal(editor.querySelector('[role="combobox"]'), null);
   assert.equal(editor.querySelector('input[aria-label="New location name"]'), null);
   await selectLocationType('drawer');
-  assert.equal(button('Save').disabled, false);
+  assert.equal(button('Add location').disabled, false);
   assert.equal(host.querySelector('.new-child-location .room-map'), null);
-  await click(button('Save'));
+  await click(button('Add location'));
   assert.equal(writes[0]?.body.parentId, 'table-a');
   assert.equal(writes[0]?.body.kind, 'drawer');
   assert.equal(changed, 1);

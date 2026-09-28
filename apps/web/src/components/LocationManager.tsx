@@ -116,7 +116,7 @@ export function LocationManager({ locations: catalogLocations, items, onChanged 
 
     return (
       <li key={location.id}>
-        <div className="tree-node" style={{ paddingLeft: `${depth * 1.25}rem` }}>
+        <div className={creatingChild ? 'tree-node creating-child' : 'tree-node'} style={{ paddingLeft: `${depth * 1.25}rem` }}>
           {editor?.mode === 'edit' && editor.id === location.id ? renderEditor(location) : (
             <>
               <span className="tree-name">

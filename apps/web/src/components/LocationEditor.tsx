@@ -188,15 +188,22 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
     />
   );
   const Container = compactCreation ? 'div' : 'section';
+  const creating = !location && !mapPanel;
+  const parentPath = formatLocationPath(getLocationPath(locations, parentId ?? ''));
+  const containerClass = compactCreation ? 'location-child-form' : mapPanel
+    ? `location-map-panel${editable && !closing ? ' location-editor' : ''}` : 'location-editor';
   return (
-    <Container className={compactCreation ? 'location-child-form' : mapPanel ? `location-map-panel${editable && !closing ? ' location-editor' : ''}` : 'location-editor'}
+    <Container className={creating ? `${containerClass} location-create` : containerClass}
       role={compactCreation ? 'group' : undefined}
       aria-label={location ? `Edit ${location.name}` : mapPanel ? 'Location map' : rootRoom ? 'New room' : 'New child location'}>
       {mapPanel ? mapContent : null}
-      {!location && !mapPanel && !compactCreation ? (
-        <p className="hint">
-          {rootRoom ? 'New top-level room' : `New child of ${formatLocationPath(getLocationPath(locations, parentId ?? ''))}`}
-        </p>
+      {creating ? (
+        <div className="location-create-heading">
+          <span className="location-create-badge"><ActionIcon name="add" />New</span>
+          {rootRoom ? <strong>Top-level room</strong> : (
+            <span><strong>Child location</strong> <span className="muted">in {parentPath}</span></span>
+          )}
+        </div>
       ) : null}
       {editable ? (
         <div className={closing ? 'location-editor-fields closing' : 'location-editor-fields'}
@@ -287,11 +294,15 @@ export function LocationEditor({ locations, location, parentId, onSaved, onCance
             </label>
             <div className="location-form-actions">
               <button
-                type="button" className="icon-button" aria-label="Save" title="Save location"
+                type="button" className="icon-button" aria-label={creating ? 'Add location' : 'Save'}
+                title={creating ? `Add this location to ${parentPath || 'the list'}` : 'Save location'}
                 aria-busy={busy}
                 disabled={!canSave} onClick={() => void save()}
-              ><ActionIcon name="save" /></button>
-              <button type="button" className="icon-button secondary" aria-label="Cancel" title="Cancel location changes" onClick={onCancel}>
+              ><ActionIcon name={creating ? 'add' : 'save'} /></button>
+              <button
+                type="button" className="icon-button secondary" aria-label={creating ? 'Discard new location' : 'Cancel'}
+                title={creating ? 'Discard new location' : 'Cancel location changes'} onClick={onCancel}
+              >
                 <ActionIcon name="cancel" />
               </button>
             </div>
