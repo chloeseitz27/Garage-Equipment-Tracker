@@ -1,4 +1,4 @@
-export function ActionIcon({ name }: { name: 'save' | 'delete' | 'edit' | 'add' | 'cancel' | 'refresh' }): JSX.Element {
+export function ActionIcon({ name }: { name: 'save' | 'delete' | 'edit' | 'add' | 'cancel' | 'refresh' | 'undo' | 'chevron' }): JSX.Element {
   return (
     <svg
       className={`action-icon action-icon-${name}`}
@@ -33,7 +33,13 @@ export function ActionIcon({ name }: { name: 'save' | 'delete' | 'edit' | 'add' 
           <path d="M20 7v5h-5M4 17v-5h5" />
           <path d="M6.3 6.3A8 8 0 0 1 20 12M17.7 17.7A8 8 0 0 1 4 12" />
         </>
-      ) : name === 'cancel' ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M12 5v14M5 12h14" />}
+      ) : name === 'undo' ? (
+        <>
+          <path d="m7 6-4 4 4 4" />
+          <path d="M3 10h10a6 6 0 0 1 0 12h-3" />
+        </>
+      ) : name === 'chevron' ? <path d="m9 5 7 7-7 7" /> :
+        name === 'cancel' ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M12 5v14M5 12h14" />}
     </svg>
   );
 }

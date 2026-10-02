@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { getSession } from './api.js';
 import { useCatalog } from './use-catalog.js';
@@ -10,6 +10,8 @@ import { ItemDraftContext } from './components/UnsavedItemChanges.js';
 import { RoomMapsPage } from './components/RoomMapsPage.js';
 import { ActionIcon } from './components/ActionIcon.js';
 
+const SESSION_CHANGE_KEY = 'garage-inventory:session-change';
+
 function AssistantRedirect(): JSX.Element {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -17,10 +19,11 @@ function AssistantRedirect(): JSX.Element {
   return <Navigate to={{ pathname: '/', search: `?${params}`, hash: location.hash }} replace />;
 }
 
-export function App(): JSX.Element {
+export function App({ development = import.meta.env?.DEV ?? false }: { development?: boolean }): JSX.Element {
   const [staff, setStaff] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const sessionRevision = useRef(0);
   const [dirtyItem, setDirtyItem] = useState(false);
   const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
   const reportDraft = useCallback((id: string, dirty: boolean) => {
@@ -35,14 +38,45 @@ export function App(): JSX.Element {
 
   const {
     catalog, fetchedAt, stale, error, storageWarning, refreshing, verified, updatePending, refresh,
-  } = useCatalog(dirtyItem || dirtyForms.size > 0);
+  } = useCatalog(dirtyItem || dirtyForms.size > 0, staff, !sessionLoading);
 
   useEffect(() => {
-    getSession()
-      .then((session) => setStaff(session.staff))
-      .catch((cause: Error) => setSessionError(`Could not check staff sign-in: ${cause.message}`))
-      .finally(() => setSessionLoading(false));
+    const checkSession = (): void => {
+      const revision = ++sessionRevision.current;
+      getSession()
+        .then((session) => {
+          if (revision !== sessionRevision.current) return;
+          setStaff(session.staff);
+          setSessionError(null);
+        })
+        .catch((cause: Error) => {
+          if (revision !== sessionRevision.current) return;
+          setStaff(false);
+          setSessionError(`Could not check staff sign-in: ${cause.message}`);
+        })
+        .finally(() => { if (revision === sessionRevision.current) setSessionLoading(false); });
+    };
+    const sessionChanged = (event: StorageEvent): void => {
+      if (event.key !== SESSION_CHANGE_KEY && event.key !== null) return;
+      // Revoke immediately; never trust another tab to grant staff access.
+      setStaff(false);
+      checkSession();
+    };
+    checkSession();
+    window.addEventListener('focus', checkSession);
+    window.addEventListener('online', checkSession);
+    window.addEventListener('storage', sessionChanged);
+    return () => {
+      sessionRevision.current++;
+      window.removeEventListener('focus', checkSession);
+      window.removeEventListener('online', checkSession);
+      window.removeEventListener('storage', sessionChanged);
+    };
   }, []);
+
+  useEffect(() => {
+    if (staff && verified && catalog?.access === 'public') setStaff(false);
+  }, [staff, verified, catalog?.access]);
 
   if (error && !catalog) {
     return (
@@ -56,7 +90,7 @@ export function App(): JSX.Element {
       </main>
     );
   }
-  if (!catalog) return <main className="state">Loading the catalog…</main>;
+  if (!catalog) return <main className="state">{sessionLoading ? 'Checking staff sign-in...' : 'Loading the catalog…'}</main>;
 
   return (
     <CatalogDraftContext.Provider value={reportDraft}>
@@ -64,31 +98,39 @@ export function App(): JSX.Element {
         <div className="app">
           <header>
             <div className="brand">
-              <h1>Garage Inventory</h1>
-              <p className="muted">Reston Garage — find it, then go get it.</p>
+              <h1>GET IT</h1>
+              <p className="muted">Garage Equipment Tracker &amp; Inventory Tool</p>
             </div>
             <nav className="tabs" aria-label="Main navigation">
               <NavLink to="/" end>Search &amp; ask</NavLink>
-              <NavLink to="/maps">Room maps</NavLink>
-              {staff ? <NavLink to="/manage">Manage catalog</NavLink> : null}
+              <NavLink to="/maps">Maps</NavLink>
+              {staff ? <NavLink to="/manage">Manage</NavLink> : null}
             </nav>
             <div className="header-actions">
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
-                title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
-                aria-busy={refreshing}
-                disabled={refreshing}
-                onClick={() => void refresh()}
-              >
-                <ActionIcon name="refresh" />
-              </button>
+              {development ? (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                  title={refreshing ? 'Refreshing catalog...' : 'Refresh catalog'}
+                  aria-busy={refreshing}
+                  disabled={refreshing}
+                  onClick={() => void refresh()}
+                >
+                  <ActionIcon name="refresh" />
+                </button>
+              ) : null}
               <StaffBar staff={staff} beforeSignOut={() =>
                 !dirtyItem || window.confirm('You have unsaved changes. Sign out and discard them?')
               } onChange={(signedIn) => {
+                sessionRevision.current++;
                 setStaff(signedIn);
                 setSessionError(null);
+                try {
+                  window.localStorage.setItem(SESSION_CHANGE_KEY, `${Date.now()}:${signedIn}`);
+                } catch {
+                  setSessionError('Sign-in changed, but other tabs could not be notified. Close other inventory tabs on this shared device.');
+                }
               }} />
             </div>
           </header>
@@ -108,12 +150,14 @@ export function App(): JSX.Element {
           ) : null}
           {sessionError ? <p className="error" role="alert">{sessionError}</p> : null}
           <Routes>
-            <Route path="/" element={<DiscoveryView catalog={catalog} staff={staff} />} />
+            <Route path="/" element={<DiscoveryView key={staff ? 'staff' : 'public'} catalog={catalog} staff={staff} />} />
             <Route path="/assistant" element={<AssistantRedirect />} />
             <Route path="/maps" element={<RoomMapsPage catalog={catalog} />} />
             <Route path="/manage/*" element={
               sessionLoading ? <p role="status">Checking staff sign-in…</p> :
-                staff ? <StaffPanel catalog={catalog} onChanged={() => void refresh(true)} /> : (
+                staff ? catalog.access === 'staff'
+                  ? <StaffPanel catalog={catalog} onChanged={() => void refresh(true)} />
+                  : <p role="status">Staff catalog unavailable. Reconnect or reload this page before editing.</p> : (
                   <section className="manager">
                     <h2>Staff sign-in required</h2>
                     <p>Sign in above to open this catalog page.</p>

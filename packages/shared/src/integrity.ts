@@ -1,5 +1,6 @@
 import { getLocationPath, indexLocations } from './location.js';
 import type { Category, Flag, Item, Location } from './types.js';
+import { isStationKind } from './schema.js';
 
 /**
  * Referential integrity for the catalog. Schema validation proves each record
@@ -35,6 +36,8 @@ export function findCatalogProblems(data: CatalogData): string[] {
   const locationIndex = indexLocations(locations);
   const categoryIds = new Set(categories.map((c) => c.id));
   const itemIds = new Set(items.map((i) => i.id));
+  const letters = new Map<string, string>();
+  const numbers = new Set<string>();
 
   for (const location of locations) {
     if (location.mapId && (location.kind !== 'room' || location.parentId !== null)) {
@@ -50,6 +53,15 @@ export function findCatalogProblems(data: CatalogData): string[] {
     const root = path[0];
     if (!root || root.parentId !== null) {
       problems.push(`Location ${location.id} does not resolve to a root (cycle in the tree?)`);
+    }
+    if (path.length === 2 && location.letter && !isStationKind(location.kind)) {
+      if (letters.has(location.letter)) problems.push(`Location letter ${location.letter} is used by both ${letters.get(location.letter)} and ${location.id}`);
+      letters.set(location.letter, location.id);
+    }
+    if (path.length > 2 && location.number) {
+      const key = `${path[1]!.id}:${location.number}`;
+      if (numbers.has(key)) problems.push(`Storage number ${location.number} is duplicated under ${path[1]!.id}`);
+      numbers.add(key);
     }
   }
 

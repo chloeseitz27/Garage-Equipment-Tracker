@@ -6,11 +6,13 @@ import {
   CosmosClient,
   type CreateOperationInput,
   type JSONObject,
+  type ReplaceOperationInput,
   type UpsertOperationInput,
 } from '@azure/cosmos';
 import { DefaultAzureCredential } from '@azure/identity';
 import {
   findCatalogProblems,
+  LOCATION_WRITE_BATCH_LIMIT,
   itemSchema,
   type Category,
   type CreateItemInput,
@@ -200,13 +202,32 @@ export class CosmosCatalogRepository implements CatalogRepository {
     return this.readPartition<Location>('location');
   }
 
-  async createLocation(input: Omit<Location, 'id'>): Promise<Location> {
+  async createLocation(input: Omit<Location, 'id'>, migrationId?: string): Promise<Location> {
+    if (migrationId) return this.create('location', { ...input, id: migrationId });
     const existing = await this.existingIds('location');
     return this.create('location', { ...input, id: nextId('loc', input.name, existing) });
   }
 
   async saveLocation(location: Location): Promise<void> {
     await this.upsert('location', location);
+  }
+
+  async saveLocations(locations: Location[]): Promise<void> {
+    if (locations.length === 0) return;
+    if (locations.length > LOCATION_WRITE_BATCH_LIMIT) throw new Error(`Save at most ${LOCATION_WRITE_BATCH_LIMIT} locations at once.`);
+    const operations: ReplaceOperationInput[] = locations.map((location) => ({
+      operationType: BulkOperationType.Replace,
+      id: location.id,
+      resourceBody: { ...location, type: 'location' },
+    }));
+    const response = await this.container.items.batch(operations, 'location');
+    const failed = response.result?.find((entry) => entry.statusCode >= 400);
+    if ((response.code !== undefined && response.code >= 400) || failed) {
+      throw new Error(`Location batch failed (status ${failed?.statusCode ?? response.code}); no locations were changed.`);
+    }
+    if (!response.result || response.result.length !== locations.length) {
+      throw new Error('Could not confirm the location batch result. Refresh the catalog before retrying.');
+    }
   }
 
   async deleteLocation(id: string): Promise<void> {

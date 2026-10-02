@@ -4,7 +4,7 @@ import { after, before, beforeEach, test } from 'node:test';
 
 import cookieParser from 'cookie-parser';
 import express from 'express';
-import type { Category, CreateItemInput, Flag, Item, Location } from '@garage/shared';
+import { ASK_STAFF_LOCATION, assignLocationIdentities, type Category, type CreateItemInput, type Flag, type Item, type Location } from '@garage/shared';
 
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 import { CachedCatalogRepository } from '../repository/cached-repository.js';
@@ -22,9 +22,9 @@ import { publicRoutes } from './public.js';
 
 const locations: Location[] = [
   { id: 'loc-room', name: 'Main Shop', parentId: null, kind: 'room', mapId: 'common' },
-  { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'shelf' },
+  { id: 'loc-shelf', name: 'Cabinet B', parentId: 'loc-room', kind: 'cabinet' },
   { id: 'loc-bin', name: 'Bin 4', parentId: 'loc-shelf', kind: 'bin' },
-  { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'shelf' },
+  { id: 'loc-empty', name: 'Spare Shelf', parentId: 'loc-room', kind: 'cabinet' },
 ];
 
 const categories: Category[] = [
@@ -62,7 +62,7 @@ const items: Item[] = [
 const makeRepository = (): CatalogRepository => {
   const state = {
     items: [...items],
-    locations: [...locations],
+    locations: assignLocationIdentities(locations),
     categories: [...categories],
     flags: [] as Flag[],
   };
@@ -90,8 +90,8 @@ const makeRepository = (): CatalogRepository => {
       state.items = state.items.map((existing) => byId.get(existing.id) ?? existing);
     },
     getLocations: async () => state.locations,
-    createLocation: async (input) => {
-      const location = { ...input, id: `loc-${state.locations.length}` };
+    createLocation: async (input, migrationId) => {
+      const location = { ...input, id: migrationId ?? `loc-${state.locations.length}` };
       state.locations.push(location);
       return location;
     },
@@ -99,6 +99,10 @@ const makeRepository = (): CatalogRepository => {
       state.locations = state.locations.map((existing) =>
         existing.id === location.id ? location : existing,
       );
+    },
+    saveLocations: async (locations) => {
+      const byId = new Map(locations.map((location) => [location.id, location]));
+      state.locations = state.locations.map((location) => byId.get(location.id) ?? location);
     },
     deleteLocation: async (id) => {
       state.locations = state.locations.filter((location) => location.id !== id);
@@ -184,7 +188,7 @@ const call = (method: string, path: string, body?: unknown): Promise<Response> =
 test('the public catalog bypasses HTTP caching and sees writes through the shared repository cache', async () => {
   repository = new CachedCatalogRepository(repository);
   const before = await call('GET', '/api/catalog');
-  assert.equal(before.headers.get('cache-control'), 'no-store');
+  assert.equal(before.headers.get('cache-control'), 'private, no-store');
   const catalog = await before.json() as { categories: Category[] };
   assert.ok(catalog.categories.some((category) => category.id === 'cat-used'));
   const created = await call('POST', '/api/categories', { name: 'Cache integration category' });
@@ -200,6 +204,43 @@ test('the public catalog bypasses HTTP caching and sees writes through the share
 test('staff routes reject an unauthenticated caller', async () => {
   const response = await fetch(`${baseUrl}/api/flags`);
   assert.equal(response.status, 401);
+});
+
+test('visitor catalog and item details conceal restricted locations while staff retain real paths', async () => {
+  const closet = await repository.createLocation({ name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true });
+  const bin = await repository.createLocation({ name: 'Secret Drawer', parentId: closet.id, kind: 'bin', staffOnly: false });
+  const item = (await repository.getItem('itm-meter'))!;
+  await repository.saveItem({ ...item, locationId: bin.id });
+  repository = new CachedCatalogRepository(repository);
+  const staffCatalog = await (await call('GET', '/api/catalog')).json();
+  assert.equal(staffCatalog.access, 'staff');
+  assert.equal(staffCatalog.locations.find((location: Location) => location.id === closet.id).name, 'Storage Closet');
+  const anonymous = await fetch(`${baseUrl}/api/catalog`);
+  assert.equal(anonymous.headers.get('cache-control'), 'private, no-store');
+  assert.equal(anonymous.headers.get('vary'), 'Cookie');
+  const visible = await anonymous.json();
+  assert.equal(visible.access, 'public');
+  assert.equal(visible.items.length, items.length);
+  assert.equal(visible.items.find((item: Item) => item.id === 'itm-meter').locationId, ASK_STAFF_LOCATION.id);
+  assert.deepEqual(visible.locations.find((location: Location) => location.id === ASK_STAFF_LOCATION.id), ASK_STAFF_LOCATION);
+  assert.doesNotMatch(JSON.stringify(visible), /Storage Closet|Secret Drawer/);
+  assert.equal(visible.locations.some((location: Location) => location.id === bin.id), false);
+  const detail = await (await fetch(`${baseUrl}/api/items/itm-meter`)).json();
+  assert.equal(detail.locationId, ASK_STAFF_LOCATION.id);
+  assert.deepEqual(detail.locationPath, [ASK_STAFF_LOCATION]);
+  const staffDetail = await (await call('GET', '/api/items/itm-meter')).json();
+  assert.deepEqual(staffDetail.locationPath.map((location: Location) => location.name), ['Storage Closet', 'Secret Drawer']);
+  assert.equal((await repository.getItem('itm-meter'))?.locationId, bin.id);
+});
+
+test('staff-only flags persist through staff location edits and reject invalid values', async () => {
+  const response = await call('POST', '/api/locations', { name: 'Basement Storage', parentId: null, kind: 'room', staffOnly: true });
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(created.staffOnly, true);
+  const update = await call('PUT', `/api/locations/${created.id}`, { ...created, name: 'Basement Storage renamed' });
+  assert.equal((await update.json()).staffOnly, true);
+  assert.equal((await call('PUT', `/api/locations/${created.id}`, { ...created, staffOnly: 'yes' })).status, 400);
 });
 
 test('an item pointing at an unknown location is rejected', async () => {
@@ -595,31 +636,177 @@ test('a bulk update with no changes is rejected', async () => {
   assert.equal(response.status, 400);
 });
 
-test('location map updates preserve normalized coordinates', async () => {
-  const response = await call('PUT', '/api/locations/loc-bin', {
-    name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf',
+test('legacy location coordinates are ignored on metadata updates', async () => {
+  const response = await call('PUT', '/api/locations/loc-shelf', {
+    name: 'Cabinet B', kind: 'cabinet', parentId: 'loc-room',
     mapPosition: { roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4 },
   });
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).mapPosition, {
-    roomId: 'loc-room', mapId: 'common', x: 0.25, y: 0.4,
-  });
+  assert.equal((await response.json()).mapPosition, undefined);
+  assert.equal('mapPosition' in ((await repository.getLocations()).find((location) => location.id === 'loc-shelf') ?? {}), false);
 });
 
-test('location map updates reject coordinates outside the image or on another room', async () => {
-  for (const mapPosition of [
-    { roomId: 'loc-room', mapId: 'common', x: 1.1, y: 0.4 },
-    { roomId: 'different-room', mapId: 'common', x: 0.2, y: 0.4 },
-    { roomId: 'loc-room', mapId: 'advanced', x: 0.2, y: 0.4 },
+test('room-level surfaces can be saved without floor-plan shapes', async () => {
+  const input = { name: 'New cabinet', parentId: 'loc-room', kind: 'cabinet' };
+  const edited = await call('PUT', '/api/locations/loc-empty', { ...input, name: 'Renamed cabinet' });
+  assert.equal(edited.status, 200);
+  const created = await call('POST', '/api/locations', input);
+  assert.equal(created.status, 201);
+  const cabinet = await created.json();
+  assert.equal(cabinet.kind, 'cabinet');
+  assert.equal(cabinet.mapPosition, undefined);
+});
+
+test('storage saves without placement and supplied legacy coordinates are removed', async () => {
+  const created = await call('POST', '/api/locations', { kind: 'drawer', parentId: 'loc-shelf' });
+  assert.equal(created.status, 201);
+  const drawer = await created.json() as Location;
+  assert.equal('mapPosition' in drawer, false);
+  const legacyPin = { roomId: 'loc-room', mapId: 'common' as const, x: 0.7, y: 0.8 };
+  await repository.saveLocation({ ...drawer, mapPosition: legacyPin } as Location);
+  const catalog = await (await call('GET', '/api/catalog')).json() as { locations: Location[] };
+  assert.equal('mapPosition' in (catalog.locations.find((location) => location.id === drawer.id) ?? {}), false);
+  const edited = await call('PUT', `/api/locations/${drawer.id}`, { ...drawer, kind: 'bin', mapPosition: legacyPin });
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).mapPosition, undefined);
+  assert.equal('mapPosition' in ((await repository.getLocations()).find((location) => location.id === drawer.id) ?? {}), false);
+});
+
+test('SVG-linked locations can save metadata without coordinates', async () => {
+  const shape = await repository.createLocation({
+    name: 'Table A', parentId: 'loc-room', kind: 'table',
+  }, 'loc-common-table-14');
+  const response = await call('PUT', `/api/locations/${shape.id}`, { ...shape, name: 'Table A renamed' });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mapPosition, undefined);
+});
+
+test('top-level rooms and children of unmapped rooms do not require floor-plan shapes', async () => {
+  const room = await call('POST', '/api/locations', { name: 'Storage Closet', parentId: null, kind: 'room', staffOnly: true });
+  assert.equal(room.status, 201);
+  const parent = await room.json();
+  const child = await call('POST', '/api/locations', { name: 'Cabinet', parentId: parent.id, kind: 'cabinet' });
+  assert.equal(child.status, 201);
+  assert.equal((await child.json()).mapPosition, undefined);
+});
+
+test('location hierarchy rejects nested rooms and storage directly under rooms', async () => {
+  for (const input of [
+    { name: 'Nested room', kind: 'room', parentId: 'loc-room' },
+    { name: 'Loose drawer', kind: 'drawer', parentId: 'loc-room' },
+    { name: 'Loose bin', kind: 'bin', parentId: 'loc-room' },
+    { name: 'Nested desk', kind: 'desk', parentId: 'loc-shelf' },
+    { name: 'Root table', kind: 'table', parentId: null },
   ]) {
-    const response = await call('PUT', '/api/locations/loc-bin', {
-      name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf', mapPosition,
-    });
+    const response = await call('POST', '/api/locations', input);
     assert.equal(response.status, 400);
   }
 });
 
-test('floor plans can only be attached to root rooms, and anonymous marker updates are refused', async () => {
+test('room-level locations receive the next available letter and keep it when renamed', async () => {
+  const create = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'desk' });
+  assert.equal(create.status, 201);
+  const desk = await create.json() as Location;
+  assert.equal(desk.letter, 'C');
+  assert.equal(desk.name, 'Desk C');
+  const rename = await call('PUT', `/api/locations/${desk.id}`, { ...desk, name: 'Electronics desk', letter: 'Z' });
+  assert.equal(rename.status, 200);
+  assert.equal((await rename.json()).letter, 'C', 'Clients cannot change assigned code metadata');
+  const station = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'station', name: 'Laser' });
+  assert.equal(station.status, 201);
+  const record = await station.json();
+  assert.equal(record.name, 'Laser');
+  assert.equal(record.letter, undefined);
+  const next = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'cabinet' });
+  assert.equal((await next.json()).letter, 'D', 'Stations do not consume letter codes');
+});
+
+test('station names are required and old station letters are removed without renumbering storage', async () => {
+  const missingName = await call('POST', '/api/locations', { parentId: 'loc-room', kind: 'station' });
+  assert.equal(missingName.status, 400);
+  assert.equal((await missingName.json()).error, 'Station name is required.');
+  const station = await repository.createLocation({ name: 'Roland', kind: 'station', parentId: 'loc-room', letter: 'Z' });
+  const existing = await repository.createLocation({ name: 'Drawer 3', kind: 'drawer', parentId: station.id, number: 3 });
+  const renamed = await call('PUT', `/api/locations/${station.id}`, { ...station, name: 'Roland station', letter: 'Y' });
+  assert.equal(renamed.status, 200);
+  assert.equal((await renamed.json()).letter, undefined);
+  const locations = await repository.getLocations();
+  assert.equal(locations.find((location) => location.id === station.id)?.letter, undefined);
+  assert.equal(locations.find((location) => location.id === existing.id)?.number, 3);
+  const created = await call('POST', '/api/locations', { parentId: station.id, kind: 'bin' });
+  assert.equal(created.status, 201);
+  assert.equal((await created.json()).number, 4);
+});
+
+test('concurrent drawer/bin/shelf creates share a unique table-wide number sequence', async () => {
+  repository = new CachedCatalogRepository(repository);
+  const responses = await Promise.all(['drawer', 'bin', 'shelf'].map((kind) =>
+    call('POST', '/api/locations', { kind, parentId: 'loc-shelf', name: 'Ignore custom name', number: 1 })));
+  assert.ok(responses.every((response) => response.status === 201));
+  const created = await Promise.all(responses.map((response) => response.json())) as Location[];
+  assert.deepEqual(created.map((location) => location.number).sort(), [5, 6, 7]);
+  assert.ok(created.every((location) => location.name === `${location.kind.charAt(0).toUpperCase() + location.kind.slice(1)} ${location.number}`));
+  const drawer = created.find((location) => location.kind === 'drawer')!;
+  const nested = await call('POST', '/api/locations', { kind: 'bin', parentId: drawer.id });
+  assert.equal(nested.status, 400);
+  assert.match((await nested.json()).error, /cannot contain child/);
+  const next = await call('POST', '/api/locations', { kind: 'bin', parentId: 'loc-shelf' });
+  assert.equal(next.status, 201);
+  assert.equal((await next.json()).number, 8, 'Rejected nesting does not consume a storage number');
+  const renamed = await call('PUT', `/api/locations/${drawer.id}`, { ...drawer, name: 'No custom names', number: 99 });
+  assert.equal(renamed.status, 200);
+  const saved = await renamed.json();
+  assert.equal(saved.number, drawer.number);
+  assert.equal(saved.name, `Drawer ${drawer.number}`);
+});
+
+test('legacy nested storage must be moved to a surface without deleting its records', async () => {
+  const cabinet = await call('POST', '/api/locations', { kind: 'cabinet', parentId: 'loc-room' });
+  const destination = await cabinet.json() as Location;
+  await call('POST', '/api/locations', { kind: 'drawer', parentId: destination.id });
+  const first = await (await call('POST', '/api/locations', { kind: 'drawer', parentId: 'loc-shelf' })).json() as Location;
+  const inner = await repository.createLocation({ name: 'Bin 6', kind: 'bin', parentId: first.id, number: 6 });
+  const response = await call('PUT', `/api/locations/${first.id}`, { ...first, parentId: destination.id });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Move its children first/);
+  const movedChild = await call('PUT', `/api/locations/${inner.id}`, { ...inner, parentId: destination.id });
+  assert.equal(movedChild.status, 200);
+  assert.equal((await movedChild.json()).number, 2);
+  const movedParent = await call('PUT', `/api/locations/${first.id}`, { ...first, parentId: destination.id });
+  assert.equal(movedParent.status, 200);
+  assert.equal((await movedParent.json()).number, 3);
+  const nested = (await repository.getLocations()).find((location) => location.id === inner.id)!;
+  assert.equal(nested.number, 2);
+  assert.equal(nested.parentId, destination.id);
+  assert.equal(nested.name, 'Bin 2');
+});
+
+test('drawers, bins, and shelves cannot receive children through create or update APIs', async () => {
+  for (const kind of ['drawer', 'bin', 'shelf'] as const) {
+    const parent = await (await call('POST', '/api/locations', { kind, parentId: 'loc-shelf' })).json() as Location;
+    const rejected = await call('POST', '/api/locations', { kind: 'drawer', parentId: parent.id });
+    assert.equal(rejected.status, 400);
+    assert.match((await rejected.json()).error, /cannot contain child locations/);
+    const child = (await repository.getLocations()).find((location) => location.id === 'loc-bin')!;
+    const move = await call('PUT', `/api/locations/${child.id}`, { ...child, parentId: parent.id });
+    assert.equal(move.status, 400);
+    assert.equal((await repository.getLocations()).find((location) => location.id === child.id)?.parentId, 'loc-shelf');
+  }
+});
+
+test('legacy identity assignments persist so deleting one surface does not renumber another', async () => {
+  const before = await repository.getLocations();
+  const letter = before.find((location) => location.id === 'loc-shelf')!.letter;
+  assert.equal((await call('DELETE', '/api/locations/loc-empty')).status, 204);
+  const after = await repository.getLocations();
+  assert.equal(after.find((location) => location.id === 'loc-shelf')!.letter, letter);
+});
+
+test('location marker batch endpoint is removed', async () => {
+  assert.equal((await call('POST', '/api/locations/markers', { markers: [] })).status, 404);
+});
+
+test('floor plans can only be attached to root rooms, and anonymous location updates are refused', async () => {
   const response = await call('PUT', '/api/locations/loc-bin', {
     name: 'Bin 4', kind: 'bin', parentId: 'loc-shelf', mapId: 'common',
   });

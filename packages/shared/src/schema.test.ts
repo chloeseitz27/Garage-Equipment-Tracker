@@ -8,6 +8,7 @@ import {
   equipmentSchema,
   itemSchema,
   itemsFileSchema,
+  locationSchema,
 } from './schema.js';
 import { findCatalogProblems } from './integrity.js';
 
@@ -16,6 +17,14 @@ const variants = [
   { ...base, kind: 'equipment', status: 'available', quantity: 1, trainingRequired: 'none' },
   { ...base, kind: 'consumable', stockLevel: 'in-stock' },
 ];
+
+test('location schemas strip legacy point coordinates without rejecting the record', () => {
+  const parsed = locationSchema.parse({
+    id: 'table', name: 'Table A', parentId: 'room', kind: 'table',
+    mapPosition: { roomId: 'room', mapId: 'common', x: 0.2, y: 0.3 },
+  });
+  assert.equal('mapPosition' in parsed, false);
+});
 
 test('item and create schemas migrate legacy categories for both kinds', () => {
   for (const variant of variants) {

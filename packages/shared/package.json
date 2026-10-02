@@ -13,13 +13,16 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node ../../scripts/copy-room-maps.mjs",
     "watch": "tsc -b --watch"
   },
   "dependencies": {
+    "fast-xml-parser": "^5.11.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "jsdom": "^26.1.0",
     "typescript": "^5.7.2"
   }
 }

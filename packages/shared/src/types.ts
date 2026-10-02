@@ -4,6 +4,7 @@ import type {
   consumableSchema,
   createFlagSchema,
   createItemSchema,
+  createLocationSchema,
   equipmentSchema,
   equipmentStatusSchema,
   flagSchema,
@@ -31,10 +32,12 @@ export type Category = z.infer<typeof categorySchema>;
 export type Flag = z.infer<typeof flagSchema>;
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;
+export type CreateLocationInput = z.infer<typeof createLocationSchema>;
 export type CreateFlagInput = z.infer<typeof createFlagSchema>;
 
 /** Everything the kiosk needs in one payload (technical-spec.md §5, §7). */
 export interface CatalogResponse {
+  access?: 'public' | 'staff';
   items: Item[];
   locations: Location[];
   categories: Category[];
