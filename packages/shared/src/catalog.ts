@@ -4,6 +4,7 @@ import { findCatalogProblems } from './integrity.js';
 
 /** Validate public snapshots without losing retirement or floor-plan metadata. */
 export const catalogSchema = z.object({
+  access: z.enum(['public', 'staff']).optional(),
   items: itemsFileSchema,
   locations: locationsFileSchema,
   categories: categoriesFileSchema,

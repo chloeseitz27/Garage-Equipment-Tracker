@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { formatLocationPath, getLocationPath, searchLocations, type Location } from '@garage/shared';
+import { LocationMapDialog } from './LocationMapDialog.js';
 
 interface CommonProps {
   locations: Location[];
@@ -7,6 +8,8 @@ interface CommonProps {
   disabled?: boolean;
   placeholder?: string;
   label?: string;
+  showMapButton?: boolean;
+  rootSelectable?: boolean;
 }
 
 type Props = CommonProps & (
@@ -30,12 +33,16 @@ export function LocationPicker(props: Props): JSX.Element {
     disabled = false,
     placeholder = 'Search locations…',
     label = 'Location',
+    showMapButton = true,
   } = props;
   // Search text is a draft. Only choosing an option changes the caller's value.
   const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mapButtonRef = useRef<HTMLButtonElement>(null);
   const inputId = useId();
   const listId = `${inputId}-options`;
 
@@ -50,11 +57,11 @@ export function LocationPicker(props: Props): JSX.Element {
       .filter((option) => !excludedIds?.includes(option.id));
     const tokens = (query ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
     const rootWords = ['top', 'level', 'no', 'parent'];
-    if (props.allowRoot && tokens.every((token) => rootWords.some((word) => word.startsWith(token)))) {
+    if (props.allowRoot && props.rootSelectable !== false && tokens.every((token) => rootWords.some((word) => word.startsWith(token)))) {
       results.unshift({ id: null, label: ROOT_LABEL });
     }
     return results;
-  }, [locations, query, excludedIds, props.allowRoot]);
+  }, [locations, query, excludedIds, props.allowRoot, props.rootSelectable]);
 
   const expanded = open && !disabled;
   const activeIndex = Math.min(Math.max(highlight, 0), matches.length - 1);
@@ -70,7 +77,8 @@ export function LocationPicker(props: Props): JSX.Element {
       setOpen(false);
       setQuery(null);
     }
-  }, [disabled]);
+    if (disabled || !showMapButton) setMapOpen(false);
+  }, [disabled, showMapButton]);
 
   useEffect(() => {
     if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
@@ -88,10 +96,15 @@ export function LocationPicker(props: Props): JSX.Element {
   }, []);
 
   const choose = (locationId: string | null): void => {
-    if (disabled) return;
+    if (disabled || (locationId === null && props.rootSelectable === false)) return;
     if (props.allowRoot) props.onSelect(locationId);
     else if (locationId !== null) props.onSelect(locationId);
     close();
+  };
+
+  const closeMap = (): void => {
+    setMapOpen(false);
+    mapButtonRef.current?.focus();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
@@ -128,9 +141,24 @@ export function LocationPicker(props: Props): JSX.Element {
         if (!event.currentTarget.contains(event.relatedTarget)) close();
       }}
     >
-      <label className="picker-label" htmlFor={inputId}>{label}</label>
+      <div className="location-picker-heading">
+        <label className="picker-label" htmlFor={inputId}>{label}</label>
+        {showMapButton ? (
+          <button
+            ref={mapButtonRef}
+            type="button"
+            className="location-map-trigger"
+            aria-label={`${label}: choose on map`}
+            aria-haspopup="dialog"
+            aria-expanded={mapOpen && !disabled}
+            disabled={disabled}
+            onClick={() => { close(); setMapOpen(true); }}
+          >Choose on map</button>
+        ) : null}
+      </div>
 
       <input
+        ref={inputRef}
         id={inputId}
         type="text"
         role="combobox"
@@ -184,6 +212,22 @@ export function LocationPicker(props: Props): JSX.Element {
             ))
           )}
         </ul>
+      ) : null}
+      {showMapButton && mapOpen && !disabled ? (
+        <LocationMapDialog
+          label={label}
+          locations={locations}
+          excludedIds={excludedIds}
+          selectedIds={value ? [value] : []}
+          rootSelected={props.allowRoot && value === null}
+          onSelect={(id) => { closeMap(); choose(id); }}
+          onSelectRoot={props.allowRoot && props.rootSelectable !== false ? () => { closeMap(); choose(null); } : undefined}
+          onClose={closeMap}
+          onSearch={() => {
+            setMapOpen(false);
+            inputRef.current?.focus();
+          }}
+        />
       ) : null}
     </div>
   );

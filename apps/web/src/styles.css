@@ -575,8 +575,16 @@ header h1 {
 
 .editor {
   display: grid;
-  gap: 0.9rem;
-  max-width: 900px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.editor > h3,
+.editor > .error,
+.editor > .editor-actions {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .editor-fields {
@@ -586,6 +594,37 @@ header h1 {
   padding: 0;
   margin: 0;
   min-width: 0;
+}
+
+.editor-location {
+  position: sticky;
+  top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.editor-location .sub-tabs {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.editor-location .sub-tabs > button {
+  flex: 1 1 10rem;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1000px) {
+  .editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-location {
+    position: static;
+  }
 }
 
 .unsaved-dialog {
@@ -622,6 +661,19 @@ header h1 {
   gap: 0.3rem;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.manager label.staff-only-option {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.staff-only-option input[type="checkbox"] {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
 }
 
 .editor input,
@@ -706,6 +758,7 @@ header h1 {
 .add-row button,
 .tree-actions button,
 .tree-edit button,
+.location-form-actions button,
 .bulk-bar > button,
 .bulk-actions > button,
 .items-view-actions > button,
@@ -716,14 +769,6 @@ header h1 {
   border: none;
   border-radius: 8px;
   padding: 0.5rem 1rem;
-}
-
-.map-pin-controls button {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
-  color: var(--text);
 }
 
 .room-map {
@@ -752,8 +797,7 @@ header h1 {
   touch-action: none;
 }
 
-.room-map-viewport.dragging,
-.room-map-viewport.dragging .room-map-stage.placing {
+.room-map-viewport.dragging {
   cursor: grabbing;
 }
 
@@ -809,56 +853,53 @@ header h1 {
   user-select: none;
 }
 
-.room-map-stage.placing {
-  cursor: crosshair;
-}
-
 .room-map-stage img {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.room-map-stage .map-marker {
+.room-map-regions {
   position: absolute;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: #174478;
-  text-decoration: none;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
 
-/* Keep a 24px hit target without covering labels on a fitted map. */
-.map-marker-dot {
-  width: 10px;
-  height: 10px;
-  background: currentColor;
-  border: 2px solid white;
-  border-radius: 50%;
-  box-shadow: 0 1px 4px #0008;
+.map-region {
+  pointer-events: all;
+  cursor: pointer;
 }
 
-.room-map-stage .map-marker.selected {
-  color: #f4be42;
-  z-index: 1;
+.map-region-surface {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2;
 }
 
-.map-marker.selected .map-marker-dot {
-  width: 12px;
-  height: 12px;
-  border-color: #231800;
+.map-region:hover .map-region-surface {
+  fill: #4da3ff26;
+  stroke: #174478;
 }
 
-.map-marker:focus-visible {
-  outline: 3px solid #231800;
-  outline-offset: 2px;
+.map-region.selected .map-region-surface {
+  fill: #f4be4240;
+  stroke: #805800;
+  stroke-width: 3;
+}
+
+.map-region:focus-visible,
+.room-map-regions a:focus-visible {
+  outline: none;
+}
+
+.map-region:focus-visible .map-region-surface,
+.room-map-regions a:focus-visible .map-region-surface {
+  stroke: #07121f;
+  stroke-width: 4;
+  stroke-dasharray: 6 3;
 }
 
 .room-map figcaption {
@@ -873,17 +914,6 @@ header h1 {
   padding-bottom: 1.25rem;
 }
 
-.map-pin-controls {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
-
-.map-pin-controls input {
-  max-width: 9rem;
-}
-
 .map-item-list {
   line-height: 2;
 }
@@ -891,6 +921,7 @@ header h1 {
 .editor-actions button.secondary,
 .tree-actions button,
 .tree-edit button.secondary,
+.location-form-actions > button.secondary,
 .items-view-actions > button.secondary {
   background: var(--panel-2);
   color: var(--text);
@@ -955,12 +986,49 @@ button:disabled {
   font-weight: 600;
 }
 
+.tree-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.tree-toggle[aria-expanded="true"] .action-icon {
+  transform: rotate(90deg);
+}
+
+.tree-toggle-space {
+  flex: none;
+  width: 2.5rem;
+}
+
 .tree-actions,
 .tree-edit {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.new-room-row {
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+
+.new-room-row > input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.new-room-row > .staff-only-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.new-room-row > .tree-actions {
+  margin-left: auto;
 }
 
 .category-edit {
@@ -990,6 +1058,366 @@ button:disabled {
 
 .add-row input {
   flex: 1 1 240px;
+}
+
+.location-fields {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.location-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.location-editor > .hint {
+  margin-top: 0;
+}
+
+.location-child-form {
+  min-width: 0;
+  margin: 0.75rem 0;
+}
+
+.location-create {
+  margin: 0.4rem 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--accent);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
+}
+
+.location-create-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.location-create-heading .muted {
+  font-weight: 400;
+}
+
+.location-create-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.5rem 0.1rem 0.3rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.location-create-badge .action-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.tree-node.creating-child {
+  border-bottom-color: transparent;
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.location-placement {
+  max-width: 52rem;
+}
+
+.location-map-panel {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.location-map-panel > .location-placement {
+  max-width: none;
+}
+
+.location-map-panel > .location-editor-fields {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.location-selection-heading {
+  margin-bottom: 0.75rem;
+}
+
+.location-breadcrumbs {
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.location-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.location-breadcrumbs li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.location-breadcrumbs a,
+.location-breadcrumbs button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.location-breadcrumbs li > span {
+  overflow-wrap: anywhere;
+}
+
+.location-breadcrumbs a:hover,
+.location-breadcrumbs button:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.location-breadcrumbs :is(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.location-breadcrumbs a[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+.manager .location-title-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.25rem 0;
+  border-color: transparent;
+  background: transparent;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.manager .location-title-input:hover {
+  border-color: var(--line);
+}
+
+.manager .location-title-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.location-selection-title {
+  margin: 0;
+  padding: 0.25rem 0;
+  font-size: 1.35rem;
+  line-height: 1.3;
+}
+
+@media (min-width: 1001px) {
+  .location-map-panel {
+    --location-sidebar-width: 22rem;
+    --location-panel-gap: 1rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--location-sidebar-width);
+    align-items: start;
+    gap: var(--location-panel-gap);
+  }
+
+  .location-map-panel > .sub-tabs {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+
+  .location-map-panel > .location-placement {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    transform: translateX(calc((var(--location-sidebar-width) + var(--location-panel-gap)) / 2));
+  }
+
+  .location-map-panel.location-editor > .location-placement {
+    transform: translateX(0);
+  }
+
+  .location-map-panel > .location-placement > .room-map {
+    margin: 0;
+  }
+
+  .location-map-panel > .location-editor-fields {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .location-map-panel > .location-editor-fields > .location-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .location-map-panel > .location-editor-fields > .location-fields > :not(.staff-only-option):not(.location-form-actions) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1001px) and (prefers-reduced-motion: no-preference) {
+  .location-map-panel > .location-placement {
+    transition: transform 280ms ease-in-out;
+  }
+
+  .location-map-panel > .location-editor-fields {
+    animation: location-panel-appear 220ms ease-out 120ms both;
+  }
+
+  .location-map-panel > .location-editor-fields.closing {
+    animation: location-panel-disappear 200ms ease-in both;
+    pointer-events: none;
+  }
+}
+
+@keyframes location-panel-appear {
+  from { opacity: 0; transform: translateX(0.75rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes location-panel-disappear {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(0.75rem); }
+}
+
+.location-children {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.location-children-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.location-children-heading h4 {
+  margin: 0;
+}
+
+.location-children-heading > button {
+  background: var(--accent);
+  color: #07121f;
+  border: none;
+  border-radius: 8px;
+}
+
+.location-child-select {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.location-child-select > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.location-child-select > .action-icon {
+  margin-left: auto;
+}
+
+.location-child-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.location-code {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.manager .location-fields > label:not(.staff-only-option) {
+  flex: 1 1 9rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.manager .location-fields > label.location-name-field {
+  flex: 1 1 11rem;
+}
+
+.manager .location-fields > label.location-type-field {
+  flex: 0 1 8rem;
+}
+
+.location-fields input:not([type="checkbox"]),
+.location-fields select {
+  flex: none;
+  min-width: 0;
+  height: 2.5rem;
+  font-size: 1rem;
+}
+
+.location-fields output {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  font-size: 1rem;
+}
+
+.manager .location-fields > .staff-only-option {
+  flex: none;
+  flex-wrap: nowrap;
+  height: 2.5rem;
+  font-size: 0.85rem;
+}
+
+.location-form-actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.location-access-hint {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .inline-check {
@@ -1160,6 +1588,10 @@ code {
 .tree-actions > .icon-button,
 .tree-edit > .icon-button,
 .header-actions > .icon-button,
+.tree-name > .icon-button,
+.add-row > .icon-button,
+.location-form-actions > .icon-button,
+.location-children-heading > .icon-button,
 .item-action-buttons > .icon-button {
   display: inline-flex;
   align-items: center;
@@ -1361,7 +1793,7 @@ code {
   white-space: nowrap;
 }
 
-/* --- Type-to-find location picker --- */
+/* --- Location picker --- */
 
 .location-picker {
   position: relative;
@@ -1373,6 +1805,7 @@ code {
 }
 
 .tree-edit > .location-picker,
+.location-fields > .location-picker,
 .add-row > .location-picker {
   flex: 1 1 300px;
 }
@@ -1384,6 +1817,97 @@ code {
 .location-picker .picker-label {
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+.location-picker-heading,
+.location-map-heading,
+.location-map-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.location-picker .location-map-trigger,
+.multi-filter-panel .location-map-trigger,
+.location-map-heading > button,
+.location-map-actions > button,
+.location-map-dialog .tabs button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.65rem;
+  font-weight: 500;
+}
+
+.location-picker .location-map-trigger {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.location-map-trigger:focus-visible,
+.location-map-dialog button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.location-map-dialog {
+  width: min(52rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.location-map-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.location-map-heading h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.location-map-dialog .tabs {
+  flex-wrap: wrap;
+}
+
+.location-map-dialog .room-map-canvas,
+.location-placement .room-map-canvas,
+.editor-location .room-map-canvas {
+  margin-bottom: 3rem;
+}
+
+.location-map-dialog .room-map-controls,
+.location-placement .room-map-controls,
+.editor-location .room-map-controls {
+  top: calc(100% + 0.5rem);
+  bottom: auto;
+  left: 0;
+}
+
+.location-map-dialog button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #07121f;
+  border-color: var(--accent);
+}
+
+.location-map-selection {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.location-map-actions {
+  justify-content: flex-start;
 }
 
 .location-picker input {

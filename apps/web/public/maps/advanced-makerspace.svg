@@ -1,8 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1333" height="507" viewBox="0 0 1333 507" role="img" aria-labelledby="title description">
-  <title id="title">Advanced Makerspace</title>
-  <desc id="description">Advanced Makerspace storage surfaces run Z through T from the lower-left table up the left wall, across the top, down the right wall, and along the bottom. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
-  <style>
-    text { font-family: "Segoe UI", Arial, sans-serif; fill: #20384b; text-anchor: middle; }
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1333"
+   height="507"
+   viewBox="0 0 1333 507"
+   role="img"
+   aria-labelledby="title description"
+   version="1.1"
+   id="svg23"
+   sodipodi:docname="advanced-makerspace.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs23" />
+  <sodipodi:namedview
+     id="namedview23"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="3.6744186"
+     inkscape:cx="1019.8892"
+     inkscape:cy="351.62025"
+     inkscape:window-width="4480"
+     inkscape:window-height="2396"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg23" />
+  <title
+     id="title">Advanced Makerspace</title>
+  <desc
+     id="description">Advanced Makerspace storage surfaces run S through Z clockwise from the top-left workbench. Workbench S, Table T, and Table U run across the top from left to right. Table V is on the right, W is at the center, X and Y are along the bottom-left, and Z is at the left-center. The toolbox occupies the former coat-rack area at the upper left. Open room floor extends directly beneath the upper-left wall projection. The fire cabinet has its back against the left wall and its doors facing into the room. Named cabinets and equipment retain their names. This diagram is not to scale.</desc>
+  <style
+     id="style1">
+    text { font-family: &quot;Segoe UI&quot;, Arial, sans-serif; fill: #20384b; text-anchor: middle; }
     .floor { fill: #f8fafc; stroke: #526776; stroke-width: 4; }
     .wall { fill: #526776; stroke: #526776; stroke-width: 4; }
     .surface { fill: #e0ecf4; stroke: #7895a9; stroke-width: 2; }
@@ -13,72 +50,374 @@
     .letter { font-size: 32px; font-weight: 700; }
     .small { font-size: 16px; font-weight: 600; letter-spacing: 1px; fill: #415d70; }
   </style>
-  <rect width="1333" height="507" fill="#fff"/>
-  <!-- Same source-image coordinates as the original plan, so existing catalog pins still align. -->
-  <path class="floor" d="M162 22H1244V115H1314V407H1220V486H22V134H162Z"/>
-  <path d="M293 496H934M1145 496H1220" stroke="#53a5bd" stroke-width="6"/>
-  <text class="small" x="645" y="503">VIEWING WINDOWS</text>
-  <path d="M938 486H1144" stroke="#fff" stroke-width="9"/>
-  <path d="M938 486H1144" stroke="#416170" stroke-width="3" stroke-dasharray="8 6"/>
-  <text class="small" x="1041" y="503">ENTRANCE</text>
-  <text x="745" y="246" font-size="40" font-weight="700" letter-spacing="1">ADVANCED MAKERSPACE</text>
-  <text class="small" x="745" y="275">STORAGE Z&#8211;T &#183; NOT TO SCALE</text>
-
-  <rect id="advanced-left-wall" class="wall" x="22" y="22" width="140" height="112"/>
-  <rect id="advanced-right-wall" class="wall" x="1244" y="22" width="70" height="93"/>
-
-  <g data-location-id="loc-common-toolbench">
-    <rect class="cabinet" x="166" y="24" width="127" height="87" rx="8"/>
-    <text x="230" y="46" font-size="22" font-weight="700">Toolbox</text>
+  <rect
+     width="1333"
+     height="507"
+     fill="#fff"
+     id="rect1" />
+  <!-- Preserve the source coordinate system; catalog markers follow the transformed surface geometry. -->
+  <path
+     class="floor"
+     d="M 23.088608,22 H 1315.0886 V 486 H 23.088608 V 134 Z"
+     id="path1"
+     sodipodi:nodetypes="cccccc" />
+  <path
+     d="M293 496H934M1145 496H1220"
+     stroke="#53a5bd"
+     stroke-width="6"
+     id="path2" />
+  <text
+     class="small"
+     x="645"
+     y="503"
+     id="text2">VIEWING WINDOWS</text>
+  <path
+     d="M938 486H1144"
+     stroke="#fff"
+     stroke-width="9"
+     id="path3" />
+  <path
+     d="M938 486H1144"
+     stroke="#416170"
+     stroke-width="3"
+     stroke-dasharray="8 6"
+     id="path4" />
+  <text
+     class="small"
+     x="1041"
+     y="503"
+     id="text4">ENTRANCE</text>
+  <text
+     x="745"
+     y="246"
+     font-size="40"
+     font-weight="700"
+     letter-spacing="1"
+     id="text5">ADVANCED MAKERSPACE</text>
+  <text
+     class="small"
+     x="745"
+     y="275"
+     id="text6">STORAGE S–Z · NOT TO SCALE</text>
+  <rect
+     id="advanced-left-wall"
+     class="wall"
+     x="25.265823"
+     y="23.905064"
+     width="140"
+     height="112" />
+  <rect
+     id="advanced-right-wall"
+     class="wall"
+     x="1239.1667"
+     y="22.065531"
+     width="74.76767"
+     height="92.868935" />
+  <g
+     data-location-id="loc-common-toolbench"
+     id="g7"
+     transform="translate(2.3132911,0.95253165)">
+    <rect
+       class="cabinet"
+       x="166.00822"
+       y="24.008226"
+       width="195.02151"
+       height="57.591145"
+       rx="12.284821"
+       id="rect6" />
+    <text
+       x="256.12659"
+       y="48.721519"
+       font-size="22px"
+       font-weight="700"
+       id="text7">Toolbox</text>
   </g>
-  <g data-location-id="loc-advanced-fire-cabinet">
-    <rect class="cabinet" x="24" y="184" width="46" height="140" rx="7"/>
-    <path d="M24 191V317" stroke="#876833" stroke-width="4"/>
-    <path d="M66 198V310M61 241V267" stroke="#aa8750" stroke-width="2"/>
-    <path d="M72 254H82" stroke="#aa8750" stroke-width="2"/>
-    <text x="88" y="247" font-size="20" font-weight="600" style="text-anchor:start">Fire</text>
-    <text x="88" y="272" font-size="20" font-weight="600" style="text-anchor:start">cabinet</text>
+  <g
+     data-location-id="loc-advanced-fire-cabinet"
+     id="g10"
+     transform="translate(1.9050633,-45.177216)">
+    <rect
+       class="cabinet"
+       x="24"
+       y="184"
+       width="46"
+       height="140"
+       rx="7"
+       id="rect7" />
+    <path
+       d="m 66,198 v 112 m -5,-69 v 26"
+       stroke="#aa8750"
+       stroke-width="2"
+       id="path8" />
+    <path
+       d="M 72,254 H 82"
+       stroke="#aa8750"
+       stroke-width="2"
+       id="path9" />
+    <text
+       x="88"
+       y="247"
+       font-size="20px"
+       font-weight="600"
+       style="text-anchor:start"
+       id="text9">Fire</text>
+    <text
+       x="88"
+       y="272"
+       font-size="20px"
+       font-weight="600"
+       style="text-anchor:start"
+       id="text10">cabinet</text>
   </g>
-  <g data-location-id="loc-advanced-workbench-16" data-storage-letter="X">
-    <rect class="surface" x="383" y="24" width="326" height="91" rx="8"/>
-    <text class="label" x="546" y="49">Workbench X</text>
+  <g
+     data-location-id="loc-advanced-workbench-16"
+     data-storage-letter="S"
+     id="g11"
+     transform="translate(-2.5017259,1.3470832)">
+    <rect
+       class="surface"
+       x="383"
+       y="24"
+       width="326"
+       height="91"
+       rx="8"
+       id="rect10" />
+    <text
+       class="label"
+       x="546"
+       y="49"
+       id="text11">Workbench S</text>
   </g>
-  <g data-location-id="loc-advanced-table-19" data-storage-letter="W">
-    <rect class="surface" x="709" y="24" width="285" height="91" rx="8"/>
-    <text class="label" x="851" y="49">Table W</text>
+  <g
+     data-location-id="loc-advanced-table-19"
+     data-storage-letter="T"
+     id="g12"
+     transform="matrix(0.96003356,0,0,1.0004389,27.931354,1.509017)">
+    <rect
+       class="surface"
+       x="709"
+       y="24"
+       width="285"
+       height="91"
+       rx="8"
+       id="rect11" />
+    <text
+       class="label"
+       x="851"
+       y="49"
+       id="text12">Table T</text>
   </g>
-  <g data-location-id="loc-advanced-table-3" data-storage-letter="V">
-    <rect class="surface" x="994" y="24" width="250" height="91" rx="8"/>
-    <text class="label" x="1119" y="49">Table V</text>
+  <g
+     data-location-id="loc-advanced-table-3"
+     data-storage-letter="U"
+     id="g13"
+     transform="translate(-9.4125875,1.5395236)">
+    <rect
+       class="surface"
+       x="994"
+       y="24"
+       width="250"
+       height="91"
+       rx="8"
+       id="rect12" />
+    <text
+       class="label"
+       x="1119"
+       y="49"
+       id="text13">Table U</text>
   </g>
-  <g data-location-id="loc-advanced-table-18" data-storage-letter="U">
-    <rect class="surface" x="1220" y="115" width="94" height="199" rx="8"/>
-    <text class="small" x="1267" y="162">TABLE</text>
-    <text class="letter" x="1267" y="193">U</text>
+  <g
+     data-location-id="loc-advanced-table-18"
+     data-storage-letter="V"
+     id="g15"
+     transform="translate(-2.1772152,3.4018987)">
+    <rect
+       class="surface"
+       x="1219.9243"
+       y="114.92435"
+       width="94.151291"
+       height="169.75888"
+       rx="8.0128756"
+       id="rect13" />
+    <text
+       class="small"
+       x="1267"
+       y="162"
+       id="text14">TABLE</text>
+    <text
+       class="letter"
+       x="1267"
+       y="193"
+       id="text15">V</text>
   </g>
-  <g data-location-id="loc-advanced-table-21" data-storage-letter="Y">
-    <rect class="surface" x="183" y="175" width="81" height="147" rx="8"/>
-    <text x="224" y="201" font-size="14" font-weight="600">TABLE</text>
-    <text class="letter" x="224" y="226">Y</text>
+  <g
+     data-location-id="loc-advanced-table-21"
+     data-storage-letter="Z"
+     id="g17"
+     transform="translate(70.759494,74.56962)">
+    <rect
+       class="surface"
+       x="183.15631"
+       y="124.53606"
+       width="80.687386"
+       height="197.30763"
+       rx="7.9691243"
+       id="rect15" />
+    <text
+       x="223.64355"
+       y="201"
+       font-size="14px"
+       font-weight="600"
+       id="text16">TABLE</text>
+    <text
+       class="letter"
+       x="223.34375"
+       y="226"
+       id="text17">Z</text>
   </g>
-  <g data-location-id="loc-advanced-table-20" data-storage-letter="Z">
-    <rect class="surface" x="183" y="322" width="81" height="164" rx="8"/>
-    <text x="224" y="350" font-size="14" font-weight="600">TABLE</text>
-    <text class="letter" x="224" y="381">Z</text>
+  <g
+     data-location-id="loc-advanced-table-20"
+     data-storage-letter="Y"
+     id="g19"
+     transform="translate(3.1297468,-0.2721519)">
+    <rect
+       class="surface"
+       x="-483.09995"
+       y="23.431696"
+       width="80.908768"
+       height="180.78218"
+       rx="7.9909887"
+       id="rect17"
+       transform="rotate(-90)" />
+    <text
+       class="letter"
+       x="113.66653"
+       y="447.6673"
+       id="text17-1"
+       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">Y</text>
+    <text
+       x="113.96634"
+       y="420.75949"
+       font-size="14px"
+       font-weight="600"
+       id="text18">TABLE</text>
   </g>
-  <g data-location-id="loc-advanced-table-11" data-storage-letter="T">
-    <rect class="surface" x="294" y="398" width="284" height="88" rx="8"/>
-    <text class="label" x="436" y="420">Table T</text>
+  <g
+     data-location-id="loc-table-u"
+     data-storage-letter="X"
+     id="g19-8"
+     transform="translate(185.77193,-0.42426392)">
+    <rect
+       class="surface"
+       x="-483.0159"
+       y="23.515739"
+       width="80.740677"
+       height="210.0065"
+       rx="7.9743876"
+       id="rect17-8"
+       transform="rotate(-90)"
+       style="fill:#e0ecf4;stroke:#7895a9;stroke-width:2.36014" />
+    <text
+       class="letter"
+       x="128.36273"
+       y="447.00296"
+       id="text17-1-5"
+       style="font-weight:700;font-size:32px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">X</text>
+    <text
+       x="128.66254"
+       y="420.75949"
+       font-size="14px"
+       font-weight="600"
+       id="text18-2"
+       style="font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b">TABLE</text>
   </g>
-  <g data-location-id="loc-advanced-laser">
-    <rect class="station" x="591" y="400" width="180" height="86" rx="8"/>
-    <text class="label" x="681" y="425">Laser</text>
+  <g
+     data-location-id="loc-advanced-table-11"
+     data-storage-letter="W"
+     id="g20"
+     transform="matrix(0.86853954,0,0,0.90974585,369.33891,20.025244)">
+    <rect
+       class="surface"
+       x="-508.85764"
+       y="374.14203"
+       width="218.67432"
+       height="92.3815"
+       rx="6.1598401"
+       id="rect19"
+       transform="rotate(-90)" />
+    <text
+       class="letter"
+       x="412.36438"
+       y="384.95316"
+       id="text17-1-1"
+       style="font-weight:700;font-size:35.9994px;font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b;stroke-width:1.12498"
+       transform="scale(1.0234467,0.97709045)">W</text>
+    <text
+       x="412.70163"
+       y="354.95883"
+       font-size="15.7497px"
+       font-weight="600"
+       id="text18-2-7"
+       style="font-family:'Segoe UI', Arial, sans-serif;text-anchor:middle;fill:#20384b;stroke-width:1.12498"
+       transform="scale(1.0234467,0.97709045)">TABLE</text>
   </g>
-  <g data-location-id="loc-advanced-laptop-cart">
-    <rect class="surface" x="785" y="422" width="104" height="64" rx="8"/>
-    <path d="M837 421V400" stroke="#7895a9" stroke-width="2"/>
-    <text x="837" y="391" font-size="22" font-weight="600">Laptop cart</text>
+  <g
+     data-location-id="loc-advanced-laser"
+     id="g21"
+     transform="translate(-140.56646,-3.2658228)">
+    <rect
+       class="station"
+       x="578.00562"
+       y="400.06891"
+       width="205.98878"
+       height="85.862198"
+       rx="9.155057"
+       id="rect20" />
+    <text
+       class="label"
+       x="681"
+       y="425"
+       id="text21">Laser</text>
   </g>
-  <rect class="landmark" x="1220" y="407" width="94" height="79" rx="4"/>
-  <text x="1267" y="455" font-size="20" font-weight="600">SINK</text>
+  <g
+     data-location-id="loc-advanced-laptop-cart"
+     id="g22"
+     transform="translate(-6.9398734,-3.2658228)">
+    <rect
+       class="surface"
+       x="785.10999"
+       y="406.86948"
+       width="103.78"
+       height="79.020523"
+       rx="7.983078"
+       id="rect21" />
+    <text
+       x="835.91138"
+       y="437.26581"
+       font-size="22px"
+       font-weight="600"
+       id="text22"><tspan
+         sodipodi:role="line"
+         id="tspan26"
+         x="835.91138"
+         y="437.26581">Laptop</tspan><tspan
+         sodipodi:role="line"
+         id="tspan27"
+         x="835.91138"
+         y="464.76581">Cart</tspan></text>
+  </g>
+  <rect
+     class="landmark"
+     x="1218.7671"
+     y="355.96329"
+     width="93.472153"
+     height="126.91519"
+     rx="3.9775386"
+     id="rect22" />
+  <text
+     x="1266.4092"
+     y="429.28046"
+     font-size="20px"
+     font-weight="600"
+     id="text23">SINK</text>
 </svg>

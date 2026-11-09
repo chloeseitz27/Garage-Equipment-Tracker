@@ -91,14 +91,11 @@ interface Location {
   id: string;
   name: string;
   parentId: string | null;  // null = Room (root)
-  kind: 'room' | 'zone' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'bin';
+  kind: 'room' | 'station' | 'desk' | 'table' | 'workbench' | 'cabinet' | 'shelf' | 'drawer' | 'bin' | 'zone'; // zone is legacy-only
+  letter?: string; // stable table/desk/workbench/cabinet code, A..Z, AA...; never stations
+  number?: number; // storage number unique across one enclosing surface subtree
+  staffOnly?: boolean; // inherited by every descendant
   mapId?: 'common' | 'advanced'; // top-level rooms only
-  mapPosition?: {
-    roomId: string;
-    mapId: 'common' | 'advanced';
-    x: number; // 0..1 from the left edge of the image
-    y: number; // 0..1 from the top edge of the image
-  };
 }
 
 interface Category {
@@ -155,34 +152,163 @@ location references are validated for the whole batch before any write.
 Assistant retrieval matches names from all assigned categories while retaining
 one candidate per item.
 
-### 3.3 Room maps
+### 3.3 Maps
 
 The Common Makerspace (larger plan) and Advanced Makerspace (smaller plan) use
 clean SVG redraws of the supplied images, versioned in `apps/web/public/maps`.
 The redraws preserve the source coordinate systems; original PNGs remain as
-references. Zoom changes only display size, not stored marker positions. A marker belongs to a
-location, not an item. `resolveLocationMap` derives the room from the hierarchy
-and picks the nearest mapped ancestor. `roomId` and `mapId` in the coordinates
-must both match the current room; stale positions from cross-room moves or plan
-changes are ignored, never shown on the wrong floor plan.
+references. `parseSvgMap` extracts selectable geometry from groups carrying
+`data-location-id`, including nested SVG transforms. The browser displays the
+original SVG as an inert image and renders only allowlisted geometry as a React
+SVG overlay; it never injects source scripts, event handlers, styles, or HTML
+into the document. A selected location highlights its entire SVG surface.
+Unknown, excluded, or out-of-room location IDs do not become interactive.
 
-Staff stage marker positions using clicks or numeric percentages and save via
-the existing authenticated location-update API. Visitor map URLs preserve the
-selected room and location. Seed data now contains only the two mapped rooms,
-their labeled locations, starter categories, and empty item/report arrays.
+`resolveMapTarget` resolves the enclosing room-level surface only when that
+surface has an SVG shape in the room plan. `resolveLocationMap` derives the
+containing room for a location. Locations below the surface level never
+contribute their own selectable SVG regions, even when legacy records contain
+coordinates. Selecting storage intentionally highlights its enclosing surface,
+rather than describing it as an approximate or unplaced child location.
 
-Storage surfaces are lettered uniquely across rooms: Common A-M from the
-upper-left desk down the left perimeter; Advanced Z-T from the lower-left table
-up the left perimeter. Existing IDs are retained when display labels change.
+SVG geometry changes apply on the next map fetch without database writes. SVG
+requests use `cache: 'no-store'`, coalesce by map, and refresh on window focus
+and reconnection; background and overlay use the same source snapshot. Legacy
+stored coordinates are ignored and stripped by normalized reads/writes; SVG
+shapes are the only map representation. Label changes and new catalog records
+remain explicit operations. Supported regions use rect/path/polygon/circle/
+ellipse geometry; explicit `data-location-shape="true"` pieces override the
+usual surface/station/cabinet classes. Duplicate IDs, malformed XML, DTDs,
+clones, clips/masks, and CSS transforms fail explicitly.
+
+The API reads the source SVGs when validating shape-linked edits. Shared builds
+copy the SVG assets into `@garage/shared/dist/maps` as a deployment fallback, so
+the same shape IDs remain available when source folders are not shipped.
+Development reads the current source files, not a stale generated list.
+
+The management map renders the shared `LocationEditor` beside the map rather
+than a shape-selection panel. Above 1000px viewport width, room tabs span a
+two-column grid with the map on the left and a 22rem edit panel on the right.
+Narrower screens stack the fields below the map. The desktop map track keeps
+the same width in both states. With no editable selection, a translation
+centers the map over the empty editor track; opening the editor animates that
+translation to zero without resizing the map. Reduced-motion preferences
+disable the transition and editor fade. One persistent map retains zoom across
+selection changes.
+The panel starts with ancestor breadcrumbs and a title. Surface names use an
+editable title input; generated storage names are read-only headings. Breadcrumb
+navigation uses the existing unsaved-change guard, and unmapped ancestors remain
+plain text rather than navigating to an unavailable map. Changes to name, type, parent,
+staff-only access save through `PUT /api/locations/:id`. Save is disabled for
+a pristine draft; Cancel resets the draft and clears the selection. Clicking
+empty map space, or Escape on the focused map, also clears the selection by
+removing `location` from the URL, so the same unsaved-change guard applies.
+Room and location URL changes, including Back/Forward, are blocked until edits
+are saved or explicitly discarded.
+Failed saves retain the draft, and pending saves lock selection and form
+actions. Metadata/parent edits preview on the same map; successful moves follow
+the saved room. Tree forms and the map panel do not edit simultaneously.
+The selection panel lists immediate children and offers a child-creation action.
+Creation reuses the fixed-parent tree form, expanding its full ancestor path.
+Successful location writes update the local location snapshot before the
+catalog refresh completes, so newly created children appear immediately.
+Child selection uses the saved hierarchy, not a pending parent-move preview,
+and retains the same unsaved-change guard as map selection.
+
+Child location creation starts from a row's **+** (fixed parent); one inline
+`LocationEditor` holds metadata without issuing a create request until Save.
+Top-level rooms are added from the inline **New Room** row at the end of the
+tree (`NewRoomRow`): name plus Staff-only, **+**/Enter to create with
+`kind: 'room'` and `parentId: null`, **X**/Escape to discard. Typing claims the
+same single editor slot, so an unsaved draft elsewhere prompts before it is
+replaced. Top-level room edits omit the parent picker; other
+edits retain it and exclude self/descendants. A room-level surface in a mapped
+room can be saved without map placement; it appears on the floor plan only when
+the SVG contains a shape with its id. Storage inherits the enclosing surface
+shape and requires no placement. Storage creation has no placement map, and
+legacy coordinates are removed during identity normalization. Shape-linked
+surface geometry remains SVG-owned. Cross-room edits do not require remapping;
+failed saves retain the form. Tree forms and the selected map panel are
+mutually exclusive editing modes and share one navigation guard.
+
+Visitor map URLs preserve the
+selected room and location. Seed data contains two mapped rooms, their labeled
+locations, two staff-only storage rooms, starter categories, and empty item/report arrays.
+
+Storage surfaces are lettered uniquely across rooms: Common A-M clockwise from
+the top-right table, and Advanced S-Z clockwise from the top-left workbench.
+Advanced has Workbench S and Tables T/U across the top, V on the right, W in the
+center, X/Y along the bottom-left, and Z at left-center.
+Existing IDs are retained when display labels change; the added surface now
+called Table X retains `loc-table-u`.
 The six central Common work tables are drawing-only features, not catalog
-locations, so they have no markers and are absent from storage pickers. The
-current seed contains 28 locations: two rooms, 20 lettered surfaces, and six
-named stations/cabinets. Drawer numbering (for example C2) is separate from
+locations, so they have no selectable shapes and are absent from storage pickers. The
+current seed contains 31 locations: four rooms (two staff-only), 21 lettered surfaces, and six
+named stations/cabinets. SVG tests parse XML and apply transforms rather than
+depending on Inkscape's attribute ordering or whitespace. Drawer numbering (for example D2) is separate from
 table lettering; no drawer records are invented from the plans.
+
+`npm run sync:maps:cosmos` previews name/position synchronization from the seed
+for only the locations drawn in the SVGs. Applying requires an absolute backup
+path and saves all changes in one Cosmos transaction: ETag-guarded patches for
+existing records and creates for missing drawn surfaces. Only lettered surface
+names and mapped positions change; station/cabinet names, other fields, stable
+IDs, and item assignments are preserved and checked against a fresh read.
+Unmapped records are excluded. This is an explicit remapping operation, unlike
+the additive `update:locations` migration, which preserves saved coordinates.
+
+### 3.4 Staff-only locations
+
+`staffOnly` defaults to public when omitted and is inherited through the location
+tree. `Storage Closet` and `Basement Storage` start as restricted, unmapped rooms.
+For anonymous requests, `publicCatalog` removes the entire restricted subtree,
+adds one synthetic `public-ask-staff` room named **Ask Staff**, and rewrites the
+affected items' response-only `locationId` to that room. Stored assignments never
+change. The same projection is used for individual item details and assistant
+candidate/response assembly. Public items stay discoverable, while restricted
+names, IDs, coordinates, and breadcrumbs are not sent to visitors.
+
+`GET /api/catalog` returns `access: "public" | "staff"` based on the signed
+session cookie. Audience-dependent reads use `Cache-Control: private, no-store`
+and `Vary: Cookie`. The server repository cache remains canonical; redaction is
+per response, never a mutation of cached data. Existing catalogs can be upgraded
+explicitly using `npm run update:locations -- --apply` after deploying the code.
 
 ---
 
 ## 4. Storage
+
+### Location hierarchy and code allocation
+
+New and edited locations must follow room -> surface -> storage. Surface types
+are table/station/desk/workbench/cabinet; storage types are drawer/bin/shelf,
+cannot have children, and share their enclosing surface's number space. Only rooms can be
+roots. Type choices and parent choices follow the same shared rules in
+`location-hierarchy.ts` and on the API.
+
+`assignLocationIdentities` supplies missing legacy letters/numbers without
+changing IDs or hierarchy. Existing named letter labels are reserved before
+other lettered surfaces receive available codes. Stations are name-only and
+consume no letters; legacy station letters are removed during normalization.
+Explicit duplicates among lettered surfaces are errors, never
+silently reassigned. Legacy numbered storage retains unique valid numbers;
+other storage gets a deterministic number and generated name. Location reads
+include this metadata and names; before mutation the API persists missing legacy
+identity metadata so subsequent deletions or renames cannot shift codes.
+
+`prepareLocation` owns automatic names, letters, and numbers. Creates ignore
+client identity fields; storage updates retain the current number within a
+surface and regenerate the name. Cross-surface storage moves allocate
+destination numbers. Legacy nested records remain readable but must be moved
+to a valid surface; new children of storage and writes preserving an invalid
+child relationship are rejected. Storage creation renders compact controls
+instead of a `section.location-editor` card or generated-code status paragraph.
+Location write requests are serialized per repository instance, covering the
+read/allocate/write interval. This follows the existing single-API deployment
+contract; it is not a distributed lock for multiple processes or direct Cosmos
+writes. Location paths append the derived short code, e.g. `A3`, independently
+of the editable parent display name. Station children keep their unique storage
+numbers but use the station name in the path rather than a letter-based code.
 
 **Cosmos DB or local JSON files, behind the same repository interface.**
 `STORAGE=cosmos` selects the implemented Cosmos backend; `STORAGE=json` remains
@@ -194,6 +320,7 @@ interface CatalogRepository {
   getItems(): Promise<Item[]>;
   getItem(id: string): Promise<Item | null>;
   saveItem(item: Item): Promise<void>;
+  saveLocations(locations: Location[]): Promise<void>;
   getLocations(): Promise<Location[]>;
   getCategories(): Promise<Category[]>;
   addFlag(flag: Flag): Promise<void>;
@@ -278,6 +405,8 @@ REST, JSON, served by Express under `/api`.
 | `POST` | `/api/assistant/recommend` | none | Project Assistant (§6) |
 | `POST` | `/api/items` | staff | Create |
 | `PUT` | `/api/items/:id` | staff | Update |
+| `POST` | `/api/locations` | staff | Create location metadata |
+| `PUT` | `/api/locations/:id` | staff | Update location metadata |
 | `POST` | `/api/auth/login` | none | Staff sign-in (§8) |
 | `POST` | `/api/auth/logout` | staff | |
 | `GET` | `/api/flags` | staff | Flag queue |
@@ -393,33 +522,42 @@ category, description, and location name, with name and tags weighted highest.
 Fuzzy matching covers the misspelling and plural tolerance required by product
 spec §6.1.
 
-Refetch the catalog on page load, window focus, reconnect, and manual refresh.
+Refetch the catalog on page load, window focus, and reconnect. The manual header
+refresh icon is development-only, gated by Vite's `import.meta.env.DEV`.
+Initial-load failure recovery remains available in production.
 Successful staff catalog changes invalidate the browser snapshot and refetch.
 Kiosk idle reset is still deferred; when implemented, it should also refresh.
 
 ### 7.1 Browser persistence and refresh
 
 `BrowserCatalogCache` persists one validated, versioned catalog under
-`garage-inventory:catalog:v2`. The React `useCatalog` hook renders saved data
+`garage-inventory:catalog:v3`. Only `publicCatalog` projections are persisted,
+even during staff sessions, and v2 snapshots are removed. Staff catalog data
+stays in memory, scoped to the current sign-in state. Staff editors wait for a
+network response with `access: "staff"` rather than editing synthetic assignments.
+Sign-out redacts the current view and clears assistant results; cross-tab
+sign-out and access revocation also hide private data. The React `useCatalog` hook renders saved data
 while the network request runs. A snapshot is marked stale after **5 minutes**,
 not deleted, and remains available during API failures. The timestamp denotes
 browser retrieval, not the database's last modification (§4.4).
 
-Refresh failures show an explicit notice and retry action without discarding
-the current catalog or unsaved drafts. Saved safety/training, location, and
+Refresh failures show an explicit notice without discarding the current catalog
+or unsaved drafts. Initial failures with no saved catalog also offer a retry action. Saved safety/training, location, and
 availability information is never presented as verified current after a failed
 refresh. Staff writes continue to require the API; there is no offline queue.
 
 Updates to the rendered catalog wait while an item, location, category, bulk,
-or map draft is dirty.
+or map draft is dirty, unless access has been revoked.
 Relevant cross-tab storage changes reload the snapshot; invalidation refetches,
-whereas another tab's saved snapshot is adopted without a fetch/write loop.
+whereas visitors adopt another tab's saved public snapshot without refetching.
+Staff refetch their private view without persisting another snapshot, preventing
+a cross-tab fetch/write loop.
 Unknown fields outside the public catalog contract are not persisted. Corrupt,
 incompatible, or future-dated saved data is reported and removed; storage access
 or quota failures are surfaced while in-memory/network operation can continue.
 
 Network catalog requests have a **10-second timeout**, use `cache: 'no-store'`,
-and receive `Cache-Control: no-store`, so the application owns freshness.
+and receive `Cache-Control: private, no-store` and `Vary: Cookie`, so the application owns freshness.
 Authentication, flags, searches, and assistant inputs/responses are not cached.
 This does not cache HTML, JavaScript, or images and does not enable offline
 cold startup.

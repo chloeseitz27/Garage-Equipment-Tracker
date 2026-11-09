@@ -454,6 +454,7 @@ export function ItemsManager({ catalog, mode, onEditItem, onCreateItem, bulkEntr
                 <MultiSelectFilter
                   label="location"
                   emptyLabel="All locations"
+                  mapLocations={catalog.locations}
                   options={locationOptions}
                   selected={filters.locationIds}
                   disabled={busy}

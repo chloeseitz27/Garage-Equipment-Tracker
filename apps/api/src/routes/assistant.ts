@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { recommendRequestSchema, type AssistantProvider } from '@garage/shared';
 
 import { recommendForProject } from '../assistant/recommend.js';
+import { isStaff } from '../auth.js';
 import { asyncHandler, rateLimit } from '../middleware.js';
 import type { CatalogRepository } from '../repository/catalog-repository.js';
 
@@ -27,8 +28,9 @@ export function assistantRoutes(
         repository,
         provider,
         parsed.data.projectDescription,
+        isStaff(req),
       );
-      res.json(response);
+      res.set('Cache-Control', 'private, no-store').vary('Cookie').json(response);
     }),
   );
 
