@@ -224,6 +224,8 @@ while any active or retired item references it.
 ### 6.3 Item detail
 
 - Photo, name, all categories, kind, status or stock level, description, notes.
+- Staff can upload a photo (up to 10 MB); existing photo URLs remain readable. Preview before
+  saving, replace or remove the assignment, and see explicit upload/load errors.
 - Full location breadcrumb, prominent and legible from a step back.
 - Related items from the same location and the same category.
 

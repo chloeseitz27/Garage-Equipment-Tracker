@@ -55,7 +55,19 @@ module cosmos 'modules/cosmos.bicep' = {
   }
 }
 
+module photos 'modules/photos.bicep' = {
+  name: 'photos'
+  scope: rg
+  params: {
+    location: location
+    accountName: 'garagephoto${uniqueString(subscription().subscriptionId, resourceGroupName)}'
+    principalId: principalId
+  }
+}
+
 output resourceGroupName string = rg.name
+output photoBlobEndpoint string = photos.outputs.endpoint
+output photoBlobContainer string = photos.outputs.containerName
 output cosmosAccountName string = cosmos.outputs.accountName
 output cosmosLocation string = cosmosLocation
 output cosmosEndpoint string = cosmos.outputs.endpoint

@@ -14,6 +14,8 @@ interface Props {
   onSelect?: (id: string, point?: { x: number; y: number }) => void;
   /** Clicking empty map space clears the selection. */
   onDeselect?: () => void;
+  /** Hide the zoom controls for small, read-only previews. */
+  zoomControls?: boolean;
 }
 
 export function roomMapUrl(roomId: string, locationId?: string): string {
@@ -43,6 +45,7 @@ function ShapeGeometry({ geometry }: { geometry: SvgMapGeometry }): JSX.Element 
 
 export function RoomMap({
   room, locations, selectedLocationId, selectedLocationIds, excludedIds, caption, showCaption = true, onSelect, onDeselect,
+  zoomControls = true,
 }: Props): JSX.Element {
   const asset = room.mapId ? ROOM_MAPS[room.mapId] : undefined;
   const source = useSvgMap(room.mapId);
@@ -261,15 +264,17 @@ export function RoomMap({
             ) : null}
           </div>
         </div>
-        <div className="room-map-controls" role="group" aria-label={`${room.name} map zoom`}>
-          <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!ready || view.zoom <= 1} onClick={() => changeZoom(-0.25)}>-</button>
-          <button type="button" className="map-zoom-reset" aria-label="Reset zoom" title="Reset zoom" disabled={!ready || view.zoom === 1} onClick={() => setView(FIT_VIEW)}>
-            <span aria-live="polite">{Math.round(view.zoom * 100)}%</span>
-          </button>
-          <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!ready || view.zoom >= 3} onClick={() => changeZoom(0.25)}>+</button>
-        </div>
+        {zoomControls ? (
+          <div className="room-map-controls" role="group" aria-label={`${room.name} map zoom`}>
+            <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!ready || view.zoom <= 1} onClick={() => changeZoom(-0.25)}>-</button>
+            <button type="button" className="map-zoom-reset" aria-label="Reset zoom" title="Reset zoom" disabled={!ready || view.zoom === 1} onClick={() => setView(FIT_VIEW)}>
+              <span aria-live="polite">{Math.round(view.zoom * 100)}%</span>
+            </button>
+            <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!ready || view.zoom >= 3} onClick={() => changeZoom(0.25)}>+</button>
+          </div>
+        ) : null}
       </div>
-      <p id={helpId} className="visually-hidden">Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.{onDeselect ? ' Click empty map space or press Escape to clear the selection.' : ''}</p>
+      <p id={helpId} className="visually-hidden">{zoomControls ? 'Zoom with the plus and minus buttons. Drag to pan when zoomed, or focus the map and use arrow keys. Press Home to reset the view. ' : ''}Focus a location and press Enter{onSelect ? ' or Space' : ''} to select it.{onDeselect ? ' Click empty map space or press Escape to clear the selection.' : ''}</p>
       {showCaption && (caption !== '' || failed || (ready && selectedLocationId && resolved?.room.id === room.id && target?.location.id !== selectedLocationId)) ? (
         <figcaption>
           {ready ? caption ?? (highlighted ? `Highlighted: ${target?.location.name}${highlightedCode ? ` (${highlightedCode})` : ''}.` : 'Select a location on the map.') : failed ? 'Map unavailable.' : null}

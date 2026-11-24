@@ -115,7 +115,7 @@ if (-not $WhatIf -and -not $SkipConfirm) {
 # A new subscription has almost no providers registered; Cosmos fails with
 # MissingSubscriptionRegistration without this. Registration is idempotent.
 Write-Host 'Ensuring resource providers are registered...'
-foreach ($ns in @('Microsoft.DocumentDB', 'Microsoft.Web', 'Microsoft.Insights')) {
+foreach ($ns in @('Microsoft.DocumentDB', 'Microsoft.Storage', 'Microsoft.Web', 'Microsoft.Insights')) {
   $state = (Invoke-Az @('provider', 'show', '--namespace', $ns, '--query', 'registrationState', '-o', 'tsv') "read $ns") | Out-String
   if ($state.Trim() -ne 'Registered') {
     Write-Host "  registering $ns..."
@@ -140,7 +140,7 @@ if ($WhatIf) {
   exit 0
 }
 
-Write-Host "`nDeploying Cosmos to $CosmosLocation (account creation takes a few minutes)..."
+Write-Host "`nDeploying Cosmos to $CosmosLocation and photo storage to $Location (account creation takes a few minutes)..."
 $deployArgs = @('deployment', 'sub', 'create', '--location', $Location, '--template-file', $template, '--parameters') + $parameters + @('-o', 'json')
 $result = (Invoke-Az $deployArgs 'deploy infrastructure') | ConvertFrom-Json
 $out = $result.properties.outputs
@@ -151,6 +151,9 @@ Write-Host '  STORAGE=cosmos'
 Write-Host "  COSMOS_ENDPOINT=$($out.cosmosEndpoint.value)"
 Write-Host "  COSMOS_DATABASE=$($out.cosmosDatabase.value)"
 Write-Host "  COSMOS_CONTAINER=$($out.cosmosContainer.value)"
+Write-Host '  PHOTO_STORAGE=azure'
+Write-Host "  PHOTO_BLOB_ENDPOINT=$($out.photoBlobEndpoint.value)"
+Write-Host "  PHOTO_BLOB_CONTAINER=$($out.photoBlobContainer.value)"
 Write-Host ''
 Write-Host 'Then import the seed data:'
 Write-Host '  npm run seed:cosmos'

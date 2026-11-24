@@ -405,13 +405,30 @@ REST, JSON, served by Express under `/api`.
 | `POST` | `/api/assistant/recommend` | none | Project Assistant (§6) |
 | `POST` | `/api/items` | staff | Create |
 | `PUT` | `/api/items/:id` | staff | Update |
+| `POST` | `/api/photos` | staff | Raw JPEG/PNG/WebP bytes; returns a stable same-origin `photoUrl` |
+| `GET` | `/api/photos/:name` | none | Normalized WebP from private storage; `<id>.thumb.webp` is its 160 x 160 thumbnail |
 | `POST` | `/api/locations` | staff | Create location metadata |
 | `PUT` | `/api/locations/:id` | staff | Update location metadata |
 | `POST` | `/api/auth/login` | none | Staff sign-in (§8) |
 | `POST` | `/api/auth/logout` | staff | |
 | `GET` | `/api/flags` | staff | Flag queue |
 
-All input validated at the boundary with a schema validator (Zod), using schemas
+Photo uploads are limited to 10 MB and 24 megapixels, decoded and checked against
+the declared image type, and re-encoded to still WebP at most 1920 x 1920.
+Re-encoding strips EXIF/GPS and other source metadata. Each upload also stores a
+160 x 160 cropped WebP thumbnail for search results; missing thumbnails are
+generated from the full photo on first request and stored, and a failed
+thumbnail write never fails the upload. Uploads are staff-only,
+rate-limited, and use generated UUID filenames. Local storage defaults to
+`data/photos`; Azure uses a private container and `DefaultAzureCredential`.
+The API proxies public photo reads rather than persisting expiring SAS URLs.
+The editor uploads on Save, preserves the draft on failure, and reuses a
+successful upload if the catalog save needs retrying. Removal clears only the
+item's `photoUrl`; old files remain, including possible unreferenced uploads.
+Backups must include photos separately from catalog records. See README's
+Item photos section for configuration, identity permissions, and retention.
+
+Other input is validated at the boundary with a schema validator (Zod), using schemas
 exported from `packages/shared` so client and server agree.
 
 ---
@@ -654,7 +671,6 @@ Chosen for hackathon speed; each needs revisiting before real use.
 | Shared passphrase auth | No individual accountability | Entra ID behind the same middleware |
 | Client-side search | Whole catalog to every client | Server-side search endpoint |
 | Local-only run | Single machine, manual start | Container + App Service |
-| No photo upload | Photos are URLs only | Blob storage |
 
 ---
 

@@ -25,8 +25,8 @@ export function ActionIcon({ name }: { name: 'save' | 'delete' | 'edit' | 'add' 
         </>
       ) : name === 'edit' ? (
         <>
-          <path d="m10 13 8-9a2.1 2.1 0 0 1 3 3l-9 8Z" />
-          <path d="M10 13c-3-1-5 1-5 4 0 2-2 3-2 3s6 2 8-1c1-1 2-3 1-4" />
+          <path d="M12 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+          <path d="M18.4 2.6a2 2 0 0 1 3 3L12 15l-4 1 1-4Z" />
         </>
       ) : name === 'refresh' ? (
         <>

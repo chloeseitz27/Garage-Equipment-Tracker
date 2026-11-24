@@ -515,7 +515,7 @@ To provision and load it:
 # subsequent deployments reuse the existing account's region
 .\scripts\deploy-infra.ps1 -SubscriptionId <your-sub-id>
 
-# add the printed COSMOS_* values to .env, then
+# add the printed COSMOS_* and PHOTO_* values to .env, then
 npm run seed:cosmos
 ```
 
@@ -525,7 +525,11 @@ Infrastructure lives in [`infra/`](infra/) as Bicep, deployed at subscription sc
 infra/
   main.bicep            Resource group + module wiring
   modules/cosmos.bicep  Account, database, container, data-plane role
+  modules/photos.bicep Private Blob container and data access role
 ```
+
+The photo Storage account name uses an 11-character prefix and ARM's
+13-character `uniqueString` suffix, staying within Azure's 24-character maximum.
 
 The deploy script refuses to run against the Microsoft corporate tenant, registers the resource providers a new subscription lacks, and passes your object id in for the Cosmos data-plane role assignment. That role is not optional: **Cosmos data-plane RBAC is separate from Azure RBAC**, so subscription Owner grants no data access at all.
 
@@ -552,6 +556,56 @@ Notes on the template:
 - **`cosmosLocation` is separate from `location`.** Cosmos capacity varies by region — East US returned `ServiceUnavailable` for a new account while East US 2 worked — and a resource group's location can't be changed after creation.
 
 Auth uses `DefaultAzureCredential` when `COSMOS_KEY` is empty — managed identity in Azure, your `az login` locally. Leave it empty.
+
+## Item photos
+
+The item editor's right sidebar has an **Image** tile above the location map.
+Click its centered plus icon to choose a photo; click the preview to replace it.
+Existing photo URLs remain readable, but the editor adds photos through upload
+only. Use the **Clear image** icon in
+the tile's top-right corner, shown only when an image is selected, to discard
+a selection before saving. Clearing restores the plus
+tile and prevents the discarded file from uploading. A selected file previews locally and uploads only
+when the item is saved. Upload errors keep the draft; if the upload succeeds
+but the item save fails, retrying reuses the uploaded photo. Photos appear in
+search thumbnails and item details; failed detail/preview loads show an explicit
+unavailable message.
+
+Uploads accept still JPEG, PNG, and WebP files up to **10 MB**.
+The decoder retains a 24-megapixel resource-safety limit.
+The API checks the decoded format, rejects animation, applies camera orientation,
+resizes to fit 1920 x 1920 without enlarging, and re-encodes WebP without source
+metadata (including EXIF/GPS). SVG and other formats are not accepted.
+
+Each upload also stores a 160 x 160 cropped thumbnail (`<id>.thumb.webp`),
+which search results use instead of the full photo. Photos uploaded before
+thumbnails existed get one generated and stored on first request. If a
+thumbnail can't be stored or served, the full photo is used instead. External
+photo URLs have no thumbnail and display as-is. Browsers cache both sizes
+for a year; each upload has a new URL, so replacements never show stale images.
+
+`PHOTO_STORAGE=local` stores files in gitignored `data/photos`; `PHOTO_DIR`
+overrides that directory. Back it up alongside `data/runtime`. `npm run reset`
+does not remove photos. `PHOTO_STORAGE=azure` uses `PHOTO_BLOB_ENDPOINT` and
+`PHOTO_BLOB_CONTAINER` with `DefaultAzureCredential`. If unset, photo storage
+defaults to Azure for `STORAGE=cosmos`, otherwise local. The example environment
+explicitly selects local; use the deploy script's printed values for Azure.
+
+The infrastructure template provisions a private, keyless Storage account and
+container, grants your selected principal **Storage Blob Data Contributor** on
+the container, and enables seven-day Blob soft delete. Grant that same role to
+the API's managed identity when hosting it; subscription ownership alone is not
+Blob data access. Photo bytes are served anonymously through `/api/photos/...`,
+matching public item visibility; storage credentials and signed Blob URLs never
+reach the browser. Keep the web app and `/api` on the same origin (Vite proxies
+`/api` locally). Storage costs apply; no Azure deployment runs on app startup.
+
+Each upload has a new immutable URL. Removing/replacing a photo changes only
+the item assignment: files are retained to avoid breaking other references or
+restored items. Upload and catalog save are not one transaction; a failed or
+abandoned save after upload can leave an unreferenced file. Include photo files
+in backups and manage unreferenced-file retention separately; there is no
+automatic garbage collection.
 
 ## Local caching
 
@@ -622,7 +676,6 @@ input, not the saved public catalog.
 
 ## Not built yet
 
-- Photos are URLs only — no upload
 - Kiosk idle reset, browse-by-location walking UI for visitors
 - The hosted assistant provider is implemented but has not been run against real
   credentials

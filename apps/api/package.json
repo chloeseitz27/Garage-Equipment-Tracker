@@ -12,9 +12,11 @@
   "dependencies": {
     "@azure/cosmos": "^4.10.1",
     "@azure/identity": "^4.13.3",
+    "@azure/storage-blob": "~12.30.0",
     "@garage/shared": "*",
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
+    "sharp": "^0.35.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

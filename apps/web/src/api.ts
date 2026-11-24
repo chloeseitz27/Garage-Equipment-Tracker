@@ -61,6 +61,14 @@ export const logout = (): Promise<{ staff: boolean }> =>
 export const createItem = (input: CreateItemInput): Promise<Item> =>
   request('/api/items', { method: 'POST', body: JSON.stringify(input) });
 
+export const uploadPhoto = (file: File, signal: AbortSignal): Promise<{ photoUrl: string }> =>
+  request('/api/photos', {
+    method: 'POST',
+    headers: { 'content-type': file.type },
+    body: file,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+  });
+
 export const updateItem = (item: Item): Promise<Item> =>
   request(`/api/items/${encodeURIComponent(item.id)}`, {
     method: 'PUT',

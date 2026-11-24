@@ -28,6 +28,13 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? join(repoRoot, 'data', 'runtime'),
   seedDir: process.env.SEED_DIR ?? join(repoRoot, 'data', 'seed'),
 
+  photos: {
+    storage: process.env.PHOTO_STORAGE ?? (process.env.STORAGE === 'cosmos' ? 'azure' : 'local'),
+    directory: process.env.PHOTO_DIR ?? join(repoRoot, 'data', 'photos'),
+    endpoint: process.env.PHOTO_BLOB_ENDPOINT ?? '',
+    container: process.env.PHOTO_BLOB_CONTAINER ?? 'item-photos',
+  },
+
   /** `json` for local files, `cosmos` for Azure Cosmos DB (technical-spec.md §4). */
   storage: (process.env.STORAGE ?? 'json') as 'json' | 'cosmos',
   catalogCacheTtlMs: Number(process.env.CATALOG_CACHE_TTL_MS ?? 3_600_000),
@@ -44,8 +51,9 @@ export const config = {
   },
 
   /** Shared passphrase — hackathon only, replaced by Entra ID later (technical-spec.md §8). */
-  staffPassphrase: process.env.STAFF_PASSPHRASE ?? 'garage',
-  sessionSecret: process.env.SESSION_SECRET ?? 'dev-only-insecure-secret',
+  // Blank values from a copied .env.example are treated as unset, never as an empty passphrase/key.
+  staffPassphrase: process.env.STAFF_PASSPHRASE || 'garage',
+  sessionSecret: process.env.SESSION_SECRET || 'dev-only-insecure-secret',
   sessionTtlMinutes: Number(process.env.SESSION_TTL_MINUTES ?? 30),
 
   assistant: {

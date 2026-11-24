@@ -3384,6 +3384,8 @@ test('item detail highlights the assigned room and falls back to a mapped parent
   assert.equal(host.querySelector('.item-detail .room-map img')?.getAttribute('data-map-src'), '/maps/common-makerspace.svg');
   assert.equal(host.querySelector('.item-detail .map-region.selected')?.getAttribute('data-location-id'), 'table-a');
   assert.match(host.querySelector('.item-detail')?.textContent ?? '', /Map location inherited from Table A/);
+  assert.equal(host.querySelector('.item-detail .room-map-controls'), null);
+  assert.doesNotMatch(host.querySelector('.item-detail .room-map')?.textContent ?? '', /plus and minus/);
   const shape = host.querySelector<SVGElement>('.item-detail .map-region.selected');
   assert.ok(shape);
   await clickShape(shape);

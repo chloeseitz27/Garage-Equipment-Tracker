@@ -5,6 +5,7 @@ import { createFlag } from '../api.js';
 import type { SearchRecord } from '../search.js';
 import { ActionIcon } from './ActionIcon.js';
 import { RoomMap } from './RoomMap.js';
+import { ItemPhoto } from './ItemPhoto.js';
 
 interface Props {
   record: SearchRecord;
@@ -30,8 +31,14 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
 
   return (
     <article className="item-detail">
-      <button type="button" className="close" onClick={onClose}>
-        Close
+      <button
+        type="button"
+        className="close icon-button"
+        aria-label="Close"
+        title="Close"
+        onClick={onClose}
+      >
+        <ActionIcon name="cancel" />
       </button>
       {onEdit ? (
         <button
@@ -46,6 +53,7 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
       ) : null}
 
       <h2>{item.name}</h2>
+      {item.photoUrl ? <ItemPhoto src={item.photoUrl} name={item.name} /> : null}
       <p className="muted">
         {categoryNames.join(', ')} · {item.kind}
         {item.kind === 'equipment'
@@ -57,7 +65,7 @@ export function ItemDetail({ record, onClose, onEdit, locations = record.locatio
       <div className="breadcrumb">{formatLocationPath(locationPath)}</div>
       {mapped ? (
         <>
-          <RoomMap room={mapped.room} locations={locations} selectedLocationId={item.locationId} />
+          <RoomMap room={mapped.room} locations={locations} selectedLocationId={item.locationId} zoomControls={false} />
         </>
       ) : null}
 

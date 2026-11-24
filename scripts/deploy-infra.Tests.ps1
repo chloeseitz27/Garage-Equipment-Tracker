@@ -31,7 +31,7 @@ BeforeAll {
         $azState.DeploymentArguments = @($args)
         if ($args[2] -eq 'what-if') { return }
         $args[2] | Should -Be 'create'
-        return '{"properties":{"outputs":{"cosmosEndpoint":{"value":"https://test.example"},"cosmosDatabase":{"value":"garage"},"cosmosContainer":{"value":"catalog"}}}}'
+        return '{"properties":{"outputs":{"cosmosEndpoint":{"value":"https://test.example"},"cosmosDatabase":{"value":"garage"},"cosmosContainer":{"value":"catalog"},"photoBlobEndpoint":{"value":"https://test.blob.core.windows.net/"},"photoBlobContainer":{"value":"item-photos"}}}}'
       }
       default { throw "Unexpected az call: $args" }
     }
@@ -40,6 +40,19 @@ BeforeAll {
 
 AfterAll {
   $global:LASTEXITCODE = $originalExitCode
+}
+
+Describe 'Photo infrastructure naming' {
+  It 'keeps generated Storage account names within Azure naming limits' {
+    $mainBicep = Get-Content (Join-Path $PSScriptRoot '..\infra\main.bicep') -Raw
+    $match = [regex]::Match($mainBicep, 'accountName:\s*''([a-z0-9]+)\$\{uniqueString')
+    $match.Success | Should -BeTrue
+    # ARM uniqueString always returns 13 characters.
+    $generatedName = $match.Groups[1].Value + ('a' * 13)
+    $generatedName.Length | Should -BeGreaterOrEqual 3
+    $generatedName.Length | Should -BeLessOrEqual 24
+    $generatedName | Should -Match '^[a-z0-9]+$'
+  }
 }
 
 Describe 'Infrastructure deployment Cosmos location' {
