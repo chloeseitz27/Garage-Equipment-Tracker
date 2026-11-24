@@ -7,14 +7,17 @@ import { assistantRoutes } from './routes/assistant.js';
 import { authRoutes } from './routes/auth.js';
 import { publicRoutes } from './routes/public.js';
 import { staffRoutes } from './routes/staff.js';
+import { photoRoutes } from './routes/photos.js';
+import { createPhotoStore } from './photos.js';
 
 const repository = await createRepository();
 
 const provider = createAssistantProvider();
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+app.use('/api', photoRoutes(createPhotoStore()));
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, assistantProvider: provider.name });

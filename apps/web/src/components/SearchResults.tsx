@@ -1,3 +1,4 @@
+import { photoThumbnailUrl } from '@garage/shared';
 import type { SearchRecord } from '../search.js';
 
 interface Props {
@@ -37,7 +38,18 @@ export function SearchResults({ records, query, selectedId, onSelect }: Props): 
             onClick={() => onSelect(record.item.id)}
           >
             <span className="thumb" aria-hidden="true">
-              {record.item.photoUrl ? <img src={record.item.photoUrl} alt="" /> : null}
+              {record.item.photoUrl ? (
+                <img
+                  src={photoThumbnailUrl(record.item.photoUrl)}
+                  alt=""
+                  loading="lazy"
+                  onError={(event) => {
+                    // Fall back to the full photo once if a thumbnail cannot be served.
+                    const full = record.item.photoUrl!;
+                    if (event.currentTarget.getAttribute('src') !== full) event.currentTarget.src = full;
+                  }}
+                />
+              ) : null}
             </span>
             <span className="result-body">
               <span className="result-name">

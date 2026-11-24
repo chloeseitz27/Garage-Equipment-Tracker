@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   EQUIPMENT_STATUSES,
   STOCK_LEVELS,
   TRAINING_LEVELS,
+  MAX_PHOTO_BYTES,
+  PHOTO_MIME_TYPES,
   resolveLocationMap,
   type Category,
   type CreateItemInput,
@@ -11,11 +13,13 @@ import {
   type Location,
 } from '@garage/shared';
 
-import { createItem, updateItem } from '../api.js';
+import { createItem, updateItem, uploadPhoto } from '../api.js';
 import { LocationPicker } from './LocationPicker.js';
 import { CategoryPicker } from './CategoryPicker.js';
 import { RoomMap } from './RoomMap.js';
 import { UnsavedItemDialog, useItemDraftGuard } from './UnsavedItemChanges.js';
+import { ItemPhoto } from './ItemPhoto.js';
+import { ActionIcon } from './ActionIcon.js';
 
 interface Props {
   item: Item | null;
@@ -77,8 +81,14 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
   const [form, setForm] = useState<FormState>(baseline);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const imageTitleId = useId();
+  const imageHintId = useId();
+  const upload = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  const dirty = photoFile !== null || JSON.stringify(form) !== JSON.stringify(baseline);
   const { blocker, dirtyRef, markSaved } = useItemDraftGuard(dirty);
   const mapped = resolveLocationMap(locations, form.locationId);
   const rooms = locations.filter((location) => location.parentId === null && location.kind === 'room' && location.mapId);
@@ -100,8 +110,21 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
 
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+      upload.current?.abort();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(photoFile);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -163,18 +186,32 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
     if (!input) return;
 
     setBusy(true);
+    const controller = new AbortController();
+    upload.current = controller;
     try {
+      let savedForm = form;
+      if (photoFile) {
+        const { photoUrl } = await uploadPhoto(photoFile, controller.signal);
+        if (!mounted.current || controller.signal.aborted) return;
+        input.photoUrl = photoUrl;
+        savedForm = { ...form, photoUrl };
+        // Retain a successful upload if the item write fails, so retrying does not upload twice.
+        setForm(savedForm);
+        setPhotoFile(null);
+        if (photoInput.current) photoInput.current.value = '';
+      }
       // Editing keeps the existing ID: IDs are permanent, and the assistant
       // grounds its recommendations on them (technical-spec.md §3.2).
       if (item) await updateItem({ ...input, id: item.id } as Item);
       else await createItem(input);
       if (!mounted.current) return;
-      setBaseline(form);
+      setBaseline(savedForm);
       markSaved();
       onSaved();
     } catch (cause) {
       if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not save the item.');
     } finally {
+      if (upload.current === controller) upload.current = null;
       if (mounted.current) setBusy(false);
     }
   };
@@ -290,11 +327,6 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
         </label>
 
         <label>
-          Photo URL
-          <input value={form.photoUrl} onChange={(event) => set('photoUrl', event.target.value)} />
-        </label>
-
-        <label>
           Notes
           <textarea
             rows={2}
@@ -310,16 +342,61 @@ export function ItemEditor({ item, categories, locations, onSaved, onCancel }: P
             value={form.safetyNotes}
             onChange={(event) => set('safetyNotes', event.target.value)}
           />
-          {/* Shown verbatim wherever the item appears, including assistant output. */}
-          <span className="hint">
-            Shown word for word on the item and in assistant results. This is the one field where a
-            wrong value has physical consequences.
-          </span>
         </label>
 
       </fieldset>
       <fieldset className="editor-fields editor-location" disabled={busy}>
-        <legend className="visually-hidden">Item location</legend>
+        <legend className="visually-hidden">Item image and location</legend>
+        <section className="editor-image" aria-labelledby={imageTitleId}>
+          <h4 id={imageTitleId}>Image</h4>
+          <input
+            ref={photoInput}
+            type="file"
+            hidden
+            aria-label="Choose item image"
+            accept={PHOTO_MIME_TYPES.join(',')}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              if (!PHOTO_MIME_TYPES.some((type) => type === file.type) || file.size === 0 || file.size > MAX_PHOTO_BYTES) {
+                setError('Choose a nonempty JPEG, PNG, or WebP photo no larger than 10 MB.');
+                event.target.value = '';
+                return;
+              }
+              setError(null);
+              setPhotoFile(file);
+            }}
+          />
+          <div className="image-upload-area">
+            <button
+              type="button"
+              className="image-upload"
+              aria-label={photoPreview || form.photoUrl ? 'Replace image' : 'Upload image'}
+              aria-describedby={imageHintId}
+              onClick={() => photoInput.current?.click()}
+            >
+              {photoPreview || form.photoUrl
+                ? <ItemPhoto src={photoPreview ?? form.photoUrl} name={form.name} />
+                : <ActionIcon name="add" />}
+            </button>
+            {photoFile || form.photoUrl ? (
+              <button
+                type="button"
+                className="icon-button image-clear"
+                aria-label="Clear image"
+                title="Clear image"
+                onClick={() => {
+                  setPhotoFile(null);
+                  set('photoUrl', '');
+                  if (photoInput.current) photoInput.current.value = '';
+                }}
+              >
+                <ActionIcon name="cancel" />
+              </button>
+            ) : null}
+          </div>
+          <span id={imageHintId} className="hint">JPEG, PNG, or WebP, up to 10 MB. Uploaded when you save.</span>
+        </section>
         <LocationPicker
           label="Location"
           showMapButton={false}
